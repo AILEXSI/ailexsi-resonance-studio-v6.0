@@ -1028,7 +1028,19 @@ npx vite build
 Focused (optional, should be green):  
 `tests/v55/identity.test.ts`, `tests/app/commands.test.ts`, `tests/app/project-dirty.test.tsx`, `tests/core/volume-write.test.ts`, `tests/core/volume-automation.test.ts`.
 
-Live results for this branch tip are recorded in the PR body / follow-up stamp after the gate run. Expected inherited failures: AFE-15 A/N dump-ban (2) + STRESS-03 H–K missing clip (4).
+Live results on mapping branch tip after this stamp (Linux VM):
+
+| Gate | Result |
+| --- | --- |
+| `npx tsc --noEmit` | **PASS** (exit 0) |
+| Focused: identity, commands, project-dirty, volume-write, volume-automation | **5 files / 84 passed** |
+| `npx vitest run` (full) | **1389 passed / 6 failed / 1395** in 163 files |
+| `npx vite build` | **PASS** — vite 7.3.6, 166 modules |
+
+The 6 full-suite failures are **inherited on V6 baseline `main`**, not introduced by AI-0:
+
+1. `tests/export/afe-15-exact-pts-tail-ownership.test.ts` — 2 tests (A + N): dump-ban regex `/VIS|BLACK|null/` trips on ledger fields `visFrames` / `blackFrames`.
+2. `tests/export/stress-03-physical-source.test.ts` — 4 tests (H–K): operator clip absent (`STRESS03_CLIP` unset in this VM).
 
 Windows EXE is **not** produced in this Linux VM.
 
