@@ -22,10 +22,14 @@ import {
   DEFAULT_DIRECTOR_SPLIT_RATIO,
   DEFAULT_H_SPLIT_RATIO,
   DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
   DIRECTOR_FOCUS_KEY,
   DIRECTOR_NORMAL_SPLIT_KEY,
+  DIRECTOR_PRESENTATION_KEY,
   DIRECTOR_SECTION_MIN_PX,
   DIRECTOR_SPLIT_RATIO_KEY,
+  DIRECTOR_WORK_SPLIT_KEY,
   INSPECTOR_COLLAPSED_KEY,
   INSPECTOR_MAX_PX,
   INSPECTOR_MIN_PX,
@@ -56,6 +60,10 @@ const PREF_KEYS = [
   DIRECTOR_NORMAL_SPLIT_KEY,
   DIRECTOR_FOCUS_KEY,
   DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_PRESENTATION_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
+  DIRECTOR_WORK_SPLIT_KEY,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
 ];
 
 function fixture(startMs = 30_000): Session {
@@ -221,19 +229,33 @@ describe("AI Director workspace UX + human-gate UI", () => {
     const splitBefore = host!.querySelector('[data-testid="inspector-body"]')?.getAttribute(
       "data-director-split-ratio",
     );
+    const dockedMax = (host!.querySelector('[data-testid="workspace-inspector"]') as HTMLElement).style.maxWidth;
     expect(host!.querySelector('[data-testid="director-focus"]')?.textContent).toBe("Focus");
+    expect(host!.querySelector('[data-testid="workspace-inspector"]')?.getAttribute("data-director-presentation")).toBe(
+      "docked",
+    );
     await click("director-focus");
     expect(host!.querySelector('[data-testid="director"]')?.getAttribute("data-focus")).toBe("true");
     expect(host!.querySelector('[data-testid="inspector-body"]')?.getAttribute("data-director-focus")).toBe(
       "true",
     );
+    expect(host!.querySelector('[data-testid="workspace-inspector"]')?.getAttribute("data-director-presentation")).toBe(
+      "focus",
+    );
+    expect((host!.querySelector('[data-testid="workspace-inspector"]') as HTMLElement).style.maxWidth).toBe("none");
     expect(host!.querySelector('[data-testid="inspector-section"]')?.hasAttribute("hidden")).toBe(true);
     expect(host!.querySelector('[data-testid="director-split"]')).toBeNull();
     expect(host!.querySelector('[data-testid="director-focus"]')?.textContent).toBe("Exit Focus");
+    expect(host!.querySelector('[data-testid="preview"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="timeline"]')).toBeTruthy();
     expect(localStorage.getItem(DIRECTOR_FOCUS_KEY)).toBe("1");
 
     await click("director-focus");
     expect(host!.querySelector('[data-testid="director"]')?.getAttribute("data-focus")).toBe("false");
+    expect(host!.querySelector('[data-testid="workspace-inspector"]')?.getAttribute("data-director-presentation")).toBe(
+      "docked",
+    );
+    expect((host!.querySelector('[data-testid="workspace-inspector"]') as HTMLElement).style.maxWidth).toBe(dockedMax);
     expect(host!.querySelector('[data-testid="inspector-section"]')?.hasAttribute("hidden")).toBe(false);
     expect(host!.querySelector('[data-testid="inspector-body"]')?.getAttribute("data-director-split-ratio")).toBe(
       splitBefore,
@@ -277,17 +299,22 @@ describe("AI Director workspace UX + human-gate UI", () => {
     expect(host!.querySelector('[data-testid="director-send"]')).toBeTruthy();
   });
 
-  it("2F layout order is chrome → txn/conflict → conversation → composer/Send", async () => {
+  it("2F layout order is chrome → work(conversation/result) → composer/Send", async () => {
     await mountApp();
     await click("toolbar-ai");
     const body = host!.querySelector('[data-testid="director-body"]') as HTMLElement;
     const kids = [...body.children].map((el) => (el as HTMLElement).dataset.testid);
     expect(kids[0]).toBe("director-chrome");
-    expect(kids).toContain("director-scroll");
+    expect(kids).toContain("director-work");
     expect(kids.at(-1)).toBe("director-compose");
-    expect(kids.indexOf("director-chrome")).toBeLessThan(kids.indexOf("director-scroll"));
-    expect(kids.indexOf("director-scroll")).toBeLessThan(kids.indexOf("director-compose"));
+    expect(kids.indexOf("director-chrome")).toBeLessThan(kids.indexOf("director-work"));
+    expect(kids.indexOf("director-work")).toBeLessThan(kids.indexOf("director-compose"));
+    const work = host!.querySelector('[data-testid="director-work"]') as HTMLElement;
+    expect(work.querySelector('[data-testid="director-scroll"]')).toBeTruthy();
+    expect(work.querySelector('[data-testid="director-result"]')).toBeTruthy();
+    expect(work.querySelector('[data-testid="director-conversation"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-history-actions"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="director-compose"]')).toBeTruthy();
   });
 
   it("geometry / Focus / collapse never write Project, history, revision, or provider", async () => {
@@ -307,7 +334,9 @@ describe("AI Director workspace UX + human-gate UI", () => {
     const dumped = JSON.parse(serializeProject(empty)) as Record<string, unknown>;
     expect(dumped).not.toHaveProperty("director");
     expect(dumped).not.toHaveProperty("ai");
-    expect(JSON.stringify(dumped)).not.toMatch(/director-split|inspector-section-collapsed/);
+    expect(JSON.stringify(dumped)).not.toMatch(
+      /director-split|inspector-section-collapsed|director-presentation|director-focus-h-split|director-work-split/,
+    );
   });
 
   it.each(VIEWPORTS)(

@@ -34,10 +34,75 @@ export function normalizeDirectorPrompt(text: string): string {
     .trim();
 }
 
-/** Golden "markierten" and human "den Clip" — not a regex maze. */
-function isMoveClipTwoSecondsRight(n: string): boolean {
-  const namesTheClip = n.includes("verschiebe den markierten clip") || n.includes("verschiebe den clip");
-  return namesTheClip && n.includes("zwei sekunden") && n.includes("rechts");
+/** Named selected item: marked / markiert / clip / file / selected. */
+function namesSelectedItem(n: string): boolean {
+  return (
+    n.includes("markiert") ||
+    n.includes("marked") ||
+    n.includes("clip") ||
+    n.includes("file") ||
+    n.includes("selected")
+  );
+}
+
+function hasMoveVerb(n: string): boolean {
+  return n.includes("verschiebe") || n.startsWith("move ") || n.includes(" move ");
+}
+
+function hasLeftDirection(n: string): boolean {
+  return n.includes("links") || n.includes(" left");
+}
+
+function hasRightDirection(n: string): boolean {
+  return n.includes("rechts") || n.includes(" right");
+}
+
+const MOVE_SECOND_WORDS: Readonly<Record<string, number>> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  eine: 1,
+  ein: 1,
+  zwei: 2,
+  drei: 3,
+  vier: 4,
+  funf: 5,
+};
+
+/** Integer seconds 1–3600. Word forms for golden + human 2/3/5 s. */
+function parseMoveSeconds(n: string): number | null {
+  for (const [word, sec] of Object.entries(MOVE_SECOND_WORDS)) {
+    if (n.includes(`${word} sekunden`) || n.includes(`${word} seconds`) || n.includes(`${word} sec`)) {
+      return sec;
+    }
+  }
+  const digit = n.match(/\b(\d{1,4})\s*(sekunden|seconds|secs|sec)\b/);
+  if (!digit) return null;
+  const sec = Number(digit[1]);
+  if (!Number.isSafeInteger(sec) || sec <= 0 || sec > 3600) return null;
+  return sec;
+}
+
+/**
+ * Known move family. English + German: move marked/clip N sec left/right, verschiebe…
+ * Phrase checks plus one bounded second extract. Does not invent other tools.
+ */
+export function parseMoveClipPrompt(text: string): { deltaMs: number } | null {
+  const n = normalizeDirectorPrompt(text);
+  if (!hasMoveVerb(n) || !namesSelectedItem(n)) return null;
+  const left = hasLeftDirection(n);
+  const right = hasRightDirection(n);
+  if (left === right) return null;
+  const seconds = parseMoveSeconds(n);
+  if (seconds == null) return null;
+  return { deltaMs: left ? -seconds * 1000 : seconds * 1000 };
+}
+
+/** Alias kept for existing golden / mock call sites. */
+export function parseMoveRightPrompt(text: string): { deltaMs: number } | null {
+  return parseMoveClipPrompt(text);
 }
 
 /**
@@ -63,8 +128,15 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
   if (n === "was kannst du" || n === "what can you do") {
     return { kind: "ASK_CAPABILITY", confidence: "known", reason: "capability question" };
   }
-  if (isMoveClipTwoSecondsRight(n)) {
-    return { kind: "MOVE_CLIP", confidence: "known", reason: "move selected clip +2s" };
+  const move = parseMoveClipPrompt(text);
+  if (move) {
+    const seconds = Math.abs(move.deltaMs) / 1000;
+    const dir = move.deltaMs < 0 ? "left" : "right";
+    return {
+      kind: "MOVE_CLIP",
+      confidence: "known",
+      reason: `move selected clip ${move.deltaMs > 0 ? "+" : ""}${seconds}s ${dir}`,
+    };
   }
   return { kind: "UNCERTAIN", confidence: "uncertain", reason: "no known route" };
 }
