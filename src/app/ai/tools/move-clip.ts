@@ -24,8 +24,13 @@ export function parseGoldenMovePrompt(text: string): { deltaMs: 2000 } | null {
   return text.trim() === GOLDEN_MOVE_PROMPT ? { deltaMs: 2000 } : null;
 }
 
+/** Fail-closed upper bound (24h). Absurd deltas never draft. */
+const MAX_DELTA_MS = 86_400_000;
+
 function asExactDeltaMs(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) return null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > MAX_DELTA_MS) {
+    return null;
+  }
   return value;
 }
 
@@ -60,7 +65,7 @@ export function resolveMoveClipCommand(
       return { error: "INVALID_DELTA" };
     }
     const raw = args.targetStartSeconds * 1000 - clip.startMs;
-    if (!Number.isSafeInteger(raw) || raw <= 0) return { error: "INVALID_DELTA" };
+    if (!Number.isSafeInteger(raw) || raw <= 0 || raw > MAX_DELTA_MS) return { error: "INVALID_DELTA" };
     deltaMs = raw;
   } else {
     deltaMs = asExactDeltaMs(args.deltaMs);

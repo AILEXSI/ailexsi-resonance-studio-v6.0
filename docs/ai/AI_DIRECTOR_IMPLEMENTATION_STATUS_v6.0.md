@@ -516,6 +516,24 @@ Mode **AGENT**, Grant **EDIT**, Context **SELECTION**, Provider **mock** (offlin
 - `tests/ai/ai-golden-path.test.ts`
 - `tests/ai/ai-golden-path-adversarial.test.ts`
 
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **121 passed** (98 prior + 23 golden-path / adversarial) |
+| `npx vitest run` | **1510 passed / 6 failed / 1516** (173 files passed / 2 failed / 175) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 184 modules) |
+| Mock golden 12/12 | PASS |
+| Reject 12/12 | PASS |
+| Hostile snap 12/12 | PASS |
+| Stale txn 12/12 | PASS |
+| Provider failure 12/12 | PASS |
+| Permission matrix | PASS |
+| Project switch / ABA | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| New regressions | none |
+
 ### Stop
 
 No AI-8. Do **not** merge PR #2 to `main`. Do **not** merge this PR to `main`.

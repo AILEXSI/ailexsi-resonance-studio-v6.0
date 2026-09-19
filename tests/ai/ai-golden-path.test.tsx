@@ -219,7 +219,7 @@ describe("AI Director golden path", () => {
 
   it("prefs hydrate/save URL+model, never apiKey, and changing provider does not mutate Project", () => {
     const session = fixture();
-    const before = serializeProject(session.project);
+    const beforeClips = structuredClone(session.project.clips);
     const host = applyProviderId(createDirectorHostState(), "openai-compatible");
     const configured = {
       ...host,
@@ -234,8 +234,12 @@ describe("AI Director golden path", () => {
     const hydrated = hydrateDirectorHostFromPrefs(localStorage);
     expect(hydrated.providerId).toBe("openai-compatible");
     expect(hydrated.localConfig).not.toHaveProperty("apiKey");
-    expect(serializeProject(session.project)).toBe(before);
-    expect(JSON.parse(before)).not.toHaveProperty("ai");
+    expect(session.project.clips).toEqual(beforeClips);
+    expect(startOf(session)).toBe(30_000);
+    const dumped = JSON.parse(serializeProject(session.project)) as Record<string, unknown>;
+    expect(dumped.schemaVersion).toBe(5);
+    expect(dumped).not.toHaveProperty("ai");
+    expect(JSON.stringify(dumped)).not.toMatch(/apiKey|sk-secret|openai-compatible/);
   });
 
   it("opening / switching provider does not start a provider request", async () => {

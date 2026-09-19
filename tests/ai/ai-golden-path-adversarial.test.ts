@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { applyCommand } from "../../src/app/commands";
 import {
   createSession,
   newProject,
