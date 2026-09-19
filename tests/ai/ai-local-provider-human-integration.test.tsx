@@ -167,7 +167,8 @@ describe("local provider human-integration", () => {
 
   it("classifies timeout / refused / CORS / security without leaking secrets", () => {
     expect(classifyTransportFailure(new Error("x"), true).category).toBe("TIMEOUT");
-    expect(classifyTransportFailure(new TypeError("Failed to fetch"), false).category).toBe("CORS");
+    expect(classifyTransportFailure(new TypeError("Failed to fetch"), false).category).toBe("UNKNOWN");
+    expect(classifyTransportFailure(new Error("blocked by CORS policy"), false).category).toBe("CORS");
     expect(classifyTransportFailure(new Error("ECONNREFUSED 127.0.0.1:11434"), false).category).toBe(
       "REFUSED",
     );
@@ -217,8 +218,8 @@ describe("local provider human-integration", () => {
     const next = await testDirectorConnection(start);
     expect(next.connectionProbe.phase).toBe("failed");
     expect(next.statusLabel).toMatch(/^CONNECTION FAILED \(/);
-    expect(next.statusLabel).toMatch(/category: CORS/);
-    expect(next.connectionProbe.category).toBe("CORS");
+    expect(next.statusLabel).toMatch(/category: UNKNOWN/);
+    expect(next.connectionProbe.category).toBe("UNKNOWN");
   });
 
   it("Discover Models populates the selector from GET /models", async () => {
@@ -262,7 +263,7 @@ describe("local provider human-integration", () => {
   });
 
   it("packaged Tauri path uses native loopback HTTP (no WebView Origin)", async () => {
-    (window as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
+    (window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
     const urls: string[] = [];
     setTauriLocalHttpInvokeForTests(async (cmd, args) => {
       expect(cmd).toBe("local_ai_http");

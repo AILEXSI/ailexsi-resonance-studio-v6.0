@@ -619,7 +619,7 @@ Two independent defects plus one packaged-WebView transport gap:
 
 1. **Chat timeout floor (code + human latency).** `DEFAULT_TIMEOUT_MS` was **8000**. Human cold `POST /v1/chat/completions` was **32380 ms**. `mergeSignals` aborts at 8s and maps that to `PROVIDER_UNAVAILABLE` / "Connection timed out". Connection test (`GET /models`) can still be fast.
 2. **Test Connection never committed `Testing...`.** `testDirectorConnection` built a connecting state internally, then `await`ed the fetch, and the button handler only `commit`ed the final promise. Button text stayed "Test connection". No Testing / Connected / Failed surface next to the control.
-3. **Packaged WebView Origin / CORS (protocol-proven for Windows Tauri 2 + typical local servers).** Packaged origin is `http://tauri.localhost`. PowerShell has no `Origin`. Local `/v1` servers that allow `127.0.0.1` / `tauri://*` but not `http://tauri.localhost` reject or CORS-hide the browser `fetch`. That also maps to `PROVIDER_UNAVAILABLE` ("Failed to fetch") and hid the category. `csp: null`; no mixed-content (`useHttpsScheme` unset). ADV-5 URL join (`/v1` + `/models`) is correct.
+3. **Packaged WebView Origin / CORS (protocol-proven for Windows Tauri 2 + typical local servers).** Packaged origin is `http://tauri.localhost`. PowerShell has no `Origin`. Local `/v1` servers that allow `127.0.0.1` / `tauri://*` but not `http://tauri.localhost` reject or CORS-hide the browser `fetch`. That also maps to `PROVIDER_UNAVAILABLE` ("Failed to fetch") and hid the category. WebView `TypeError: Failed to fetch` cannot distinguish CORS vs REFUSED; setup now labels that `UNKNOWN` unless the error names CORS/refused/timeout. `csp: null`; no mixed-content (`useHttpsScheme` unset). ADV-5 URL join (`/v1` + `/models`) is correct.
 
 ### WHY POWERSHELL WORKED
 
@@ -646,11 +646,13 @@ First local chat after a model load can be **~32 s** (human `qwen2.5:7b`). Warm 
 
 | Command | Result |
 | --- | --- |
-| `npx tsc --noEmit` | pending |
-| `npx vitest run tests/ai/ai-*.test.ts*` | pending |
-| `npx vitest run` | pending |
-| `npx vite build` | pending |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **149 passed** (137 prior + 12 human-integration) |
+| `npx vitest run` | **1541 passed / 6 failed / 1547** (175 files passed / 2 failed / 177) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 186 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
 | Windows package | **NOT AVAILABLE** on this Linux VM — coordinator builds EXE |
+| New regressions | none |
 
 ### Stop
 

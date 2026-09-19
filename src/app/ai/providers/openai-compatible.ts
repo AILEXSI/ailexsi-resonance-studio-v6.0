@@ -2,7 +2,6 @@ import {
   resolveLocalProviderFetch,
   sanitizeDiagnosticMessage,
   sanitizeEndpoint,
-  type LocalHttpTransport,
 } from "./local-http";
 import {
   ProviderError,
@@ -11,6 +10,7 @@ import {
   type ChatResponse,
   type ConnectionFailureCategory,
   type ConnectionTestResult,
+  type LocalHttpTransport,
   type ProviderCapabilities,
   type ProviderErrorCode,
   type ProviderModel,
@@ -125,12 +125,12 @@ export function classifyTransportFailure(
   if (/refused|econnrefused|err_connection_refused|failed to connect/i.test(lower)) {
     return { category: "REFUSED", code: "PROVIDER_UNAVAILABLE", message: sanitizeDiagnosticMessage(raw) };
   }
-  if (/failed to fetch|networkerror|load failed|typeerror/i.test(lower)) {
+  if (/failed to fetch|networkerror|load failed/i.test(lower)) {
     return {
-      category: "CORS",
+      category: "UNKNOWN",
       code: "PROVIDER_UNAVAILABLE",
       message:
-        "Browser fetch failed (CORS, refused, or mixed-content). Packaged apps should use native loopback HTTP.",
+        "Browser fetch failed (CORS, refused, or mixed-content cannot be distinguished from the WebView error).",
     };
   }
   return {

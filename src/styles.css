@@ -570,6 +570,8 @@ input[type="range"] { accent-color: var(--accent-2); }
   font-size: 11px;
   line-height: 1.35;
   color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .director-probe[data-phase="failed"] {
   color: var(--danger);
