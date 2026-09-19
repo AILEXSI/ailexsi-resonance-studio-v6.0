@@ -73,7 +73,7 @@ async function autoTurn(
   session: Session,
   text: string,
   state: DirectorHostState = agentEditSelection(),
-  provider = createMockProvider(),
+  provider: AIProvider = createMockProvider(),
 ) {
   return submitDirectorAutoTurn(
     state,
