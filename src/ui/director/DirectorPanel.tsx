@@ -1,20 +1,24 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
+  applyLocalConfig,
+  applyProviderId,
   createDirectorHostState,
   createDirectorRuntime,
+  providerForHost,
   setDirectorPanelOpen,
   submitDirectorProviderTurn,
+  testDirectorConnection,
   type DirectorHostState,
 } from "../../app/ai/host";
 import { registerBuiltInProviders } from "../../app/ai/providers";
-import type { AIProvider } from "../../app/ai/providers/types";
+import type { AIProvider, ProviderId } from "../../app/ai/providers/types";
 
 registerBuiltInProviders();
 
 export interface DirectorPanelProps {
   /** Optional initial host state (tests). */
   initialState?: DirectorHostState;
-  /** Inject a provider (tests). Default: MockProvider. */
+  /** Inject a provider (tests). Default: host-selected provider. */
   provider?: AIProvider;
   onStateChange?: (state: DirectorHostState) => void;
 }
@@ -24,7 +28,7 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
     () => initialState ?? createDirectorHostState(),
   );
   const [draft, setDraft] = useState("");
-  const runtimeRef = useRef(createDirectorRuntime(provider));
+  const runtimeRef = useRef(createDirectorRuntime(provider, initialState));
   const abortRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -42,13 +46,13 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
     const ctl = new AbortController();
     abortRef.current = ctl;
     setDraft("");
+    const current = stateRef.current;
+    const runtime = {
+      provider: provider ?? providerForHost(current),
+      orchestrator: runtimeRef.current.orchestrator,
+    };
     void (async () => {
-      const next = await submitDirectorProviderTurn(
-        stateRef.current,
-        text,
-        runtimeRef.current,
-        ctl.signal,
-      );
+      const next = await submitDirectorProviderTurn(current, text, runtime, ctl.signal);
       commit(next);
     })();
   };
@@ -92,6 +96,59 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
               <dd data-testid="director-transaction">{state.transactionLabel}</dd>
             </div>
           </dl>
+          <div className="director-config" data-testid="director-config">
+            <label htmlFor="director-provider-select">Provider</label>
+            <select
+              id="director-provider-select"
+              data-testid="director-provider-select"
+              value={state.providerId === "openai-compatible" ? "openai-compatible" : "mock"}
+              onChange={(e) => {
+                const id = e.target.value as ProviderId;
+                commit(applyProviderId(state, id === "openai-compatible" ? "openai-compatible" : "mock"));
+              }}
+            >
+              <option value="mock">mock</option>
+              <option value="openai-compatible">openai-compatible (local)</option>
+            </select>
+            {state.providerId === "openai-compatible" ? (
+              <>
+                <label htmlFor="director-base-url">Base URL</label>
+                <input
+                  id="director-base-url"
+                  data-testid="director-base-url"
+                  value={state.localConfig.baseUrl}
+                  placeholder="http://127.0.0.1:11434/v1"
+                  onChange={(e) => commit(applyLocalConfig(state, { baseUrl: e.target.value }))}
+                />
+                <label htmlFor="director-model">Model</label>
+                <input
+                  id="director-model"
+                  data-testid="director-model"
+                  value={state.localConfig.model}
+                  placeholder="local-model"
+                  onChange={(e) => commit(applyLocalConfig(state, { model: e.target.value }))}
+                />
+                <label htmlFor="director-api-key">API key (optional, memory only)</label>
+                <input
+                  id="director-api-key"
+                  data-testid="director-api-key"
+                  type="password"
+                  autoComplete="off"
+                  value={state.localConfig.apiKey ?? ""}
+                  onChange={(e) => commit(applyLocalConfig(state, { apiKey: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  data-testid="director-test-connection"
+                  onClick={() => {
+                    void testDirectorConnection(state).then(commit);
+                  }}
+                >
+                  Test connection
+                </button>
+              </>
+            ) : null}
+          </div>
           <ol className="director-messages" data-testid="director-messages">
             {state.conversation.messages.map((msg) => (
               <li
@@ -115,7 +172,7 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
               rows={3}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Talk to Director (offline mock)"
+              placeholder="Talk to Director"
             />
             <button type="submit" className="primary" data-testid="director-send">
               Send

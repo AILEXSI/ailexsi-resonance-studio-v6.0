@@ -382,6 +382,27 @@ input[type="range"] { accent-color: var(--accent-2); }
   min-height: 54px;
   width: 100%;
 }
+.director-config {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 4px 8px;
+  font-size: 11px;
+  align-items: center;
+}
+.director-config label {
+  color: var(--muted);
+}
+.director-config input,
+.director-config select {
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+}
+.director-config button {
+  grid-column: 2;
+  justify-self: start;
+  font-size: 11px;
+}
 .layout-split .timeline-focus {
   position: absolute;
   right: 8px;

@@ -1,12 +1,25 @@
 import { createMockProvider } from "./mock";
+import { createOpenAICompatibleProvider } from "./openai-compatible";
 import { registerProvider } from "./registry";
 
-/** Built-in adapters. Cloud / local HTTP providers register in later phases. */
+/** Built-in adapters. Cloud providers stay unregistered until a secret store exists. */
 export function registerBuiltInProviders(): void {
   registerProvider("mock", () => createMockProvider());
+  registerProvider("openai-compatible", () =>
+    createOpenAICompatibleProvider({ baseUrl: "", model: "" }),
+  );
 }
 
 export { createMockProvider, MockProvider } from "./mock";
+export {
+  createOpenAICompatibleProvider,
+  OpenAICompatibleProvider,
+  connectionStatusOf,
+  isConfigured,
+  statusLabel,
+  type LocalConnectionStatus,
+  type OpenAICompatibleConfig,
+} from "./openai-compatible";
 export {
   clearProviderRegistry,
   createProvider,

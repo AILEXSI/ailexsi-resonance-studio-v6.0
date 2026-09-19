@@ -87,7 +87,8 @@ describe("AI-2 provider abstraction", () => {
       "llamacpp",
       "openai-compatible",
     ]);
-    expect(registeredProviderIds()).toEqual(["mock"]);
+    expect(registeredProviderIds()).toContain("mock");
+    expect(registeredProviderIds()).toContain("openai-compatible");
     const mock = createProvider("mock");
     expect(mock.id).toBe("mock");
   });

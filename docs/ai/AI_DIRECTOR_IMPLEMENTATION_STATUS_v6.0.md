@@ -15,7 +15,7 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-2** (gate recording) |
+| Highest gate | **AI-3** (gate recording) |
 | Schema | **5** (unchanged) |
 | Mutation path | none |
 | Second engine | none |
@@ -31,6 +31,15 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 | `npx vitest run tests/ai/ai-1-director-shell.test.tsx` | **6 passed** |
 | `npx vitest run` | **1394 passed / 6 failed / 1400** (164 files) — failures are inherited AFE-15×2 + STRESS-03×4 only |
 | `npx vite build` | PASS (vite 7.3.6, 170 modules) |
+
+### AI-2 gate
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-1-director-shell.test.tsx tests/ai/ai-2-provider.test.ts` | **16 passed** |
+| `npx vitest run` | **1405 passed / 6 failed / 1411** — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 175 modules) |
 
 ---
 
@@ -72,7 +81,7 @@ AI-2 — provider abstraction + MockProvider.
 
 | Field | Value |
 | --- | --- |
-| Status | SHIPPED (pending full-suite record) |
+| Status | **SHIPPED / GATE PASS** |
 | Commit | `feat(ai): add provider abstraction` |
 | Intent | Provider-neutral `AIProvider` + registry. Only Mock implemented. Director chats through the abstraction. Stale replies ignored. Normalized errors. No Project mutation. |
 

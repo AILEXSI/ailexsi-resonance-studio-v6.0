@@ -10,7 +10,14 @@ import {
 } from "./conversation";
 import { createOrchestrator, orchestrateChat, type Orchestrator } from "./orchestrator";
 import { createMockProvider } from "./providers/mock";
-import type { AIProvider } from "./providers/types";
+import {
+  connectionStatusOf,
+  createOpenAICompatibleProvider,
+  isConfigured,
+  statusLabel,
+  type OpenAICompatibleConfig,
+} from "./providers/openai-compatible";
+import type { AIProvider, ProviderId } from "./providers/types";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -29,6 +36,8 @@ export interface DirectorHostState {
   modeLabel: string;
   contextLabel: string;
   transactionLabel: string;
+  providerId: ProviderId;
+  localConfig: OpenAICompatibleConfig;
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -41,6 +50,80 @@ export function createDirectorHostState(): DirectorHostState {
     modeLabel: "Mode: —",
     contextLabel: "Context: —",
     transactionLabel: "Transaction: —",
+    providerId: "mock",
+    localConfig: { baseUrl: "", model: "" },
+  };
+}
+
+export function providerForHost(state: DirectorHostState): AIProvider {
+  if (state.providerId === "openai-compatible") {
+    return createOpenAICompatibleProvider(state.localConfig);
+  }
+  return createMockProvider();
+}
+
+export function applyLocalConfig(
+  state: DirectorHostState,
+  patch: Partial<OpenAICompatibleConfig>,
+): DirectorHostState {
+  const localConfig = { ...state.localConfig, ...patch };
+  const configured = isConfigured(localConfig);
+  return {
+    ...state,
+    localConfig,
+    providerId: state.providerId,
+    status: configured ? state.status : "not-configured",
+    statusLabel:
+      state.providerId === "openai-compatible"
+        ? statusLabel(connectionStatusOf(localConfig, null))
+        : state.statusLabel,
+    providerLabel:
+      state.providerId === "openai-compatible" ? "Provider: openai-compatible" : "Provider: mock",
+  };
+}
+
+export function applyProviderId(state: DirectorHostState, providerId: ProviderId): DirectorHostState {
+  if (providerId === "openai-compatible") {
+    return {
+      ...state,
+      providerId,
+      status: "not-configured",
+      statusLabel: statusLabel(connectionStatusOf(state.localConfig, null)),
+      providerLabel: "Provider: openai-compatible",
+    };
+  }
+  return {
+    ...state,
+    providerId: "mock",
+    status: "offline",
+    statusLabel: "Offline — mock conversation",
+    providerLabel: "Provider: mock",
+  };
+}
+
+export async function testDirectorConnection(state: DirectorHostState): Promise<DirectorHostState> {
+  if (state.providerId !== "openai-compatible") return state;
+  const connecting: DirectorHostState = {
+    ...state,
+    status: "connecting",
+    statusLabel: statusLabel("connecting"),
+    providerLabel: "Provider: openai-compatible",
+  };
+  const provider = createOpenAICompatibleProvider(state.localConfig);
+  const result = await provider.testConnection();
+  if (result.ok) {
+    return {
+      ...connecting,
+      status: "connected",
+      statusLabel: statusLabel("connected"),
+    };
+  }
+  const code = result.error?.code;
+  const local = connectionStatusOf(state.localConfig, { ok: false, code });
+  return {
+    ...connecting,
+    status: local === "unavailable" ? "unavailable" : "error",
+    statusLabel: statusLabel(local === "not-configured" ? "error" : local),
   };
 }
 
@@ -69,11 +152,14 @@ export function submitDirectorMockTurn(state: DirectorHostState, userText: strin
   return next;
 }
 
-export function createDirectorRuntime(provider: AIProvider = createMockProvider()): {
+export function createDirectorRuntime(provider?: AIProvider, state?: DirectorHostState): {
   provider: AIProvider;
   orchestrator: Orchestrator;
 } {
-  return { provider, orchestrator: createOrchestrator() };
+  return {
+    provider: provider ?? (state ? providerForHost(state) : createMockProvider()),
+    orchestrator: createOrchestrator(),
+  };
 }
 
 /**
@@ -114,8 +200,11 @@ export async function submitDirectorProviderTurn(
   }
   return {
     ...withUser,
-    status: "offline",
-    statusLabel: "Offline — mock conversation",
+    status: state.providerId === "openai-compatible" ? "connected" : "offline",
+    statusLabel:
+      state.providerId === "openai-compatible"
+        ? statusLabel("connected")
+        : "Offline — mock conversation",
     conversation: appendDirectorMessage(withUser.conversation, "assistant", outcome.response.text),
   };
 }
