@@ -883,3 +883,20 @@ Focus does **not** reuse the 720px dock cap. Dragging in Focus persists `directo
 ### Hard laws kept
 
 Schema **5**. No provider / tool / transaction / command / history / Frame Engine / exporter change. Mutation path unchanged. No second engine.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **196 passed** (185 prior + 11 presentation) |
+| `npx vitest run` | **1590 passed / 6 failed / 1596** (179 files passed / 2 failed / 181) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| New regressions | none |
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
+

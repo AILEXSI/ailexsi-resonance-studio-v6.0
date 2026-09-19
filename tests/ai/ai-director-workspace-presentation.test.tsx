@@ -282,18 +282,24 @@ describe("AI Director workspace presentation", () => {
     expect(host!.querySelector('[data-testid="director-conversation"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-compose"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-history-undo"]')).toBeTruthy();
-    const rejected = rejectHostTransaction(preview);
-    await act(async () => {
-      root!.render(
-        <DirectorPanel initialState={rejected} session={session} canUndo canRedo />,
-      );
-    });
+
+    const remount = async (state: DirectorHostState, live: Session) => {
+      await act(async () => {
+        root!.unmount();
+      });
+      root = createRoot(host!);
+      await act(async () => {
+        root!.render(<DirectorPanel initialState={state} session={live} canUndo canRedo />);
+      });
+    };
+
+    await remount(rejectHostTransaction(preview), session);
     expect(host!.querySelector('[data-testid="director-txn-phase"]')?.textContent).toBe("REJECTED");
+    expect(host!.querySelector('[data-testid="director-work-split"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="director-compose"]')).toBeTruthy();
+
     const human = applyCommand(session, { type: "moveClips", clipIds: ["clip_test"], deltaMs: 80 });
-    const conflicted = applyHostApproved(preview, human);
-    await act(async () => {
-      root!.render(<DirectorPanel initialState={conflicted.state} session={human} />);
-    });
+    await remount(applyHostApproved(preview, human).state, human);
     expect(host!.querySelector('[data-testid="director-conflict"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-work-split"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-compose"]')).toBeTruthy();
