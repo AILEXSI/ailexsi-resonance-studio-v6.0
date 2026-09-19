@@ -935,3 +935,38 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 | Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT; PREVIOUS EXE BACKUP: NOT APPLICABLE |
 | New regressions | none |
 
+---
+
+## HUMAN RETEST FAILURE REPAIR — CANONICAL SELECTION + EXTREME RESIZE
+
+**Branch:** `cursor/human-retest-selection-resize-3eb7`  
+**HEAD BEFORE:** `373e5b43ec42112752baf9a54102685db5d7721a`  
+**HEAD AFTER:** `7fe34f65339520d72bae9c46c76a9f7dd9e70987`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Fix only the two human-retest defects. Schema stays **5**. No AI-8.
+
+### Selection
+
+- **Root cause:** `contextLevel=SELECTION` was plan/dropdown language. Execution/validation did not consume canonical `selectionOf` / `selectClips`. UI SELECTION could coexist with an empty sealed clip list, then `draftFromToolRequest` denied on plan NONE.
+- **Canonical source:** Session `selectedClipIds` / `selectedClipId` via `selectionOf` + `canonicalClipSelection` (existing clips only). Not a second store.
+- **Divergence:** `sealDirectorRequest` / `draftFromToolRequest` treated plan/dropdown SELECTION as proof of a clip. Dropdown SELECTION + empty timeline now `SELECTION_REQUIRED`. One unlocked selected clip seals that exact stable ID.
+
+### Extreme resize
+
+- **Root cause:** Preview/Arrange clamp treated the third grid row as Arrange-only (`ARRANGE_MIN_PX=200`) while that row also contains Transport, so max Preview clipped Arrange. Persisted extremes were not re-normalized against a live measured stage.
+- **Repair:** `LOWER_STAGE_MIN_PX = TRANSPORT_MIN_PX + ARRANGE_MIN_PX`. Window resize reclamps when the stage is actually measured. Invalid persisted ratios normalize. Splitter system kept.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + layout | **297 passed** |
+| `npx vitest run` | **1640 passed / 6 failed / 1646** (184 files passed / 2 failed / 186) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT |
+| New regressions | none |
+| AI-8 | not started |
+| PR #2 | not merged |
+
