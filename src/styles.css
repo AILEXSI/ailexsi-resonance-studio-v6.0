@@ -715,7 +715,7 @@ input[type="range"] { accent-color: var(--accent-2); }
   z-index: 1;
   background: var(--panel);
   padding-top: 2px;
-  min-height: 0;
+  min-height: 56px;
 }
 .director-compose-label {
   font-size: 10px;

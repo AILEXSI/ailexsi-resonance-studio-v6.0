@@ -140,6 +140,7 @@ describe("AI Director sidebar layout hardening", () => {
     expect(compose).toMatch(/position:\s*sticky/);
     expect(compose).toMatch(/bottom:\s*0/);
     expect(compose).toMatch(/flex:\s*0 0 auto/);
+    expect(compose).toMatch(/min-height:\s*56px/);
     expect(cssRule(".director-compose textarea")).toMatch(/resize:\s*vertical/);
     expect(cssRule(".director-compose textarea")).toMatch(/min-height:\s*56px/);
     expect(cssRule(".director-compose textarea")).toMatch(/max-height:\s*200px/);

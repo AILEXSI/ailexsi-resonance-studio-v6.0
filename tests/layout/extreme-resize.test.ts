@@ -18,6 +18,7 @@ import {
   DIRECTOR_RESULT_MIN_PX,
   DIRECTOR_SECTION_MIN_PX,
   INSPECTOR_SECTION_MIN_PX,
+  isMeasuredStageHeight,
   legalSplitMins,
   loadSplitRatio,
   normalizePersistedSplitRatio,
@@ -78,6 +79,18 @@ describe("extreme resize constraints", () => {
     expect(ratio).toBeGreaterThan(0);
     expect(ratio).toBeLessThan(1);
     expect(ratio * 280).toBeCloseTo(mins.previewMin, 0);
+  });
+
+  it("measured short stages still normalize Preview-max; unmeasured 0 does not", () => {
+    expect(isMeasuredStageHeight(0)).toBe(false);
+    expect(isMeasuredStageHeight(Number.NaN)).toBe(false);
+    expect(isMeasuredStageHeight(280)).toBe(true);
+    const short = 280;
+    const live = normalizePersistedSplitRatio(0.99, short);
+    expect(live).toBeLessThan(0.99);
+    expect(live * short).toBeGreaterThan(0);
+    expect((1 - live) * short).toBeGreaterThan(0);
+    expect(live * short + (1 - live) * short).toBeCloseTo(short, 5);
   });
 
   it("Director interior mins stay legal; Focus restore returns prior geometry", () => {

@@ -372,6 +372,13 @@ export function canonicalClipSelection(session: Session): CanonicalClipSelection
   };
 }
 
+/** In/Out edit range is NOT clip selection. Never a move target. */
+export function hasInOutRange(session: Session): boolean {
+  const inMs = session.project.inPointMs;
+  const outMs = session.project.outPointMs;
+  return inMs != null && outMs != null && outMs > inMs;
+}
+
 export function withClipSelection(session: Session, ids: string[]): Session {
   const unique = [...new Set(ids)];
   return {

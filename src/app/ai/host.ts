@@ -33,6 +33,7 @@ import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
 import {
   canonicalClipSelection,
+  hasInOutRange,
   projectRevisionOf,
   selectionOf,
   type CanonicalClipSelection,
@@ -270,14 +271,22 @@ function requestSelectedClipIds(state: DirectorHostState): readonly string[] {
   return snap?.selection.clipIds ?? [];
 }
 
-/** Live Normal chrome. Dropdown SELECTION is never a substitute. */
+/** Live Normal chrome. Dropdown SELECTION is never a substitute. In/Out is not a clip. */
 export function canonicalContextLabel(session?: Session): string {
   if (!session) return "Context NONE · no clip";
   const canonical = canonicalClipSelection(session);
   const n = canonical.clipIds.length;
   if (n === 1) return "Context SELECTION · 1 clip";
   if (n > 1) return `Context SELECTION · ${n} clips`;
+  if (hasInOutRange(session)) return "Context NONE · no clip — In/Out is not a selection";
   return "Context NONE · no clip";
+}
+
+function selectionRequiredMessage(opts: { ambiguous?: boolean } = {}): string {
+  if (opts.ambiguous) {
+    return "AMBIGUOUS_SELECTION. A single selected clip is required. Click one clip on the timeline. In/Out range is not a clip selection. No project changes were made.";
+  }
+  return "SELECTION REQUIRED. No clip selected. Click a clip on the timeline to select it. In/Out range is not a clip selection. A single selected clip is required. No project changes were made.";
 }
 
 export function intentStatusLabel(state: DirectorHostState): string {
@@ -749,14 +758,14 @@ function explainToolDenial(opts: {
   contextLevel: ContextLevel;
 }): string {
   if (opts.code === "GRANT_DENIED" || opts.code === "INVALID_GRANT") {
-    return `Denied: Mode ${opts.mode} + Grant ${opts.grant} cannot draft ${DIRECTOR_MUTATING_TOOL}. Set Mode AGENT and Grant EDIT. No project changes were made.`;
+    return `Director needs EDIT to preview ${DIRECTOR_MUTATING_TOOL}. Allow once or Allow for session. Advanced Mode/Grant dropdowns are not required. No project changes were made.`;
   }
   if (
     opts.detail === "No clip selected" ||
     opts.detail === "AMBIGUOUS_SELECTION" ||
     opts.detail === "SELECTION_REQUIRED"
   ) {
-    return `SELECTION REQUIRED. ${opts.detail === "AMBIGUOUS_SELECTION" ? "AMBIGUOUS_SELECTION. A single selected clip is required." : "No clip selected. A single selected clip is required."} No project changes were made.`;
+    return selectionRequiredMessage({ ambiguous: opts.detail === "AMBIGUOUS_SELECTION" });
   }
   if (opts.detail === "TARGET_NOT_IN_SELECTION") {
     return "Denied: target clip is not in the request selection. No project changes were made.";
@@ -817,9 +826,7 @@ function draftFromToolRequest(
       conversation: appendDirectorMessage(
         state.conversation,
         "assistant",
-        ambiguous
-          ? "AMBIGUOUS_SELECTION. A single selected clip is required. No project changes were made."
-          : "SELECTION REQUIRED. No clip selected. A single selected clip is required. No project changes were made.",
+        selectionRequiredMessage({ ambiguous }),
       ),
     };
   }
@@ -848,6 +855,23 @@ function draftFromToolRequest(
     selectedClipIds: requestIds,
   });
   if (!drafted.ok) {
+    if (
+      (drafted.code === "GRANT_DENIED" || drafted.code === "INVALID_GRANT") &&
+      state.sealedRequest?.plan.intent.reason !== "manual-settings"
+    ) {
+      const userText = state.sealedRequest?.userText ?? state.heldUserText ?? "";
+      return {
+        ...state,
+        transactionLabel: "Transaction: —",
+        pendingAuth: {
+          requiredGrant: "EDIT",
+          currentGrant: state.grant,
+          reason: state.sealedRequest?.plan.intent.reason ?? "timeline.move_clip requires EDIT",
+          userText,
+        },
+        heldUserText: userText || null,
+      };
+    }
     return {
       ...state,
       transactionLabel: `Transaction: ${drafted.code}`,
@@ -1137,11 +1161,11 @@ export async function submitDirectorAutoTurn(
     const canonical = session ? canonicalClipSelection(session) : emptyCanonical();
     if (canonical.clipIds.length !== 1) {
       const prepared = applyOrchestrationPlan(state, plan, session, text);
-      const detail =
-        canonical.clipIds.length === 0
-          ? "SELECTION REQUIRED. No clip selected. A single selected clip is required."
-          : "AMBIGUOUS_SELECTION. A single selected clip is required.";
-      return appendTurn(prepared, text, `${detail} No project changes were made.`);
+      return appendTurn(
+        prepared,
+        text,
+        selectionRequiredMessage({ ambiguous: canonical.clipIds.length > 1 }),
+      );
     }
   }
   const current = effectiveGrant(state);

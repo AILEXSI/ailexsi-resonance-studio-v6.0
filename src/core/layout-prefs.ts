@@ -161,6 +161,11 @@ export function normalizePersistedSplitRatio(ratio: number, availablePx: number)
   return clampSplitRatio(ratio, availablePx);
 }
 
+/** First paint / hidden stage is 0. Measured stages — including short windows — must clamp. */
+export function isMeasuredStageHeight(rawHeight: number): boolean {
+  return Number.isFinite(rawHeight) && rawHeight > 0;
+}
+
 export function applySplitPointer(opts: {
   clientY: number;
   stageTop: number;

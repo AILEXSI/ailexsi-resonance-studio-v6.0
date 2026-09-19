@@ -970,3 +970,27 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 | AI-8 | not started |
 | PR #2 | not merged |
 
+---
+
+## HUMAN RETEST FAILURE #2 — AUTO GATE / ENGLISH 5s / IN-OUT / OMITTED CLIPID
+
+**Branch:** `cursor/human-retest-auto-gate-31a2`  
+**HEAD BEFORE:** `15846df71953ded06137f18fcff289aa809d512b`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Repair only the human-proven AUTO / selection / layout failures. Schema stays **5**. No AI-8. No new tools.
+
+### Root causes
+
+- **F1 AUTO Grant/Mode:** English `move marked 5sec to right` / `move clip 5 seconds to the right` classified UNCERTAIN. AUTO stayed ASK/READ/NONE, the local provider still returned `timeline.move_clip`, and `explainToolDenial` told the human to set Advanced Mode AGENT + Grant EDIT.
+- **F2 Context NONE:** Screenshot chrome was correct for canonical Session selection — the light-blue V1 region was IN/OUT (01:29.88–02:19.91), not `selectClips`. AUTO must fail closed and must not invent a target from range.
+- **F3 omitted clipId:** Provider args were `{ deltaMs: 5000 }` only. Binding from request-scoped `canonicalClipSelection` already existed; it was unreachable because F1 never planned SELECTION/EDIT.
+- **F4 layout:** Short measured stages skipped Preview/Arrange reclamp (`stageAvail >= PREVIEW_MIN + LOWER_STAGE_MIN`), so Preview-max could still starve Arrange. Composer min-height was 0.
+
+### Repair
+
+- Intent accepts English + German move marked/clip N sec left/right (`verschiebe…`). AUTO derives AGENT / SELECTION / EDIT.
+- READ + move intent → Allow once / Allow for session / Cancel. Denial text no longer instructs Advanced dropdowns. Session EDIT stays runtime-only.
+- SELECTION_REQUIRED explains: click a clip; In/Out is not a clip selection. Chrome: `Context NONE · no clip — In/Out is not a selection` when a range exists and `selectedClipIds` is empty.
+- Provider-omitted `clipId` binds the sealed canonical id when exactly one unlocked clip is selected via `selectClips` / `selectionOf`.
+- Measured stages always reclamp, including short windows. Director composer `min-height: 56px`.
+

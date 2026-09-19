@@ -24,6 +24,15 @@ export const AUTO_THREE_SECOND_PROMPT = "Verschiebe den markierten Clip 3 Sekund
 /** Second AUTO request: exact −2000 via the same timeline.move_clip tool. */
 export const AUTO_TWO_SECOND_LEFT_PROMPT = "Verschiebe den markierten Clip 2 Sekunden nach links.";
 
+/** Human EXE English: previously UNCERTAIN → Advanced Grant denial. */
+export const HUMAN_ENGLISH_FIVE_SECOND_PROMPT = "move marked 5sec to right";
+
+/** Human EXE English synonym. Same +5000 route. */
+export const HUMAN_ENGLISH_CLIP_FIVE_SECOND_PROMPT = "move clip 5 seconds to the right";
+
+/** German +5s sibling of the English EXE phrasing. */
+export const AUTO_FIVE_SECOND_PROMPT = "Verschiebe den markierten Clip 5 Sekunden nach rechts.";
+
 export { parseMoveClipPrompt, parseMoveRightPrompt } from "../orchestration/intent";
 
 export function formatMoveDeltaMs(deltaMs: number): string {

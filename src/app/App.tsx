@@ -149,10 +149,9 @@ import {
   clampFocusHSplitRatio,
   clampHSplitRatio,
   clampSplitRatio,
+  isMeasuredStageHeight,
   legalSplitMins,
-  LOWER_STAGE_MIN_PX,
   normalizePersistedSplitRatio,
-  PREVIEW_MIN_PX,
   TRANSPORT_MIN_PX,
   directorPresentationOf,
   DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
@@ -1588,16 +1587,14 @@ export function App() {
       const stage = stageRef.current;
       if (stage) {
         const rawHeight = stage.getBoundingClientRect().height;
-        if (Number.isFinite(rawHeight) && rawHeight > 0) {
+        if (isMeasuredStageHeight(rawHeight)) {
           const stageAvail = Math.max(1, rawHeight - SPLITTER_PX);
           if (stageAvail !== stageAvailPxRef.current) setStageAvailPx(stageAvail);
-          if (stageAvail >= PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX) {
-            const stageNext = normalizePersistedSplitRatio(splitRatioRef.current, stageAvail);
-            if (stageNext !== splitRatioRef.current) setSplitRatio(stageNext);
-            if (!timelineFocusRef.current) {
-              const normalNext = clampSplitRatio(normalSplitRatioRef.current, stageAvail);
-              if (normalNext !== normalSplitRatioRef.current) setNormalSplitRatio(normalNext);
-            }
+          const stageNext = normalizePersistedSplitRatio(splitRatioRef.current, stageAvail);
+          if (stageNext !== splitRatioRef.current) setSplitRatio(stageNext);
+          if (!timelineFocusRef.current) {
+            const normalNext = clampSplitRatio(normalSplitRatioRef.current, stageAvail);
+            if (normalNext !== normalSplitRatioRef.current) setNormalSplitRatio(normalNext);
           }
         }
       }

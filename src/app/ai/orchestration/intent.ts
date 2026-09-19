@@ -34,17 +34,19 @@ export function normalizeDirectorPrompt(text: string): string {
     .trim();
 }
 
-/** Named selected item: markiert / clip / file (studio slang). */
+/** Named selected item: marked / markiert / clip / file / selected. */
 function namesSelectedItem(n: string): boolean {
-  return n.includes("markiert") || n.includes("clip") || n.includes("file");
+  return (
+    n.includes("markiert") ||
+    n.includes("marked") ||
+    n.includes("clip") ||
+    n.includes("file") ||
+    n.includes("selected")
+  );
 }
 
-function hasTwoSeconds(n: string): boolean {
-  return n.includes("zwei sekunden") || n.includes("2 sekunden") || n.includes("2sec") || n.includes("2 sec");
-}
-
-function hasThreeSeconds(n: string): boolean {
-  return n.includes("drei sekunden") || n.includes("3 sekunden") || n.includes("3sec") || n.includes("3 sec");
+function hasMoveVerb(n: string): boolean {
+  return n.includes("verschiebe") || n.startsWith("move ") || n.includes(" move ");
 }
 
 function hasLeftDirection(n: string): boolean {
@@ -55,19 +57,47 @@ function hasRightDirection(n: string): boolean {
   return n.includes("rechts") || n.includes(" right");
 }
 
+const MOVE_SECOND_WORDS: Readonly<Record<string, number>> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  eine: 1,
+  ein: 1,
+  zwei: 2,
+  drei: 3,
+  vier: 4,
+  funf: 5,
+};
+
+/** Integer seconds 1–3600. Word forms for golden + human 2/3/5 s. */
+function parseMoveSeconds(n: string): number | null {
+  for (const [word, sec] of Object.entries(MOVE_SECOND_WORDS)) {
+    if (n.includes(`${word} sekunden`) || n.includes(`${word} seconds`) || n.includes(`${word} sec`)) {
+      return sec;
+    }
+  }
+  const digit = n.match(/\b(\d{1,4})\s*(sekunden|seconds|secs|sec)\b/);
+  if (!digit) return null;
+  const sec = Number(digit[1]);
+  if (!Number.isSafeInteger(sec) || sec <= 0 || sec > 3600) return null;
+  return sec;
+}
+
 /**
- * Known move family. Golden +2s, human +2s / +3s, and exact left −2s.
- * Phrase checks, not a regex maze. Does not invent other tools.
+ * Known move family. English + German: move marked/clip N sec left/right, verschiebe…
+ * Phrase checks plus one bounded second extract. Does not invent other tools.
  */
 export function parseMoveClipPrompt(text: string): { deltaMs: number } | null {
   const n = normalizeDirectorPrompt(text);
-  if (!n.includes("verschiebe") || !namesSelectedItem(n)) return null;
+  if (!hasMoveVerb(n) || !namesSelectedItem(n)) return null;
   const left = hasLeftDirection(n);
   const right = hasRightDirection(n);
   if (left === right) return null;
-  const magnitude = hasThreeSeconds(n) ? 3000 : hasTwoSeconds(n) ? 2000 : null;
-  if (magnitude == null) return null;
-  return { deltaMs: left ? -magnitude : magnitude };
+  const seconds = parseMoveSeconds(n);
+  if (seconds == null) return null;
+  return { deltaMs: left ? -seconds * 1000 : seconds * 1000 };
 }
 
 /** Alias kept for existing golden / mock call sites. */
