@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   ARRANGE_MIN_PX,
+  COMPOSER_MAX_PX,
+  COMPOSER_MIN_PX,
+  DEFAULT_COMPOSER_HEIGHT_PX,
+  DEFAULT_DIRECTOR_SPLIT_RATIO,
   DEFAULT_H_SPLIT_RATIO,
   DEFAULT_SPLIT_RATIO,
+  DIRECTOR_FOCUS_KEY,
+  DIRECTOR_SECTION_MIN_PX,
+  DIRECTOR_SPLIT_RATIO_KEY,
   H_SPLIT_RATIO_KEY,
   INSPECTOR_COLLAPSED_KEY,
   INSPECTOR_COLLAPSED_PX,
+  INSPECTOR_MAX_PX,
   INSPECTOR_MIN_PX,
+  INSPECTOR_SECTION_COLLAPSED_KEY,
+  INSPECTOR_SECTION_MIN_PX,
   MIXER_COLLAPSED_KEY,
   MIXER_EXPANDED_PX,
   MIXER_MAX_PX,
@@ -34,12 +44,20 @@ import {
   LANE_LABEL_MAX_PX,
   LANE_LABEL_MIN_PX,
   LANE_LABEL_PX_KEY,
+  applyDirectorFocusToggle,
+  applyDirectorSplitPointer,
+  clampComposerHeightPx,
+  clampDirectorSplitRatio,
   clampHSplitRatio,
   clampLaneHeightPx,
   clampMixerWidth,
   clampLaneLabelPx,
   clampSplitRatio,
+  loadDirectorComposerHeight,
+  loadDirectorFocus,
+  loadDirectorSplitRatio,
   loadHSplitRatio,
+  loadInspectorSectionCollapsed,
   laneHeaderPacksInline,
   loadLaneHeights,
   loadLaneLabelPx,
@@ -56,8 +74,12 @@ import {
   loadTimelineFocus,
   saveCollapsedGroupIds,
   saveOpenVolumeLaneIds,
+  saveDirectorComposerHeight,
+  saveDirectorFocus,
+  saveDirectorSplitRatio,
   saveHSplitRatio,
   saveInspectorCollapsed,
+  saveInspectorSectionCollapsed,
   saveInspectorOpen,
   saveNormalSplitRatio,
   saveTimelineFocus,
@@ -296,5 +318,65 @@ describe("layout prefs", () => {
     expect(laneHeaderPacksInline(LANE_HEADER_STACK_MIN_PX)).toBe(false);
     expect(laneHeaderPacksInline(DEFAULT_LANE_HEIGHT_PX)).toBe(false);
     expect(laneHeaderPacksInline(Number.NaN)).toBe(false);
+  });
+
+  it("caps inspector width on ultrawide without changing tight mins", () => {
+    const tight = 800;
+    expect(clampHSplitRatio(0, tight) * tight).toBeCloseTo(PREVIEW_H_MIN_PX, 5);
+    expect((1 - clampHSplitRatio(1, tight)) * tight).toBeCloseTo(INSPECTOR_MIN_PX, 5);
+    const ultra = 5120 - 14;
+    expect((1 - clampHSplitRatio(0, ultra)) * ultra).toBeCloseTo(INSPECTOR_MAX_PX, 5);
+    expect((1 - clampHSplitRatio(1, ultra)) * ultra).toBeCloseTo(INSPECTOR_MIN_PX, 5);
+    expect(INSPECTOR_MAX_PX).toBeGreaterThan(INSPECTOR_MIN_PX);
+  });
+
+  it("clamps Director/Inspector split and persists workspace prefs only", () => {
+    const available = 400;
+    expect(clampDirectorSplitRatio(0, available) * available).toBeCloseTo(INSPECTOR_SECTION_MIN_PX, 5);
+    expect((1 - clampDirectorSplitRatio(1, available)) * available).toBeCloseTo(DIRECTOR_SECTION_MIN_PX, 5);
+    const dragged = applyDirectorSplitPointer({ clientY: 20, bodyTop: 0, bodyHeight: 408 });
+    expect(dragged.inspectorPx).toBe(INSPECTOR_SECTION_MIN_PX);
+    const store = memoryStorage();
+    expect(loadDirectorSplitRatio(store)).toBe(DEFAULT_DIRECTOR_SPLIT_RATIO);
+    saveDirectorSplitRatio(store, 0.4);
+    expect(store.map.get(DIRECTOR_SPLIT_RATIO_KEY)).toBe("0.4");
+    expect(loadDirectorSplitRatio(store)).toBeCloseTo(0.4, 5);
+    expect(loadInspectorSectionCollapsed(store)).toBe(false);
+    saveInspectorSectionCollapsed(store, true);
+    expect(store.map.get(INSPECTOR_SECTION_COLLAPSED_KEY)).toBe("1");
+    expect(loadInspectorSectionCollapsed(store)).toBe(true);
+    expect(loadDirectorFocus(store)).toBe(false);
+    saveDirectorFocus(store, true);
+    expect(store.map.get(DIRECTOR_FOCUS_KEY)).toBe("1");
+    expect(clampComposerHeightPx(10)).toBe(COMPOSER_MIN_PX);
+    expect(clampComposerHeightPx(400)).toBe(COMPOSER_MAX_PX);
+    expect(loadDirectorComposerHeight(store)).toBe(DEFAULT_COMPOSER_HEIGHT_PX);
+    saveDirectorComposerHeight(store, 120);
+    expect(loadDirectorComposerHeight(store)).toBe(120);
+  });
+
+  it("Director Focus collapses Inspector and restores the prior split", () => {
+    const enter = applyDirectorFocusToggle({
+      currentlyFocused: false,
+      inspectorSectionCollapsed: false,
+      currentSplitRatio: 0.41,
+      storedNormalSplit: DEFAULT_DIRECTOR_SPLIT_RATIO,
+      storedSectionCollapsed: false,
+    });
+    expect(enter.focused).toBe(true);
+    expect(enter.inspectorSectionCollapsed).toBe(true);
+    expect(enter.normalSplit).toBe(0.41);
+    expect(enter.restoreSectionCollapsed).toBe(false);
+
+    const leave = applyDirectorFocusToggle({
+      currentlyFocused: true,
+      inspectorSectionCollapsed: true,
+      currentSplitRatio: 0.41,
+      storedNormalSplit: 0.41,
+      storedSectionCollapsed: false,
+    });
+    expect(leave.focused).toBe(false);
+    expect(leave.inspectorSectionCollapsed).toBe(false);
+    expect(leave.splitRatio).toBe(0.41);
   });
 });

@@ -216,6 +216,11 @@ export interface Session {
   /** History lengths at last save / open / new. Dirty when they differ. */
   savedPastLength: number;
   savedFutureLength: number;
+  /**
+   * Runtime monotonic edit counter. Not schemaVersion, not updatedAt.
+   * Not persisted in Project JSON. Missing treated as 0.
+   */
+  projectRevision?: number;
 }
 
 export function createSession(store?: BlobStore): Session {
@@ -247,7 +252,17 @@ export function createSession(store?: BlobStore): Session {
     store: store ?? createIndexedDbBlobStore(),
     savedPastLength: 0,
     savedFutureLength: 0,
+    projectRevision: 0,
   };
+}
+
+/** Runtime revision. Never schemaVersion / updatedAt. */
+export function projectRevisionOf(session: Session): number {
+  return session.projectRevision ?? 0;
+}
+
+export function bumpProjectRevision(session: Session): Session {
+  return { ...session, projectRevision: projectRevisionOf(session) + 1 };
 }
 
 /** True when undo/redo stacks differ from the last clean checkpoint. */
@@ -350,6 +365,7 @@ function withHistory(session: Session, nextProject: Project, status: string): Se
     ...session,
     history: pushHistory(session.history, session.project),
     project: nextProject,
+    projectRevision: projectRevisionOf(session) + 1,
     status,
     error: null,
   };
@@ -358,6 +374,7 @@ function withHistory(session: Session, nextProject: Project, status: string): Se
 export function newProject(session: Session): Session {
   return {
     ...createSession(session.store),
+    projectRevision: projectRevisionOf(session) + 1,
     status: "New project",
   };
 }
@@ -889,14 +906,28 @@ export function applyUndo(session: Session): Session {
   const cleared = applyAbortVolumeWrite(session);
   const result = undoHistory(cleared.history, cleared.project);
   if (!result) return { ...cleared, status: "Nothing to undo" };
-  return { ...cleared, project: result.project, history: result.history, status: "Undo", error: null };
+  return {
+    ...cleared,
+    project: result.project,
+    history: result.history,
+    projectRevision: projectRevisionOf(cleared) + 1,
+    status: "Undo",
+    error: null,
+  };
 }
 
 export function applyRedo(session: Session): Session {
   const cleared = applyAbortVolumeWrite(session);
   const result = redoHistory(cleared.history, cleared.project);
   if (!result) return { ...cleared, status: "Nothing to redo" };
-  return { ...cleared, project: result.project, history: result.history, status: "Redo", error: null };
+  return {
+    ...cleared,
+    project: result.project,
+    history: result.history,
+    projectRevision: projectRevisionOf(cleared) + 1,
+    status: "Redo",
+    error: null,
+  };
 }
 
 export function applyIn(session: Session): Session {
@@ -2378,6 +2409,7 @@ export function openSerialized(session: Session, text: string): Session {
     savedFutureLength: 0,
     volumeWriteArmedIds: [],
     volumeWriteGesture: null,
+    projectRevision: projectRevisionOf(session) + 1,
   };
 }
 
