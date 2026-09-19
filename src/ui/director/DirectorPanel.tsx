@@ -36,6 +36,8 @@ export interface DirectorPanelProps {
   onStateChange?: (state: DirectorHostState) => void;
   /** Apply path: parent owns Session and must use applyCommand/withHistory. */
   onCanonicalCommit?: (session: Session) => void;
+  /** App chrome: Close hides Director and syncs the toolbar AI toggle. */
+  onRequestClose?: () => void;
 }
 
 export function DirectorPanel({
@@ -44,6 +46,7 @@ export function DirectorPanel({
   session,
   onStateChange,
   onCanonicalCommit,
+  onRequestClose,
 }: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
     () => initialState ?? createDirectorHostState(),
@@ -93,13 +96,20 @@ export function DirectorPanel({
           data-testid="director-toggle"
           aria-expanded={state.panelOpen}
           aria-controls="director-body"
-          onClick={() => commit(setDirectorPanelOpen(state, !state.panelOpen))}
+          onClick={() => {
+            if (state.panelOpen && onRequestClose) {
+              onRequestClose();
+              return;
+            }
+            commit(setDirectorPanelOpen(state, !state.panelOpen));
+          }}
         >
           {state.panelOpen ? "Close" : "Open"}
         </button>
       </header>
       {state.panelOpen ? (
         <div id="director-body" className="director-body" data-testid="director-body">
+          <div className="director-scroll" data-testid="director-scroll">
           <dl className="director-meta">
             <div>
               <dt>Status</dt>
@@ -247,6 +257,7 @@ export function DirectorPanel({
               ) : null}
             </div>
           ) : null}
+          </div>
           <ol className="director-messages" data-testid="director-messages">
             {state.conversation.messages.map((msg) => (
               <li

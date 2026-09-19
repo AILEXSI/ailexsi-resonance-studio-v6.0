@@ -429,6 +429,31 @@ No AI-8. No new capability. Do not merge from this run.
 
 ---
 
+## PR #2 HUMAN REVIEW UI FIX #2 — Director sidebar layout
+
+**Intent:** At 32:9 / 5120×1440 the Director opened but Inspector and Director competed for right-side height; composer/controls were technically present and not usable. Harden the right sidebar only. Do not start AI-8. Schema stays 5.
+
+### Layout
+
+- Right sidebar = Inspector section + Director section (`#inspector-body` grid when Director is open).
+- Director gets its own viewport (`min-height: 0`, overflow hidden). Content scrolls in `director-scroll`; conversation scrolls independently; composer is sticky at the bottom of the Director viewport.
+- Open Director caps Inspector at `minmax(72px, 32%)` so Inspector cannot starve Director. Inspector stays mounted (state preserved). INS still collapses/expands the whole sidebar.
+- Director Close calls the same disable path as the toolbar **AI** toggle.
+
+### Files
+
+- `src/app/App.tsx` — inspector/director sections + Close sync
+- `src/ui/director/DirectorPanel.tsx` — own scroll + sticky composer + `onRequestClose`
+- `src/styles.css` — sidebar flex/grid, overflow, sticky composer
+- `tests/ai/ai-director-sidebar-layout.test.tsx`
+- `tests/ai/ai-director-ui-toggle.test.tsx` — Close/AI sync
+
+### Stop
+
+Layout only. No Project / schema / provider / transaction change. Do **not** merge. Do **not** start AI-8.
+
+---
+
 ## Next (outside this run)
 
-Human retest of the visible AI toggle. Coordinator may merge. Do **not** implement a second mutating tool on this branch.
+Human retest of the Director sidebar layout. Coordinator may merge. Do **not** implement a second mutating tool on this branch.
