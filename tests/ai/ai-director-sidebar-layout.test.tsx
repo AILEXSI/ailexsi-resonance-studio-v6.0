@@ -111,8 +111,8 @@ describe("AI Director sidebar layout hardening", () => {
   it("CSS keeps Director on its own viewport so Inspector cannot starve it", () => {
     const sidebar = cssRule(".inspector-body.director-open");
     expect(sidebar).toMatch(/display:\s*grid/);
-    expect(sidebar).toMatch(/minmax\(72px,\s*32%\)/);
-    expect(sidebar).toMatch(/minmax\(0,\s*1fr\)/);
+    expect(sidebar).toMatch(/minmax\(64px,\s*28%\)/);
+    expect(sidebar).toMatch(/minmax\(180px,\s*1fr\)/);
 
     expect(cssRule(".inspector-body")).toMatch(/overflow:\s*hidden/);
     expect(cssRule(".inspector-body")).toMatch(/min-height:\s*0/);
@@ -122,7 +122,7 @@ describe("AI Director sidebar layout hardening", () => {
     expect(cssRule(".director-section")).toMatch(/min-height:\s*0/);
     expect(cssRule(".director")).toMatch(/overflow:\s*hidden/);
     expect(cssRule(".director")).toMatch(/min-height:\s*0/);
-    expect(cssRule(".director-body")).toMatch(/overflow:\s*hidden/);
+    expect(cssRule(".director-body")).toMatch(/overflow-y:\s*auto/);
     expect(cssRule(".director-scroll")).toMatch(/overflow-y:\s*auto/);
     expect(cssRule(".director-messages")).toMatch(/overflow:\s*auto/);
 
@@ -158,9 +158,8 @@ describe("AI Director sidebar layout hardening", () => {
     expect(body.contains(inspectorSection)).toBe(true);
     expect(body.contains(directorSection)).toBe(true);
     expect(inspectorSection.contains(director)).toBe(false);
+    expect(directorScroll.contains(host!.querySelector('[data-testid="director-messages"]'))).toBe(true);
     expect(directorBody.lastElementChild).toBe(compose);
-    expect(directorScroll.nextElementSibling?.getAttribute("data-testid")).toBe("director-messages");
-    expect(host!.querySelector('[data-testid="director-messages"]')?.nextElementSibling).toBe(compose);
 
     const controls = directorControls();
     for (const [name, el] of Object.entries(controls)) {
@@ -171,8 +170,9 @@ describe("AI Director sidebar layout hardening", () => {
     expect(directorScroll.contains(controls.mode)).toBe(true);
     expect(directorScroll.contains(controls.grant)).toBe(true);
     expect(directorScroll.contains(controls.context)).toBe(true);
-    expect(directorScroll.contains(controls.status)).toBe(true);
-    expect(directorScroll.contains(controls.provider)).toBe(true);
+    expect(directorScroll.contains(controls.messages)).toBe(true);
+    expect(directorBody.contains(controls.status)).toBe(true);
+    expect(directorScroll.contains(controls.status)).toBe(false);
     expect(directorScroll.contains(controls.compose)).toBe(false);
     expect(directorBody.contains(controls.messages)).toBe(true);
     expect(directorBody.contains(controls.compose)).toBe(true);
@@ -187,7 +187,7 @@ describe("AI Director sidebar layout hardening", () => {
     expect(host!.querySelector('[data-testid="inspector-body"]')?.classList.contains("director-open")).toBe(
       true,
     );
-    expect(cssRule(".inspector-body.director-open")).toMatch(/minmax\(72px,\s*32%\)/);
+    expect(cssRule(".inspector-body.director-open")).toMatch(/minmax\(180px,\s*1fr\)/);
   });
 
   it("syncs Director Close with the toolbar AI toggle", async () => {

@@ -436,8 +436,8 @@ No AI-8. No new capability. Do not merge from this run.
 ### Layout
 
 - Right sidebar = Inspector section + Director section (`#inspector-body` grid when Director is open).
-- Director gets its own viewport (`min-height: 0`, overflow hidden). Content scrolls in `director-scroll`; conversation scrolls independently; composer is sticky at the bottom of the Director viewport.
-- Open Director caps Inspector at `minmax(72px, 32%)` so Inspector cannot starve Director. Inspector stays mounted (state preserved). INS still collapses/expands the whole sidebar.
+- Director gets its own viewport (`min-height: 0`). Status/provider/mode/context stay pinned; Provider/Mode/Grant/Context/conversation/txn scroll in `director-scroll`; composer is sticky at the bottom of the Director viewport.
+- Open Director caps Inspector at `minmax(64px, 28%)` / Director `minmax(180px, 1fr)` so Inspector cannot starve Director. Inspector stays mounted (state preserved). INS still collapses/expands the whole sidebar.
 - Director Close calls the same disable path as the toolbar **AI** toggle.
 
 ### Files
