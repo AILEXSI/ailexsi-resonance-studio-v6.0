@@ -201,6 +201,7 @@ describe("AI Director auto-orchestration A–N", () => {
     const session = fixture();
     const plan = planDirectorTurn("Lösche den markierten Clip");
     expect(plan.intent.kind).toBe("UNSUPPORTED");
+    expect(planDirectorTurn("Losche den markierten Clip").intent.kind).toBe("UNSUPPORTED");
     expect(plan.toolName).toBeNull();
     const next = await autoTurn(session, "Lösche den markierten Clip", host({ grant: "EDIT", mode: "AGENT" }));
     expect(next.lastNoTool?.code).toBe("NO_TOOL");

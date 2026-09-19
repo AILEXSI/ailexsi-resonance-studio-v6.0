@@ -25,6 +25,10 @@ export function normalizeDirectorPrompt(text: string): string {
   return text
     .trim()
     .toLowerCase()
+    .replace(/ö/g, "o")
+    .replace(/ä/g, "a")
+    .replace(/ü/g, "u")
+    .replace(/ß/g, "ss")
     .replace(/[?!.,:;]+/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -38,13 +42,13 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
   const n = normalizeDirectorPrompt(text);
   if (!n) return { kind: "UNCERTAIN", confidence: "uncertain", reason: "empty" };
 
-  if (n === "what is selected" || n === "was ist ausgewählt" || n === "was ist markiert") {
+  if (n === "what is selected" || n === "was ist ausgewahlt" || n === "was ist markiert") {
     return { kind: "ASK_SELECTION", confidence: "known", reason: "selection question" };
   }
   if (n.includes("analysiere den markierten clip") || n.includes("analyze the selected clip")) {
     return { kind: "READ_CLIP", confidence: "known", reason: "analyze selected clip" };
   }
-  if (n.includes("lösche den markierten clip") || n.includes("delete the selected clip")) {
+  if (n.includes("losche den markierten clip") || n.includes("delete the selected clip")) {
     return { kind: "UNSUPPORTED", confidence: "known", reason: "delete is not a tool" };
   }
   if (n === "vorschlag schneiden") {
