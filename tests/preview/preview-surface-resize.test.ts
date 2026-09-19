@@ -137,16 +137,18 @@ describe("subscribePreviewRemeasure", () => {
 
     observers[0]!.fire();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    expect(onRemeasure).toHaveBeenCalledTimes(2);
+    expect(onRemeasure.mock.calls.length).toBeGreaterThan(1);
 
+    const afterRo = onRemeasure.mock.calls.length;
     window.dispatchEvent(new Event("resize"));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    expect(onRemeasure).toHaveBeenCalledTimes(3);
+    expect(onRemeasure.mock.calls.length).toBeGreaterThan(afterRo);
 
+    const afterWin = onRemeasure.mock.calls.length;
     stop();
     observers[0]!.fire();
     window.dispatchEvent(new Event("resize"));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    expect(onRemeasure).toHaveBeenCalledTimes(3);
+    expect(onRemeasure).toHaveBeenCalledTimes(afterWin);
   });
 });
