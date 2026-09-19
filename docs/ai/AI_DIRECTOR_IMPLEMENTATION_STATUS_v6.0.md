@@ -846,3 +846,166 @@ Prior A–N suite kept; assertions that expected Auto-by-dropdown were retargete
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
+
+---
+
+## DIRECTOR WORKSPACE PRESENTATION (UI SPACE PASS)
+
+**Branch:** `cursor/director-workspace-presentation-a23a`  
+**Start HEAD:** `f5c4ab492ce01bdfe409d3ed37fbf53e714d6456` (`ai/ai-director-foundation-v6` Foundation)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Give Director a real working surface without permanently widening the docked Inspector. Schema stays **5**. No AI-8. No protocol / provider / tool / transaction redesign.
+
+### Presentation states
+
+| State | Behavior |
+| --- | --- |
+| COLLAPSED | Existing 32px right-rail. Preview / Arrange / Mixer keep the workspace. |
+| DOCKED | Current right-side Inspector+Director column. Horizontally resizable. Min 180 / max 720. Docked width persists (`preview-h-split`). |
+| FOCUS | Existing Focus button. Director becomes a non-modal working panel at **35–45%** of the preview workspace (default 40%). Preview / Arrange / Mixer / timeline stay visible. Docked width is restored on exit. |
+
+Focus does **not** reuse the 720px dock cap. Dragging in Focus persists `director-focus-h-split` only.
+
+### Director interior
+
+| Item | Behavior |
+| --- | --- |
+| Diagnostics | Provider / mode / context start compact and collapsible. Advanced still expands the full form. |
+| Conversation | Dedicated pane with its own scroll. Long assistant text wraps and scrolls here. |
+| Result | Transaction / Preview / Applied / Rejected / conflict live in a separate pane. Long details cannot steal the conversation. Splitter when a txn/conflict is present. |
+| Composer | Stays pinned at the bottom. Enter = newline, Ctrl+Enter = Send. |
+| Undo / Redo | Always in the result pane. Same Session history path. |
+
+### Prefs (local UI only — not Project / schema)
+
+`director-presentation`, `director-focus-h-split`, `director-work-split`, `director-diagnostics-collapsed`, plus existing `director-focus`, `preview-h-split`, `director-split`, `director-composer-height`, `inspector-collapsed`, `inspector-section-collapsed`.
+
+### Hard laws kept
+
+Schema **5**. No provider / tool / transaction / command / history / Frame Engine / exporter change. Mutation path unchanged. No second engine.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **196 passed** (185 prior + 11 presentation) |
+| `npx vitest run` | **1590 passed / 6 failed / 1596** (179 files passed / 2 failed / 181) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| New regressions | none |
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
+
+---
+
+## HUMAN UX + AUTO ORCHESTRATION HARDENING
+
+**Branch:** `cursor/human-ux-auto-orch-dc1c`  
+**HEAD BEFORE:** `3af280fe23273095dc8522033dd18487c2caae0b`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Flexible Director workspace + zero-config AUTO. Schema stays **5**. No AI-8.
+
+### Part A — workspace
+
+- Focus = max sidebar height (Inspector section collapses). Reversible. Restores prior width/split. Does **not** force a full-viewport Director column over Arrange/Mixer.
+- User grows Director toward the bottom with the existing Preview/Arrange splitter.
+- Mixer is progressive: user compact or auto-compact when Arrange is narrower than `TIMELINE_MIN_PX + MIXER_MIN_PX`. Compact = `[timeline][MST]`. Expanded = `[timeline][V1 V2 A1 A2 MST]`. Auto-compact is runtime-only and does not persist as `mixerCollapsed`.
+
+### Part B — AUTO
+
+- Normal chrome: `AUTO ●`, model status, permission status, Context automatic.
+- `timeline.move_clip` accepts exact non-zero integer deltas (including −2000). Zero / fractional / NaN still fail closed.
+- Known prompts: +3000 right, −2000 left. No invented tools.
+- MOVE with no/ambiguous selection fail-closed before the EDIT gate.
+- Session EDIT is runtime only; hydrate/restart returns READ. Provider prefs may persist.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + layout | **249 passed** |
+| `npx vitest run` | **1625 passed / 6 failed / 1631** (182 files passed / 2 failed / 184) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT; PREVIOUS EXE BACKUP: NOT APPLICABLE |
+| New regressions | none |
+
+---
+
+## HUMAN RETEST FAILURE REPAIR — CANONICAL SELECTION + EXTREME RESIZE
+
+**Branch:** `cursor/human-retest-selection-resize-3eb7`  
+**HEAD BEFORE:** `373e5b43ec42112752baf9a54102685db5d7721a`  
+**HEAD AFTER:** `7fe34f65339520d72bae9c46c76a9f7dd9e70987`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Fix only the two human-retest defects. Schema stays **5**. No AI-8.
+
+### Selection
+
+- **Root cause:** `contextLevel=SELECTION` was plan/dropdown language. Execution/validation did not consume canonical `selectionOf` / `selectClips`. UI SELECTION could coexist with an empty sealed clip list, then `draftFromToolRequest` denied on plan NONE.
+- **Canonical source:** Session `selectedClipIds` / `selectedClipId` via `selectionOf` + `canonicalClipSelection` (existing clips only). Not a second store.
+- **Divergence:** `sealDirectorRequest` / `draftFromToolRequest` treated plan/dropdown SELECTION as proof of a clip. Dropdown SELECTION + empty timeline now `SELECTION_REQUIRED`. One unlocked selected clip seals that exact stable ID.
+
+### Extreme resize
+
+- **Root cause:** Preview/Arrange clamp treated the third grid row as Arrange-only (`ARRANGE_MIN_PX=200`) while that row also contains Transport, so max Preview clipped Arrange. Persisted extremes were not re-normalized against a live measured stage.
+- **Repair:** `LOWER_STAGE_MIN_PX = TRANSPORT_MIN_PX + ARRANGE_MIN_PX`. Window resize reclamps when the stage is actually measured. Invalid persisted ratios normalize. Splitter system kept.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + layout | **297 passed** |
+| `npx vitest run` | **1640 passed / 6 failed / 1646** (184 files passed / 2 failed / 186) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT |
+| New regressions | none |
+| AI-8 | not started |
+| PR #2 | not merged |
+
+---
+
+## HUMAN RETEST FAILURE #2 — AUTO GATE / ENGLISH 5s / IN-OUT / OMITTED CLIPID
+
+**Branch:** `cursor/human-retest-auto-gate-31a2`  
+**HEAD BEFORE:** `15846df71953ded06137f18fcff289aa809d512b`  
+**HEAD AFTER:** `7aeb08992312ec7c91904d62aa4a5fcd4c800ac7`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Repair only the human-proven AUTO / selection / layout failures. Schema stays **5**. No AI-8. No new tools.
+
+### Root causes
+
+- **F1 AUTO Grant/Mode:** English `move marked 5sec to right` / `move clip 5 seconds to the right` classified UNCERTAIN. AUTO stayed ASK/READ/NONE, the local provider still returned `timeline.move_clip`, and `explainToolDenial` told the human to set Advanced Mode AGENT + Grant EDIT.
+- **F2 Context NONE:** Screenshot chrome was correct for canonical Session selection — the light-blue V1 region was IN/OUT (01:29.88–02:19.91), not `selectClips`. AUTO must fail closed and must not invent a target from range.
+- **F3 omitted clipId:** Provider args were `{ deltaMs: 5000 }` only. Binding from request-scoped `canonicalClipSelection` already existed; it was unreachable because F1 never planned SELECTION/EDIT.
+- **F4 layout:** Short measured stages skipped Preview/Arrange reclamp (`stageAvail >= PREVIEW_MIN + LOWER_STAGE_MIN`), so Preview-max could still starve Arrange. Composer min-height was 0.
+
+### Repair
+
+- Intent accepts English + German move marked/clip N sec left/right (`verschiebe…`). AUTO derives AGENT / SELECTION / EDIT.
+- READ + move intent → Allow once / Allow for session / Cancel. Denial text no longer instructs Advanced dropdowns. Session EDIT stays runtime-only.
+- SELECTION_REQUIRED explains: click a clip; In/Out is not a clip selection. Chrome: `Context NONE · no clip — In/Out is not a selection` when a range exists and `selectedClipIds` is empty.
+- Provider-omitted `clipId` binds the sealed canonical id when exactly one unlocked clip is selected via `selectClips` / `selectionOf`.
+- Measured stages always reclamp, including short windows. Director composer `min-height: 56px`.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AUTO + golden + layout | PASS |
+| `npx vitest run` | **1648 passed / 6 failed / 1654** (185 files passed / 2 failed / 187) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT |
+| New regressions | none |
+| AI-8 | not started |
+| PR #2 | not merged |
+

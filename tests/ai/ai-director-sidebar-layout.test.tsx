@@ -131,6 +131,8 @@ describe("AI Director sidebar layout hardening", () => {
     expect(cssRule(".director")).toMatch(/min-height:\s*0/);
     expect(cssRule(".director-body")).toMatch(/overflow-y:\s*hidden/);
     expect(cssRule(".director-chrome")).toMatch(/overflow-y:\s*auto/);
+    expect(cssRule(".director-meta[hidden]")).toMatch(/display:\s*none/);
+    expect(cssRule(".director-config[hidden]")).toMatch(/display:\s*none/);
     expect(cssRule(".director-scroll")).toMatch(/overflow-y:\s*auto/);
     expect(cssRule(".director-messages")).toMatch(/overflow:\s*auto/);
 
@@ -138,6 +140,7 @@ describe("AI Director sidebar layout hardening", () => {
     expect(compose).toMatch(/position:\s*sticky/);
     expect(compose).toMatch(/bottom:\s*0/);
     expect(compose).toMatch(/flex:\s*0 0 auto/);
+    expect(compose).toMatch(/min-height:\s*56px/);
     expect(cssRule(".director-compose textarea")).toMatch(/resize:\s*vertical/);
     expect(cssRule(".director-compose textarea")).toMatch(/min-height:\s*56px/);
     expect(cssRule(".director-compose textarea")).toMatch(/max-height:\s*200px/);
