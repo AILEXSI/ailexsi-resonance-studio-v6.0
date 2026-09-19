@@ -150,7 +150,9 @@ import {
   clampHSplitRatio,
   clampSplitRatio,
   legalSplitMins,
+  LOWER_STAGE_MIN_PX,
   normalizePersistedSplitRatio,
+  PREVIEW_MIN_PX,
   TRANSPORT_MIN_PX,
   directorPresentationOf,
   DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
@@ -1585,13 +1587,18 @@ export function App() {
     const normalizeLayout = () => {
       const stage = stageRef.current;
       if (stage) {
-        const stageAvail = Math.max(1, stage.getBoundingClientRect().height - SPLITTER_PX);
-        if (stageAvail !== stageAvailPxRef.current) setStageAvailPx(stageAvail);
-        const stageNext = normalizePersistedSplitRatio(splitRatioRef.current, stageAvail);
-        if (stageNext !== splitRatioRef.current) setSplitRatio(stageNext);
-        if (!timelineFocusRef.current) {
-          const normalNext = clampSplitRatio(normalSplitRatioRef.current, stageAvail);
-          if (normalNext !== normalSplitRatioRef.current) setNormalSplitRatio(normalNext);
+        const rawHeight = stage.getBoundingClientRect().height;
+        if (Number.isFinite(rawHeight) && rawHeight > 0) {
+          const stageAvail = Math.max(1, rawHeight - SPLITTER_PX);
+          if (stageAvail !== stageAvailPxRef.current) setStageAvailPx(stageAvail);
+          if (stageAvail >= PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX) {
+            const stageNext = normalizePersistedSplitRatio(splitRatioRef.current, stageAvail);
+            if (stageNext !== splitRatioRef.current) setSplitRatio(stageNext);
+            if (!timelineFocusRef.current) {
+              const normalNext = clampSplitRatio(normalSplitRatioRef.current, stageAvail);
+              if (normalNext !== normalSplitRatioRef.current) setNormalSplitRatio(normalNext);
+            }
+          }
         }
       }
       if (inspectorCollapsed) return;

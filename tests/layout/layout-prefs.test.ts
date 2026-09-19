@@ -188,9 +188,9 @@ describe("layout prefs", () => {
     saveMixerCollapsed(store, false);
     expect(loadMixerCollapsed(store)).toBe(false);
 
-    saveSplitRatio(store, 0.7);
-    expect(store.map.get(SPLIT_RATIO_KEY)).toBe("0.7");
-    expect(loadSplitRatio(store)).toBeCloseTo(0.7, 5);
+    saveSplitRatio(store, 0.6);
+    expect(store.map.get(SPLIT_RATIO_KEY)).toBe("0.6");
+    expect(loadSplitRatio(store)).toBeCloseTo(0.6, 5);
     expect(loadSplitRatio(memoryStorage())).toBe(DEFAULT_SPLIT_RATIO);
     expect(loadSplitRatio(memoryStorage({ [SPLIT_RATIO_KEY]: "nope" }))).toBe(DEFAULT_SPLIT_RATIO);
   });
