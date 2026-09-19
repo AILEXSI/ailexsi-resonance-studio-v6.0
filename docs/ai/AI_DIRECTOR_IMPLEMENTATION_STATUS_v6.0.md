@@ -923,3 +923,15 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 - MOVE with no/ambiguous selection fail-closed before the EDIT gate.
 - Session EDIT is runtime only; hydrate/restart returns READ. Provider prefs may persist.
 
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + layout | **249 passed** |
+| `npx vitest run` | **1625 passed / 6 failed / 1631** (182 files passed / 2 failed / 184) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT; PREVIOUS EXE BACKUP: NOT APPLICABLE |
+| New regressions | none |
+
