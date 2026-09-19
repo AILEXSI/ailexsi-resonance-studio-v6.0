@@ -62,6 +62,9 @@ export interface DirectorHostState {
   grant: Grant;
   mode: DirectorMode;
   transaction: AITransaction | null;
+  /** Last Apply/Reject gate code for Director UI. Runtime only — not Project. */
+  lastGateCode: string | null;
+  lastGateMessage: string | null;
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -82,6 +85,8 @@ export function createDirectorHostState(): DirectorHostState {
     mode: "ASK",
     modeLabel: "Mode: ASK",
     transaction: null,
+    lastGateCode: null,
+    lastGateMessage: null,
   };
 }
 
@@ -122,10 +127,14 @@ export function applyHostApproved(
         status: "error",
         statusLabel: `Error — ${result.code}`,
         transactionLabel: `Transaction: ${result.code}`,
+        lastGateCode: result.code,
+        lastGateMessage: result.message,
         conversation: appendDirectorMessage(
           state.conversation,
           "assistant",
-          `${result.code}: ${result.message}. Manual edit is intact. No project changes were made.`,
+          result.code === "TRANSACTION_CONFLICT"
+            ? `STALE TRANSACTION — CONFLICT. ${result.message}. The project changed after this preview. Apply is blocked. Manual edit is intact. Reject this stale draft. Undo / Redo still walk project history and do not revive this preview. No project changes were made.`
+            : `${result.code}: ${result.message}. Manual edit is intact. No project changes were made.`,
         ),
       },
       session,
@@ -134,10 +143,12 @@ export function applyHostApproved(
   return {
     state: {
       ...applyHostTransaction(state, result.transaction),
+      lastGateCode: null,
+      lastGateMessage: null,
       conversation: appendDirectorMessage(
         state.conversation,
         "assistant",
-        `Applied ${result.transaction.toolName}.`,
+        `Applied ${result.transaction.toolName}. Use Undo / Redo in Director or Transport to reverse or restore this move.`,
       ),
     },
     session: result.session,
@@ -149,10 +160,12 @@ export function rejectHostTransaction(state: DirectorHostState): DirectorHostSta
   const rejected = applyHostTransaction(state, rejectTransaction(state.transaction));
   return {
     ...rejected,
+    lastGateCode: null,
+    lastGateMessage: null,
     conversation: appendDirectorMessage(
       rejected.conversation,
       "assistant",
-      "Rejected. No project changes were made.",
+      "REJECTED. Preview discarded. Clip was not moved. No history entry. No project changes were made.",
     ),
   };
 }
@@ -460,6 +473,8 @@ export async function submitDirectorProviderTurn(
       conversation: appendDirectorMessage(base.conversation, "user", text),
       status: "connecting",
       statusLabel: "Sending…",
+      lastGateCode: null,
+      lastGateMessage: null,
     },
     null,
   );

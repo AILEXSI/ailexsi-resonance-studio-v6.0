@@ -35,8 +35,17 @@ export const SPLITTER_PX = 18;
 export const DEFAULT_SPLIT_RATIO = 0.52;
 export const PREVIEW_H_MIN_PX = 200;
 export const INSPECTOR_MIN_PX = 180;
+/** Cap so ultrawide Preview/Timeline stay usable. Does not change tight-viewport mins. */
+export const INSPECTOR_MAX_PX = 720;
 export const H_SPLITTER_PX = 14;
 export const DEFAULT_H_SPLIT_RATIO = 0.74;
+export const DIRECTOR_SPLITTER_PX = 8;
+export const INSPECTOR_SECTION_MIN_PX = 64;
+export const DIRECTOR_SECTION_MIN_PX = 180;
+export const DEFAULT_DIRECTOR_SPLIT_RATIO = 0.28;
+export const COMPOSER_MIN_PX = 56;
+export const COMPOSER_MAX_PX = 200;
+export const DEFAULT_COMPOSER_HEIGHT_PX = 72;
 export const GROUP_COLLAPSED_KEY = "resonance-studio-v6-0-group-collapsed";
 export const VOLUME_LANE_OPEN_KEY = "resonance-studio-v6-0-volume-lane-open";
 /** Extra Volume sub-lane height. Clip lanes stay at their existing height. */
@@ -50,6 +59,14 @@ export function fixedLaneBoxStyle(px: number): { height: number; minHeight: numb
   return { height: h, minHeight: h, maxHeight: h };
 }
 export const MIXER_WIDTH_KEY = "resonance-studio-v6-0-mixer-width";
+/** Inspector section collapsed inside the right sidebar while Director stays open. */
+export const INSPECTOR_SECTION_COLLAPSED_KEY = "resonance-studio-v6-0-inspector-section-collapsed";
+/** Inspector/Director vertical split (inspector fraction). */
+export const DIRECTOR_SPLIT_RATIO_KEY = "resonance-studio-v6-0-director-split";
+/** Split restored when leaving Director Focus. */
+export const DIRECTOR_NORMAL_SPLIT_KEY = "resonance-studio-v6-0-director-normal-split";
+export const DIRECTOR_FOCUS_KEY = "resonance-studio-v6-0-director-focus";
+export const DIRECTOR_COMPOSER_HEIGHT_KEY = "resonance-studio-v6-0-director-composer-height";
 export const MIXER_EXPANDED_PX = 228;
 export const MIXER_COLLAPSED_PX = 56;
 /** Expanded mixer: MST + ≥1 channel peek + chrome. Never 0. */
@@ -272,7 +289,7 @@ export function clampHSplitRatio(ratio: number, availablePx: number): number {
   if (!Number.isFinite(availablePx) || availablePx <= 0) {
     return Math.min(0.9, Math.max(0.35, ratio));
   }
-  const minR = PREVIEW_H_MIN_PX / availablePx;
+  const minR = Math.max(PREVIEW_H_MIN_PX / availablePx, 1 - INSPECTOR_MAX_PX / availablePx);
   const maxR = 1 - INSPECTOR_MIN_PX / availablePx;
   if (minR >= maxR) {
     return PREVIEW_H_MIN_PX / (PREVIEW_H_MIN_PX + INSPECTOR_MIN_PX);
@@ -458,6 +475,172 @@ export function heightGroupOfLane(id: string): LaneHeightGroup {
 /** When a V/A/VIS header is shorter than the stacked name + chrome block, pack them in one row. */
 export function laneHeaderPacksInline(heightPx: number): boolean {
   return Number.isFinite(heightPx) && heightPx < LANE_HEADER_STACK_MIN_PX;
+}
+
+export function loadInspectorSectionCollapsed(storage?: StorageLike | null): boolean {
+  try {
+    return storage?.getItem(INSPECTOR_SECTION_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveInspectorSectionCollapsed(
+  storage: StorageLike | null | undefined,
+  collapsed: boolean,
+): void {
+  try {
+    storage?.setItem(INSPECTOR_SECTION_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clampDirectorSplitRatio(ratio: number, availablePx: number): number {
+  if (!Number.isFinite(ratio)) return DEFAULT_DIRECTOR_SPLIT_RATIO;
+  if (!Number.isFinite(availablePx) || availablePx <= 0) {
+    return Math.min(0.7, Math.max(0.12, ratio));
+  }
+  const minR = INSPECTOR_SECTION_MIN_PX / availablePx;
+  const maxR = 1 - DIRECTOR_SECTION_MIN_PX / availablePx;
+  if (minR >= maxR) {
+    return INSPECTOR_SECTION_MIN_PX / (INSPECTOR_SECTION_MIN_PX + DIRECTOR_SECTION_MIN_PX);
+  }
+  return Math.min(maxR, Math.max(minR, ratio));
+}
+
+export function applyDirectorSplitPointer(opts: {
+  clientY: number;
+  bodyTop: number;
+  bodyHeight: number;
+  splitterPx?: number;
+}): { ratio: number; inspectorPx: number; directorPx: number } {
+  const splitter = opts.splitterPx ?? DIRECTOR_SPLITTER_PX;
+  const available = Math.max(1, opts.bodyHeight - splitter);
+  const ratio = clampDirectorSplitRatio((opts.clientY - opts.bodyTop) / available, available);
+  const inspectorPx = Math.round(ratio * available);
+  return { ratio, inspectorPx, directorPx: available - inspectorPx };
+}
+
+export function loadDirectorSplitRatio(storage?: StorageLike | null): number {
+  try {
+    const raw = storage?.getItem(DIRECTOR_SPLIT_RATIO_KEY);
+    if (raw == null) return DEFAULT_DIRECTOR_SPLIT_RATIO;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return DEFAULT_DIRECTOR_SPLIT_RATIO;
+    return clampDirectorSplitRatio(n, INSPECTOR_SECTION_MIN_PX + DIRECTOR_SECTION_MIN_PX + 400);
+  } catch {
+    return DEFAULT_DIRECTOR_SPLIT_RATIO;
+  }
+}
+
+export function saveDirectorSplitRatio(storage: StorageLike | null | undefined, ratio: number): void {
+  try {
+    if (!Number.isFinite(ratio)) return;
+    storage?.setItem(DIRECTOR_SPLIT_RATIO_KEY, String(ratio));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function loadDirectorNormalSplitRatio(storage?: StorageLike | null): number {
+  try {
+    const raw = storage?.getItem(DIRECTOR_NORMAL_SPLIT_KEY);
+    if (raw == null) return loadDirectorSplitRatio(storage);
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return loadDirectorSplitRatio(storage);
+    return clampDirectorSplitRatio(n, INSPECTOR_SECTION_MIN_PX + DIRECTOR_SECTION_MIN_PX + 400);
+  } catch {
+    return loadDirectorSplitRatio(storage);
+  }
+}
+
+export function saveDirectorNormalSplitRatio(
+  storage: StorageLike | null | undefined,
+  ratio: number,
+): void {
+  try {
+    if (!Number.isFinite(ratio)) return;
+    storage?.setItem(DIRECTOR_NORMAL_SPLIT_KEY, String(ratio));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function loadDirectorFocus(storage?: StorageLike | null): boolean {
+  try {
+    return storage?.getItem(DIRECTOR_FOCUS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveDirectorFocus(storage: StorageLike | null | undefined, focused: boolean): void {
+  try {
+    storage?.setItem(DIRECTOR_FOCUS_KEY, focused ? "1" : "0");
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function applyDirectorFocusToggle(opts: {
+  currentlyFocused: boolean;
+  inspectorSectionCollapsed: boolean;
+  currentSplitRatio: number;
+  storedNormalSplit: number;
+  storedSectionCollapsed: boolean;
+}): {
+  focused: boolean;
+  inspectorSectionCollapsed: boolean;
+  splitRatio: number;
+  normalSplit: number;
+  restoreSectionCollapsed: boolean;
+} {
+  if (!opts.currentlyFocused) {
+    const normalSplit = Number.isFinite(opts.currentSplitRatio)
+      ? opts.currentSplitRatio
+      : DEFAULT_DIRECTOR_SPLIT_RATIO;
+    return {
+      focused: true,
+      inspectorSectionCollapsed: true,
+      splitRatio: normalSplit,
+      normalSplit,
+      restoreSectionCollapsed: opts.inspectorSectionCollapsed,
+    };
+  }
+  const restoredSplit = Number.isFinite(opts.storedNormalSplit)
+    ? opts.storedNormalSplit
+    : DEFAULT_DIRECTOR_SPLIT_RATIO;
+  return {
+    focused: false,
+    inspectorSectionCollapsed: opts.storedSectionCollapsed,
+    splitRatio: restoredSplit,
+    normalSplit: restoredSplit,
+    restoreSectionCollapsed: opts.storedSectionCollapsed,
+  };
+}
+
+export function clampComposerHeightPx(px: number): number {
+  if (!Number.isFinite(px)) return DEFAULT_COMPOSER_HEIGHT_PX;
+  return Math.round(Math.min(COMPOSER_MAX_PX, Math.max(COMPOSER_MIN_PX, px)));
+}
+
+export function loadDirectorComposerHeight(storage?: StorageLike | null): number {
+  try {
+    const raw = storage?.getItem(DIRECTOR_COMPOSER_HEIGHT_KEY);
+    if (raw == null) return DEFAULT_COMPOSER_HEIGHT_PX;
+    return clampComposerHeightPx(Number(raw));
+  } catch {
+    return DEFAULT_COMPOSER_HEIGHT_PX;
+  }
+}
+
+export function saveDirectorComposerHeight(storage: StorageLike | null | undefined, px: number): void {
+  try {
+    storage?.setItem(DIRECTOR_COMPOSER_HEIGHT_KEY, String(clampComposerHeightPx(px)));
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 export function browserLayoutStorage(): StorageLike | null {
