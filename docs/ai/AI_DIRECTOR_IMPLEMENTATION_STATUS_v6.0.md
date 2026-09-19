@@ -846,3 +846,40 @@ Prior A–N suite kept; assertions that expected Auto-by-dropdown were retargete
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
+
+---
+
+## DIRECTOR WORKSPACE PRESENTATION (UI SPACE PASS)
+
+**Branch:** `cursor/director-workspace-presentation-a23a`  
+**Start HEAD:** `f5c4ab492ce01bdfe409d3ed37fbf53e714d6456` (`ai/ai-director-foundation-v6` Foundation)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Give Director a real working surface without permanently widening the docked Inspector. Schema stays **5**. No AI-8. No protocol / provider / tool / transaction redesign.
+
+### Presentation states
+
+| State | Behavior |
+| --- | --- |
+| COLLAPSED | Existing 32px right-rail. Preview / Arrange / Mixer keep the workspace. |
+| DOCKED | Current right-side Inspector+Director column. Horizontally resizable. Min 180 / max 720. Docked width persists (`preview-h-split`). |
+| FOCUS | Existing Focus button. Director becomes a non-modal working panel at **35–45%** of the preview workspace (default 40%). Preview / Arrange / Mixer / timeline stay visible. Docked width is restored on exit. |
+
+Focus does **not** reuse the 720px dock cap. Dragging in Focus persists `director-focus-h-split` only.
+
+### Director interior
+
+| Item | Behavior |
+| --- | --- |
+| Diagnostics | Provider / mode / context start compact and collapsible. Advanced still expands the full form. |
+| Conversation | Dedicated pane with its own scroll. Long assistant text wraps and scrolls here. |
+| Result | Transaction / Preview / Applied / Rejected / conflict live in a separate pane. Long details cannot steal the conversation. Splitter when a txn/conflict is present. |
+| Composer | Stays pinned at the bottom. Enter = newline, Ctrl+Enter = Send. |
+| Undo / Redo | Always in the result pane. Same Session history path. |
+
+### Prefs (local UI only — not Project / schema)
+
+`director-presentation`, `director-focus-h-split`, `director-work-split`, `director-diagnostics-collapsed`, plus existing `director-focus`, `preview-h-split`, `director-split`, `director-composer-height`, `inspector-collapsed`, `inspector-section-collapsed`.
+
+### Hard laws kept
+
+Schema **5**. No provider / tool / transaction / command / history / Frame Engine / exporter change. Mutation path unchanged. No second engine.

@@ -141,15 +141,20 @@ import {
   SPLITTER_PX,
   applyDirectorFocusToggle,
   applyDirectorSplitPointer,
+  applyFocusHSplitPointer,
   applyHSplitPointer,
   applyMixerWidthPointer,
   applySplitPointer,
   applyTimelineFocusToggle,
   browserLayoutStorage,
   clampDirectorSplitRatio,
+  clampFocusHSplitRatio,
   clampHSplitRatio,
+  directorPresentationOf,
+  DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
   loadCollapsedGroupIds,
   loadDirectorFocus,
+  loadDirectorFocusHSplitRatio,
   loadDirectorNormalSplitRatio,
   loadDirectorSplitRatio,
   loadInspectorSectionCollapsed,
@@ -166,7 +171,9 @@ import {
   saveCollapsedGroupIds,
   saveOpenVolumeLaneIds,
   saveDirectorFocus,
+  saveDirectorFocusHSplitRatio,
   saveDirectorNormalSplitRatio,
+  saveDirectorPresentation,
   saveDirectorSplitRatio,
   saveHSplitRatio,
   saveInspectorCollapsed,
@@ -245,9 +252,22 @@ export function App() {
   normalSplitRatioRef.current = normalSplitRatio;
   const timelineFocusRef = useRef(timelineFocus);
   timelineFocusRef.current = timelineFocus;
-  const [hSplitRatio, setHSplitRatio] = useState(() => loadHSplitRatio(layoutStore));
+  const [hSplitRatio, setHSplitRatio] = useState(() => {
+    if (loadDirectorFocus(layoutStore) && isDirectorEnabled()) {
+      return loadDirectorFocusHSplitRatio(layoutStore);
+    }
+    return loadHSplitRatio(layoutStore);
+  });
   const hSplitRatioRef = useRef(hSplitRatio);
   hSplitRatioRef.current = hSplitRatio;
+  const [directorFocusHSplit, setDirectorFocusHSplit] = useState(() =>
+    loadDirectorFocusHSplitRatio(layoutStore),
+  );
+  const directorFocusHSplitRef = useRef(directorFocusHSplit);
+  directorFocusHSplitRef.current = directorFocusHSplit;
+  const [directorDockedHSplit, setDirectorDockedHSplit] = useState(() => loadHSplitRatio(layoutStore));
+  const directorDockedHSplitRef = useRef(directorDockedHSplit);
+  directorDockedHSplitRef.current = directorDockedHSplit;
   const [laneLabelPx, setLaneLabelPx] = useState(() => loadLaneLabelPx(layoutStore));
   const [laneHeights, setLaneHeights] = useState<LaneHeights>(() => loadLaneHeights(layoutStore));
   const [screen, setScreen] = useState<ProductionScreen>("arrange");
@@ -1205,10 +1225,23 @@ export function App() {
     });
   };
 
+  const persistPresentation = (next: {
+    inspectorCollapsed: boolean;
+    directorEnabled: boolean;
+    directorFocus: boolean;
+  }) => {
+    saveDirectorPresentation(layoutStore, directorPresentationOf(next));
+  };
+
   const toggleInspectorCollapsed = () => {
     setInspectorCollapsed((prev) => {
       const next = !prev;
       saveInspectorCollapsed(layoutStore, next);
+      persistPresentation({
+        inspectorCollapsed: next,
+        directorEnabled,
+        directorFocus,
+      });
       return next;
     });
   };
@@ -1216,6 +1249,11 @@ export function App() {
   const closeDirector = () => {
     setDirectorEnabled(false);
     persistDirectorEnabled(false);
+    persistPresentation({
+      inspectorCollapsed,
+      directorEnabled: false,
+      directorFocus,
+    });
   };
 
   const openDirector = () => {
@@ -1224,6 +1262,14 @@ export function App() {
     if (inspectorCollapsed) {
       setInspectorCollapsed(false);
       saveInspectorCollapsed(layoutStore, false);
+    }
+    persistPresentation({
+      inspectorCollapsed: false,
+      directorEnabled: true,
+      directorFocus,
+    });
+    if (directorFocus) {
+      setHSplitRatio(directorFocusHSplitRef.current);
     }
   };
 
@@ -1237,23 +1283,46 @@ export function App() {
 
   const hideInspectorSection = directorEnabled && (directorFocus || inspectorSectionCollapsed);
 
+  const workspaceAvailablePx = () => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return undefined;
+    const width = workspace.getBoundingClientRect().width;
+    if (!Number.isFinite(width) || width < PREVIEW_H_MIN_PX + INSPECTOR_MIN_PX) return undefined;
+    return Math.max(1, width - H_SPLITTER_PX);
+  };
+
   const toggleInspectorSectionCollapsed = () => {
     if (directorFocus) {
+      const available = workspaceAvailablePx();
       const next = applyDirectorFocusToggle({
         currentlyFocused: true,
         inspectorSectionCollapsed,
         currentSplitRatio: directorSplitRatioRef.current,
         storedNormalSplit: directorNormalSplit,
         storedSectionCollapsed: directorFocusRestoreCollapsed,
+        currentHSplit: hSplitRatioRef.current,
+        storedDockedHSplit: directorDockedHSplitRef.current,
+        storedFocusHSplit: directorFocusHSplitRef.current,
+        availablePx: available,
       });
       setDirectorFocus(false);
       setInspectorSectionCollapsed(next.inspectorSectionCollapsed);
       setDirectorSplitRatio(next.splitRatio);
       setDirectorNormalSplit(next.normalSplit);
+      setHSplitRatio(next.hSplitRatio);
+      setDirectorDockedHSplit(next.dockedHSplit);
+      setDirectorFocusHSplit(next.focusHSplit);
       saveDirectorFocus(layoutStore, false);
       saveInspectorSectionCollapsed(layoutStore, next.inspectorSectionCollapsed);
       saveDirectorSplitRatio(layoutStore, next.splitRatio);
       saveDirectorNormalSplitRatio(layoutStore, next.normalSplit);
+      saveHSplitRatio(layoutStore, next.hSplitRatio);
+      saveDirectorFocusHSplitRatio(layoutStore, next.focusHSplit);
+      persistPresentation({
+        inspectorCollapsed,
+        directorEnabled,
+        directorFocus: false,
+      });
       return;
     }
     setInspectorSectionCollapsed((prev) => {
@@ -1264,22 +1333,37 @@ export function App() {
   };
 
   const toggleDirectorFocus = () => {
+    const available = workspaceAvailablePx();
     const next = applyDirectorFocusToggle({
       currentlyFocused: directorFocus,
       inspectorSectionCollapsed,
       currentSplitRatio: directorSplitRatioRef.current,
       storedNormalSplit: directorNormalSplit,
       storedSectionCollapsed: directorFocusRestoreCollapsed,
+      currentHSplit: hSplitRatioRef.current,
+      storedDockedHSplit: directorDockedHSplitRef.current,
+      storedFocusHSplit: directorFocusHSplitRef.current,
+      availablePx: available,
     });
     setDirectorFocus(next.focused);
     setInspectorSectionCollapsed(next.inspectorSectionCollapsed);
     setDirectorSplitRatio(next.splitRatio);
     setDirectorNormalSplit(next.normalSplit);
     setDirectorFocusRestoreCollapsed(next.restoreSectionCollapsed);
+    setHSplitRatio(next.hSplitRatio);
+    setDirectorDockedHSplit(next.dockedHSplit);
+    setDirectorFocusHSplit(next.focusHSplit);
     saveDirectorFocus(layoutStore, next.focused);
     saveInspectorSectionCollapsed(layoutStore, next.inspectorSectionCollapsed);
     saveDirectorSplitRatio(layoutStore, next.splitRatio);
     saveDirectorNormalSplitRatio(layoutStore, next.normalSplit);
+    saveDirectorFocusHSplitRatio(layoutStore, next.focusHSplit);
+    if (!next.focused) saveHSplitRatio(layoutStore, next.hSplitRatio);
+    persistPresentation({
+      inspectorCollapsed,
+      directorEnabled,
+      directorFocus: next.focused,
+    });
   };
 
   const toggleTimelineFocus = () => {
@@ -1398,11 +1482,18 @@ export function App() {
     const workspace = workspaceRef.current;
     if (!workspace) return;
     const rect = workspace.getBoundingClientRect();
-    const next = applyHSplitPointer({
-      clientX,
-      workspaceLeft: rect.left,
-      workspaceWidth: rect.width,
-    });
+    const next =
+      directorFocus && directorEnabled
+        ? applyFocusHSplitPointer({
+            clientX,
+            workspaceLeft: rect.left,
+            workspaceWidth: rect.width,
+          })
+        : applyHSplitPointer({
+            clientX,
+            workspaceLeft: rect.left,
+            workspaceWidth: rect.width,
+          });
     setHSplitRatio(next.ratio);
   };
 
@@ -1420,14 +1511,27 @@ export function App() {
       window.removeEventListener("pointerup", up);
       if (!hSplitDragRef.current) return;
       hSplitDragRef.current = false;
-      saveHSplitRatio(layoutStore, hSplitRatioRef.current);
+      if (directorFocus && directorEnabled) {
+        setDirectorFocusHSplit(hSplitRatioRef.current);
+        saveDirectorFocusHSplitRatio(layoutStore, hSplitRatioRef.current);
+      } else {
+        setDirectorDockedHSplit(hSplitRatioRef.current);
+        saveHSplitRatio(layoutStore, hSplitRatioRef.current);
+      }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
 
   const resetHSplit = () => {
+    if (directorFocus && directorEnabled) {
+      setHSplitRatio(DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+      setDirectorFocusHSplit(DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+      saveDirectorFocusHSplitRatio(layoutStore, DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+      return;
+    }
     setHSplitRatio(DEFAULT_H_SPLIT_RATIO);
+    setDirectorDockedHSplit(DEFAULT_H_SPLIT_RATIO);
     saveHSplitRatio(layoutStore, DEFAULT_H_SPLIT_RATIO);
   };
 
@@ -1475,7 +1579,10 @@ export function App() {
       const workspace = workspaceRef.current;
       if (!workspace) return;
       const available = workspace.getBoundingClientRect().width - H_SPLITTER_PX;
-      const next = clampHSplitRatio(hSplitRatioRef.current, available);
+      const next =
+        directorFocus && directorEnabled
+          ? clampFocusHSplitRatio(hSplitRatioRef.current, available)
+          : clampHSplitRatio(hSplitRatioRef.current, available);
       if (next !== hSplitRatioRef.current) setHSplitRatio(next);
       const body = inspectorBodyRef.current;
       if (body && directorEnabled && !hideInspectorSection) {
@@ -1486,7 +1593,7 @@ export function App() {
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [inspectorCollapsed, directorEnabled, hideInspectorSection]);
+  }, [inspectorCollapsed, directorEnabled, directorFocus, hideInspectorSection]);
 
   const applyMixerWidthFromEvent = (clientX: number) => {
     const row = arrangeRowRef.current;
@@ -1653,6 +1760,11 @@ export function App() {
         data-preview-ratio={splitRatio}
         data-h-split-ratio={hSplitRatio}
         data-inspector-collapsed={inspectorCollapsed ? "true" : "false"}
+        data-director-presentation={directorPresentationOf({
+          inspectorCollapsed,
+          directorEnabled,
+          directorFocus,
+        })}
         data-timeline-focus={timelineFocus ? "true" : "false"}
         ref={workspaceRef}
         style={{ flex: `${splitRatio} 1 ${PREVIEW_MIN_PX}px` }}
@@ -1700,6 +1812,11 @@ export function App() {
           data-director-open={directorEnabled && !inspectorCollapsed ? "true" : "false"}
           data-inspector-section-collapsed={hideInspectorSection ? "true" : "false"}
           data-director-focus={directorFocus && directorEnabled && !inspectorCollapsed ? "true" : "false"}
+          data-director-presentation={directorPresentationOf({
+            inspectorCollapsed,
+            directorEnabled,
+            directorFocus,
+          })}
           style={
             inspectorCollapsed
               ? {
@@ -1708,10 +1825,15 @@ export function App() {
                   minWidth: INSPECTOR_COLLAPSED_PX,
                   maxWidth: INSPECTOR_COLLAPSED_PX,
                 }
-              : {
-                  flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px`,
-                  maxWidth: INSPECTOR_MAX_PX,
-                }
+              : directorFocus && directorEnabled
+                ? {
+                    flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px`,
+                    maxWidth: "none",
+                  }
+                : {
+                    flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px`,
+                    maxWidth: INSPECTOR_MAX_PX,
+                  }
           }
         >
           <div className="inspector-chrome">
