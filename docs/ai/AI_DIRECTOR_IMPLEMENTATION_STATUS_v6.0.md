@@ -976,7 +976,7 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 
 **Branch:** `cursor/human-retest-auto-gate-31a2`  
 **HEAD BEFORE:** `15846df71953ded06137f18fcff289aa809d512b`  
-**HEAD AFTER:** see latest commit on this branch  
+**HEAD AFTER:** `7aeb08992312ec7c91904d62aa4a5fcd4c800ac7`  
 **Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
 **Intent:** Repair only the human-proven AUTO / selection / layout failures. Schema stays **5**. No AI-8. No new tools.
 
