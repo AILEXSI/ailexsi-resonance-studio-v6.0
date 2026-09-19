@@ -15,7 +15,7 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-5** (gate recording) |
+| Highest gate | **AI-6** (gate recording) |
 | Schema | **5** (unchanged) |
 | Mutation path | none |
 | Second engine | none |
@@ -172,7 +172,39 @@ AI-5 — read-only in-process tool registry.
 
 ---
 
-## AI-5 … AI-7
+## AI-5 — Read-only in-process tools
+
+| Field | Value |
+| --- | --- |
+| Status | SHIPPED (pending full-suite record) |
+| Commit | `feat(ai): add read-only tool registry` |
+| Intent | MCP-shaped in-process table. READ only. Compact DTOs. |
+
+### Files
+
+- `src/app/ai/tools/types.ts`
+- `src/app/ai/tools/validate.ts`
+- `src/app/ai/tools/read-tools.ts`
+- `src/app/ai/tools/registry.ts`
+- `tests/ai/ai-5-tools.test.ts`
+
+### Tests
+
+Valid tools, unknown tool, invalid args, unknown clipId, selection, analysis (NO_PCM + offline PCM), automation, no mutation, no history, schema 5.
+
+### Limitations / gaps
+
+- `audio.get_analysis` needs runtime MixPcm; Project has none (documented `NO_PCM`).
+- No network MCP socket.
+- No mutating tools yet.
+
+### Next gate
+
+AI-6 — grants, revision, transactions, audit.
+
+---
+
+## AI-6 … AI-7
 
 Not started.
 

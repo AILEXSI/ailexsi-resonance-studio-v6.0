@@ -847,6 +847,7 @@ export function App() {
     setSession((s) => ({
       ...s,
       history: { past: [...base.history.past, structuredClone(base.project)], future: [] },
+      projectRevision: (s.projectRevision ?? 0) + 1,
       status: selectionOf(s).length > 1 ? "Moved clips" : "Moved clip",
       error: null,
     }));
@@ -1598,7 +1599,9 @@ export function App() {
                 onTransition={(cmd) => setSession(applyCommand(session, cmd))}
                 onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
               />
-              {isDirectorEnabled() ? <DirectorPanel session={session} /> : null}
+              {isDirectorEnabled() ? (
+                <DirectorPanel session={session} onCanonicalCommit={(next) => setSession(next)} />
+              ) : null}
             </div>
           )}
         </div>

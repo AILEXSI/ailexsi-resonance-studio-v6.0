@@ -21,6 +21,12 @@ import type { AIProvider, ProviderId } from "./providers/types";
 import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
 import type { Session } from "../session";
+import { DIRECTOR_MODES, GRANTS, type DirectorMode, type Grant } from "./permissions/policy";
+import {
+  applyCommandTransaction,
+  rejectTransaction,
+  type AITransaction,
+} from "./transactions/transaction";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -44,6 +50,9 @@ export interface DirectorHostState {
   contextLevel: ContextLevel;
   outboundClass: OutboundClass;
   lastSnapshot: AIContextSnapshot | null;
+  grant: Grant;
+  mode: DirectorMode;
+  transaction: AITransaction | null;
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -53,7 +62,6 @@ export function createDirectorHostState(): DirectorHostState {
     status: "offline",
     statusLabel: "Offline — mock conversation",
     providerLabel: "Provider: mock",
-    modeLabel: "Mode: —",
     contextLabel: "Context: NONE",
     transactionLabel: "Transaction: —",
     providerId: "mock",
@@ -61,8 +69,66 @@ export function createDirectorHostState(): DirectorHostState {
     contextLevel: "NONE",
     outboundClass: "SEND_STRUCTURE",
     lastSnapshot: null,
+    grant: "READ",
+    mode: "ASK",
+    modeLabel: "Mode: ASK",
+    transaction: null,
   };
 }
+
+export function applyGrant(state: DirectorHostState, grant: Grant): DirectorHostState {
+  return { ...state, grant };
+}
+
+export function applyMode(state: DirectorHostState, mode: DirectorMode): DirectorHostState {
+  return { ...state, mode, modeLabel: `Mode: ${mode}` };
+}
+
+export function applyHostTransaction(state: DirectorHostState, transaction: AITransaction | null): DirectorHostState {
+  return {
+    ...state,
+    transaction,
+    transactionLabel: transaction
+      ? `Transaction: ${transaction.status} ${transaction.toolName}`
+      : "Transaction: —",
+  };
+}
+
+export function applyHostApproved(
+  state: DirectorHostState,
+  session: Session,
+): { state: DirectorHostState; session: Session } {
+  if (!state.transaction) return { state, session };
+  const result = applyCommandTransaction({
+    session,
+    transaction: state.transaction,
+    grant: state.grant,
+    mode: state.mode,
+    approval: true,
+  });
+  if (!result.ok) {
+    return {
+      state: {
+        ...state,
+        status: "error",
+        statusLabel: `Error — ${result.code}`,
+        transactionLabel: `Transaction: ${result.code}`,
+      },
+      session,
+    };
+  }
+  return {
+    state: applyHostTransaction(state, result.transaction),
+    session: result.session,
+  };
+}
+
+export function rejectHostTransaction(state: DirectorHostState): DirectorHostState {
+  if (!state.transaction) return state;
+  return applyHostTransaction(state, rejectTransaction(state.transaction));
+}
+
+export { DIRECTOR_MODES, GRANTS };
 
 export function applyContextLevel(state: DirectorHostState, level: ContextLevel): DirectorHostState {
   return { ...state, contextLevel: level, contextLabel: `Context: ${level}` };

@@ -403,6 +403,15 @@ input[type="range"] { accent-color: var(--accent-2); }
   justify-self: start;
   font-size: 11px;
 }
+.director-txn {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 11px;
+  background: var(--panel-2);
+}
+.director-txn p { margin: 0 0 6px; }
+.director-txn-actions { display: flex; gap: 6px; }
 .layout-split .timeline-focus {
   position: absolute;
   right: 8px;

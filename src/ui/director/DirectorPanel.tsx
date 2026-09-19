@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   applyContextLevel,
+  applyGrant,
+  applyHostApproved,
   applyLocalConfig,
+  applyMode,
   applyProviderId,
   createDirectorHostState,
   createDirectorRuntime,
+  DIRECTOR_MODES,
+  GRANTS,
   providerForHost,
+  rejectHostTransaction,
   setDirectorPanelOpen,
   submitDirectorProviderTurn,
   testDirectorConnection,
   type DirectorHostState,
 } from "../../app/ai/host";
+import type { DirectorMode, Grant } from "../../app/ai/permissions/policy";
 import { cachePlayheadMs } from "../../app/ai/context/snapshot";
 import { CONTEXT_LEVELS, type ContextLevel } from "../../app/ai/context/types";
 import { registerBuiltInProviders } from "../../app/ai/providers";
@@ -27,9 +34,17 @@ export interface DirectorPanelProps {
   /** Read-only session. Used to capture context on submit. Never mutated here. */
   session?: Session;
   onStateChange?: (state: DirectorHostState) => void;
+  /** Apply path: parent owns Session and must use applyCommand/withHistory. */
+  onCanonicalCommit?: (session: Session) => void;
 }
 
-export function DirectorPanel({ initialState, provider, session, onStateChange }: DirectorPanelProps) {
+export function DirectorPanel({
+  initialState,
+  provider,
+  session,
+  onStateChange,
+  onCanonicalCommit,
+}: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
     () => initialState ?? createDirectorHostState(),
   );
@@ -120,6 +135,32 @@ export function DirectorPanel({ initialState, provider, session, onStateChange }
               <option value="mock">mock</option>
               <option value="openai-compatible">openai-compatible (local)</option>
             </select>
+            <label htmlFor="director-mode">Mode</label>
+            <select
+              id="director-mode"
+              data-testid="director-mode-select"
+              value={state.mode}
+              onChange={(e) => commit(applyMode(state, e.target.value as DirectorMode))}
+            >
+              {DIRECTOR_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="director-grant">Grant</label>
+            <select
+              id="director-grant"
+              data-testid="director-grant-select"
+              value={state.grant}
+              onChange={(e) => commit(applyGrant(state, e.target.value as Grant))}
+            >
+              {GRANTS.map((grant) => (
+                <option key={grant} value={grant}>
+                  {grant}
+                </option>
+              ))}
+            </select>
             <label htmlFor="director-context-level">Context level</label>
             <select
               id="director-context-level"
@@ -172,6 +213,39 @@ export function DirectorPanel({ initialState, provider, session, onStateChange }
               </>
             ) : null}
           </div>
+          {state.transaction ? (
+            <div className="director-txn" data-testid="director-txn">
+              <p data-testid="director-txn-status">
+                {state.transaction.status} · {state.transaction.toolName}
+              </p>
+              <p data-testid="director-txn-preview">
+                {state.transaction.preview.clipId ?? "—"}: {state.transaction.preview.beforeStartMs ?? "—"} →{" "}
+                {state.transaction.preview.afterStartMs ?? "—"}
+              </p>
+              {state.transaction.status === "draft" && session ? (
+                <div className="director-txn-actions">
+                  <button
+                    type="button"
+                    data-testid="director-txn-apply"
+                    onClick={() => {
+                      const result = applyHostApproved(state, session);
+                      commit(result.state);
+                      if (result.session !== session) onCanonicalCommit?.(result.session);
+                    }}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="director-txn-reject"
+                    onClick={() => commit(rejectHostTransaction(state))}
+                  >
+                    Reject
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <ol className="director-messages" data-testid="director-messages">
             {state.conversation.messages.map((msg) => (
               <li
