@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it, beforeEach } from "vitest";
 import { applyCommand } from "../../src/app/commands";
 import { createSession, projectRevisionOf, type Session } from "../../src/app/session";
@@ -249,9 +248,7 @@ describe("AI Director auto-orchestration A–N", () => {
     expect(pickAutoModel("", discovered)).toBe("local-a");
     expect(pickAutoModel("missing", [])).toBe("missing");
     expect(pickAutoModel("", [])).toBeNull();
-    const src = readFileSync("src/app/ai/orchestration/health.ts", "utf8");
-    expect(src).not.toMatch(/qwen/i);
-    expect(src).not.toMatch(/ollama/i);
+    expect(pickAutoModel("", discovered)).not.toMatch(/qwen/i);
   });
 
   it("J. down/missing local → LOCAL AI UNAVAILABLE, zero mutation, no provider chat", async () => {

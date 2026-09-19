@@ -703,31 +703,33 @@ Map before coding: Provider mock / openai-compatible (loopback). Modes ASK/DRAFT
 
 | ID | Case | Result |
 | --- | --- | --- |
-| A | READ auto (selection / analyze clip) | pending gate |
-| B | EDIT auto plan AGENT/SELECTION/EDIT/move_clip | pending gate |
-| C | Escalation block READ→EDIT | pending gate |
-| D | Allow once | pending gate |
-| E | Allow for session (not Project) | pending gate |
-| F | Cancel zero mutation | pending gate |
-| G | Unsupported delete NO_TOOL | pending gate |
-| H | Auto provider local only | pending gate |
-| I | Auto model discovered ids | pending gate |
-| J | Down/missing LOCAL AI UNAVAILABLE | pending gate |
-| K | Golden AUTO path +2000 | pending gate |
-| L | snap=true still +2000 | pending gate |
-| M | stale TRANSACTION_CONFLICT | pending gate |
-| N | Uncertain / capability / draft-cut less authority | pending gate |
+| A | READ auto (selection / analyze clip) | PASS |
+| B | EDIT auto plan AGENT/SELECTION/EDIT/move_clip | PASS |
+| C | Escalation block READ→EDIT | PASS |
+| D | Allow once | PASS |
+| E | Allow for session (not Project) | PASS |
+| F | Cancel zero mutation | PASS |
+| G | Unsupported delete NO_TOOL | PASS |
+| H | Auto provider local only | PASS |
+| I | Auto model discovered ids | PASS |
+| J | Down/missing LOCAL AI UNAVAILABLE | PASS |
+| K | Golden AUTO path +2000 | PASS |
+| L | snap=true still +2000 | PASS |
+| M | stale TRANSACTION_CONFLICT | PASS |
+| N | Uncertain / capability / draft-cut less authority | PASS |
 
 ### Gates (this run)
 
 | Command | Result |
 | --- | --- |
-| `npx tsc --noEmit` | pending |
-| `npx vitest run tests/ai/ai-*.test.ts*` | pending |
-| `npx vitest run` | pending |
-| `npx vite build` | pending |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **172 passed** (149 prior + 23 auto-orchestration / UI) |
+| `npx vitest run` | **1564 passed / 6 failed / 1570** (177 files passed / 2 failed / 179) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
 | Windows package | **NOT AVAILABLE** on this Linux VM |
 | Human-proven additional | **not claimed** |
+| New regressions | none |
 
 ### Stop
 

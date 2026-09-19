@@ -207,6 +207,11 @@ describe("AI Director auto-orchestration UI", () => {
     });
     expect(host!.querySelector('[data-testid="director"]')?.getAttribute("data-surface")).toBe("advanced");
     expect(host!.querySelector('[data-testid="director-config"]')?.hasAttribute("hidden")).toBe(false);
+    const providerSelect = host!.querySelector('[data-testid="director-provider-select"]') as HTMLSelectElement;
+    await act(async () => {
+      providerSelect.value = "openai-compatible";
+      providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     expect(host!.querySelector('[data-testid="director-base-url"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-model"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-api-key"]')).toBeTruthy();
