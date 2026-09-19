@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -20,10 +17,20 @@ const VIEWPORTS = [
   { name: "1366x768", width: 1366, height: 768 },
 ] as const;
 
-const stylesCss = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../../src/styles.css"),
-  "utf8",
-);
+function loadStylesCss(): string {
+  const proc = (globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }).process;
+  const fs = proc?.getBuiltinModule?.("node:fs") as
+    | { readFileSync(path: string, encoding: string): string }
+    | undefined;
+  const path = proc?.getBuiltinModule?.("node:path") as
+    | { join(...parts: string[]): string; dirname(p: string): string }
+    | undefined;
+  const url = proc?.getBuiltinModule?.("node:url") as { fileURLToPath(u: string): string } | undefined;
+  if (!fs || !path || !url) return "";
+  return fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "../../src/styles.css"), "utf8");
+}
+
+const stylesCss = loadStylesCss();
 
 function cssRule(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
