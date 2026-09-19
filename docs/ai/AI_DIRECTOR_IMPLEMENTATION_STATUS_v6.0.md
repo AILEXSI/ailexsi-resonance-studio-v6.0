@@ -657,3 +657,78 @@ First local chat after a model load can be **~32 s** (human `qwen2.5:7b`). Warm 
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Coordinator may merge to `ai/ai-director-foundation-v6` after Martin’s human gates.
+
+---
+
+## AI DIRECTOR AUTO-ORCHESTRATION
+
+**Branch:** `cursor/director-auto-orchestration-b277`  
+**Start HEAD:** `21323a86e942da08507917d4a0b4df8527086c78` (`ai/ai-director-foundation-v6`, PR #6 merged)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Deterministic Director plans intent → context → capability → provider → model, then invokes the existing pipeline. AUTO-ORCHESTRATION ≠ AUTO-AUTHORIZATION. Schema stays **5**. No AI-8. No new tools / delete / cloud / Voice / STT / Builder.
+
+### Phase 0 — verify & map (before this run)
+
+| Item | Evidence |
+| --- | --- |
+| HEAD BEFORE | `21323a86e942da08507917d4a0b4df8527086c78` = Merge pull request #6 |
+| PR #6 | MERGED into `ai/ai-director-foundation-v6` (local provider) |
+| PR #5 | MERGED (workspace UX) |
+| PR #2 | OPEN draft → `main`. Not merged. |
+| Schema | `PROJECT_SCHEMA_VERSION = 5` |
+| AI-8 | Not started |
+| Human-proven | Ollama + discovered `qwen2.5:7b` → `timeline.move_clip` +2000 exact Apply (prior). This run does **not** fake additional human proof. |
+
+Map before coding: Provider mock / openai-compatible (loopback). Modes ASK/DRAFT/AGENT. Grants READ/DRAFT/EDIT. Context NONE…CUSTOM (auto uses SELECTION or NONE only). Tools = six READ + `timeline.move_clip`. Txn draft/apply/reject + revision. Prefs URL/model/timeout only.
+
+### Hard laws
+
+- Director MAY auto-pick intent / context / mode / capability / provider / model.
+- MUST NOT silently escalate grants (READ→EDIT). LLM never asks for its own permissions; never self-grants.
+- ALLOW EDIT ≠ APPLY EDIT. Allow once = this request. Allow session = until restart, not Project. Cancel = zero mutation / history / revision.
+- Provider AUTO: configured available LOCAL only. No cloud fallback. Model AUTO from discovered ids (no vendor hardcode). Discovery cached. Down → LOCAL AI UNAVAILABLE + Retry / Advanced.
+- Unsupported delete → structured `NO_TOOL`. Do not invent `move_clip`. Do not broaden tools.
+
+### Files
+
+- `src/app/ai/orchestration/intent.ts` — known routes only
+- `src/app/ai/orchestration/plan.ts` — DirectorPlan (no execution)
+- `src/app/ai/orchestration/health.ts` — discovery cache + auto provider/model
+- `src/app/ai/host.ts` — `submitDirectorAutoTurn`, auth once/session/cancel, `effectiveGrant`
+- `src/ui/director/DirectorPanel.tsx` — Normal compact + Advanced + auth + unavailable
+- `tests/ai/ai-director-auto-orchestration.test.ts`
+- `tests/ai/ai-director-auto-orchestration-ui.test.tsx`
+
+### Tests A–N
+
+| ID | Case | Result |
+| --- | --- | --- |
+| A | READ auto (selection / analyze clip) | pending gate |
+| B | EDIT auto plan AGENT/SELECTION/EDIT/move_clip | pending gate |
+| C | Escalation block READ→EDIT | pending gate |
+| D | Allow once | pending gate |
+| E | Allow for session (not Project) | pending gate |
+| F | Cancel zero mutation | pending gate |
+| G | Unsupported delete NO_TOOL | pending gate |
+| H | Auto provider local only | pending gate |
+| I | Auto model discovered ids | pending gate |
+| J | Down/missing LOCAL AI UNAVAILABLE | pending gate |
+| K | Golden AUTO path +2000 | pending gate |
+| L | snap=true still +2000 | pending gate |
+| M | stale TRANSACTION_CONFLICT | pending gate |
+| N | Uncertain / capability / draft-cut less authority | pending gate |
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | pending |
+| `npx vitest run tests/ai/ai-*.test.ts*` | pending |
+| `npx vitest run` | pending |
+| `npx vite build` | pending |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| Human-proven additional | **not claimed** |
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to the foundation branch.

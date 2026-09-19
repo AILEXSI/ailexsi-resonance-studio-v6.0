@@ -31,14 +31,15 @@ import type {
 import { loadAiPrefs, saveAiPrefs, type DirectorAiPrefs } from "./providers/prefs";
 import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
-import type { Session } from "../session";
-import { DIRECTOR_MODES, GRANTS, type DirectorMode, type Grant } from "./permissions/policy";
+import { selectionOf, type Session } from "../session";
+import { DIRECTOR_MODES, GRANTS, grantExceeds, type DirectorMode, type Grant } from "./permissions/policy";
 import {
   applyCommandTransaction,
   rejectTransaction,
   type AITransaction,
 } from "./transactions/transaction";
 import { draftMoveClip, type MoveClipArgs } from "./tools/move-clip";
+import { invokeTool, listTools } from "./tools/registry";
 import {
   DIRECTOR_MUTATING_TOOL,
   DIRECTOR_RESPONSE_CONTRACT_PROMPT,
@@ -46,6 +47,14 @@ import {
   parseDirectorResponse,
   type DirectorToolRequest,
 } from "./contract";
+import {
+  clearDiscoveryCache,
+  pickAutoModel,
+  planDirectorTurn,
+  resolveAutoRuntime,
+  writeDiscoveryCache,
+  type DirectorPlan,
+} from "./orchestration";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -68,6 +77,19 @@ export interface DirectorConnectionProbe {
 
 export function idleConnectionProbe(): DirectorConnectionProbe {
   return { phase: "idle", label: "" };
+}
+
+export interface DirectorAuthRequest {
+  requiredGrant: Grant;
+  currentGrant: Grant;
+  reason: string;
+  userText: string;
+}
+
+export interface DirectorNoToolResult {
+  code: "NO_TOOL";
+  message: string;
+  requested?: string;
 }
 
 export interface DirectorHostState {
@@ -93,6 +115,15 @@ export interface DirectorHostState {
   /** Setup probe. Runtime only — not Project. */
   connectionProbe: DirectorConnectionProbe;
   discoveredModels: ProviderModel[];
+  /** Normal compact chrome vs Advanced manual controls. Runtime only. */
+  surface: "normal" | "advanced";
+  lastPlan: DirectorPlan | null;
+  pendingAuth: DirectorAuthRequest | null;
+  /** One-request grant. Not Project. Cleared after Apply/Reject. */
+  onceGrant: Grant | null;
+  heldUserText: string | null;
+  localUnavailable: boolean;
+  lastNoTool: DirectorNoToolResult | null;
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -117,7 +148,19 @@ export function createDirectorHostState(): DirectorHostState {
     lastGateMessage: null,
     connectionProbe: idleConnectionProbe(),
     discoveredModels: [],
+    surface: "normal",
+    lastPlan: null,
+    pendingAuth: null,
+    onceGrant: null,
+    heldUserText: null,
+    localUnavailable: false,
+    lastNoTool: null,
   };
+}
+
+/** Session grant, or Allow-once elevation for this request only. */
+export function effectiveGrant(state: DirectorHostState): Grant {
+  return state.onceGrant ?? state.grant;
 }
 
 export function applyGrant(state: DirectorHostState, grant: Grant): DirectorHostState {
@@ -146,7 +189,7 @@ export function applyHostApproved(
   const result = applyCommandTransaction({
     session,
     transaction: state.transaction,
-    grant: state.grant,
+    grant: effectiveGrant(state),
     mode: state.mode,
     approval: true,
   });
@@ -154,6 +197,7 @@ export function applyHostApproved(
     return {
       state: {
         ...state,
+        onceGrant: null,
         status: "error",
         statusLabel: `Error — ${result.code}`,
         transactionLabel: `Transaction: ${result.code}`,
@@ -173,6 +217,7 @@ export function applyHostApproved(
   return {
     state: {
       ...applyHostTransaction(state, result.transaction),
+      onceGrant: null,
       lastGateCode: null,
       lastGateMessage: null,
       conversation: appendDirectorMessage(
@@ -190,6 +235,7 @@ export function rejectHostTransaction(state: DirectorHostState): DirectorHostSta
   const rejected = applyHostTransaction(state, rejectTransaction(state.transaction));
   return {
     ...rejected,
+    onceGrant: null,
     lastGateCode: null,
     lastGateMessage: null,
     conversation: appendDirectorMessage(
@@ -200,7 +246,7 @@ export function rejectHostTransaction(state: DirectorHostState): DirectorHostSta
   };
 }
 
-export { DIRECTOR_MODES, GRANTS };
+export { DIRECTOR_MODES, GRANTS, grantExceeds };
 
 export function applyContextLevel(state: DirectorHostState, level: ContextLevel): DirectorHostState {
   return { ...state, contextLevel: level, contextLabel: `Context: ${level}` };
@@ -340,6 +386,14 @@ export async function finishDirectorConnectionTest(state: DirectorHostState): Pr
   });
   const result = await provider.testConnection();
   const models = result.models ?? state.discoveredModels;
+  if (state.localConfig.baseUrl.trim()) {
+    writeDiscoveryCache({
+      baseUrl: state.localConfig.baseUrl,
+      available: result.ok,
+      models,
+      model: result.model ?? state.localConfig.model,
+    });
+  }
   if (result.ok) {
     const label = formatConnectionSuccess(result);
     return {
@@ -348,6 +402,7 @@ export async function finishDirectorConnectionTest(state: DirectorHostState): Pr
       statusLabel: label,
       providerLabel: providerLabelOf("openai-compatible"),
       discoveredModels: models,
+      localUnavailable: false,
       connectionProbe: {
         phase: "connected",
         label,
@@ -366,6 +421,7 @@ export async function finishDirectorConnectionTest(state: DirectorHostState): Pr
     status: local === "unavailable" ? "unavailable" : "error",
     statusLabel: label,
     discoveredModels: models,
+    localUnavailable: true,
     connectionProbe: {
       phase: "failed",
       label,
@@ -590,7 +646,7 @@ function draftFromToolRequest(
   const drafted = draftMoveClip({
     session,
     args: asMoveClipArgs(toolRequest.arguments),
-    grant: state.grant,
+    grant: effectiveGrant(state),
     mode: state.mode,
   });
   if (!drafted.ok) {
@@ -706,3 +762,222 @@ export async function submitDirectorProviderTurn(
   next = draftFromToolRequest(next, session, parsed.toolRequest);
   return next;
 }
+
+export function applyDirectorSurface(
+  state: DirectorHostState,
+  surface: "normal" | "advanced",
+): DirectorHostState {
+  return { ...state, surface };
+}
+
+export function applyOrchestrationPlan(state: DirectorHostState, plan: DirectorPlan): DirectorHostState {
+  if (state.surface === "advanced") {
+    return { ...state, lastPlan: plan, lastNoTool: null, localUnavailable: false };
+  }
+  return {
+    ...applyContextLevel(applyMode(state, plan.mode), plan.contextLevel),
+    lastPlan: plan,
+    lastNoTool: null,
+    localUnavailable: false,
+  };
+}
+
+export function allowDirectorGrantOnce(state: DirectorHostState): DirectorHostState {
+  if (!state.pendingAuth) return state;
+  return {
+    ...state,
+    onceGrant: state.pendingAuth.requiredGrant,
+    pendingAuth: null,
+  };
+}
+
+export function allowDirectorGrantSession(state: DirectorHostState): DirectorHostState {
+  if (!state.pendingAuth) return state;
+  return {
+    ...state,
+    grant: state.pendingAuth.requiredGrant,
+    onceGrant: null,
+    pendingAuth: null,
+  };
+}
+
+export function cancelDirectorAuth(state: DirectorHostState): DirectorHostState {
+  if (!state.pendingAuth) return state;
+  return {
+    ...state,
+    pendingAuth: null,
+    heldUserText: null,
+  };
+}
+
+export function normalStatusLabel(state: DirectorHostState): string {
+  if (state.localUnavailable || state.statusLabel === "LOCAL AI UNAVAILABLE") {
+    return "LOCAL AI UNAVAILABLE";
+  }
+  if (
+    state.providerId === "openai-compatible" &&
+    (state.status === "connected" || state.connectionProbe.phase === "connected")
+  ) {
+    return `Local AI ready · ${state.localConfig.model || "local"}`;
+  }
+  return state.statusLabel;
+}
+
+function formatToolPayload(result: unknown): string {
+  return JSON.stringify(result);
+}
+
+function capabilityReply(): string {
+  const reads = listTools().map((t) => t.name).join(", ");
+  return [
+    `Director can: ${reads}.`,
+    `The only mutating tool is ${DIRECTOR_MUTATING_TOOL} (preview, then Apply).`,
+    "No delete, cut, export, cloud, Voice, or STT.",
+    "No project changes were made.",
+  ].join(" ");
+}
+
+function appendTurn(
+  state: DirectorHostState,
+  userText: string,
+  assistantText: string,
+  extra: Partial<DirectorHostState> = {},
+): DirectorHostState {
+  const withUser = {
+    ...state,
+    conversation: appendDirectorMessage(state.conversation, "user", userText),
+  };
+  return {
+    ...withUser,
+    ...extra,
+    conversation: appendDirectorMessage(withUser.conversation, "assistant", assistantText),
+  };
+}
+
+function runReadPlan(
+  state: DirectorHostState,
+  plan: DirectorPlan,
+  userText: string,
+  session: Session | undefined,
+): DirectorHostState {
+  const prepared = attachSubmitSnapshot(applyOrchestrationPlan(state, plan), session);
+  const grant = effectiveGrant(prepared);
+  if (!session) {
+    return appendTurn(prepared, userText, "Denied: no project session is available. No project changes were made.");
+  }
+  if (plan.toolName === "timeline.get_selection") {
+    const result = invokeTool("timeline.get_selection", {}, { session, grant });
+    return appendTurn(prepared, userText, formatToolPayload(result));
+  }
+  const selected = selectionOf(session);
+  const clipId = selected.length === 1 ? selected[0] : undefined;
+  if (!clipId) {
+    return appendTurn(prepared, userText, "No clip selected. No project changes were made.");
+  }
+  const clipResult = invokeTool("timeline.get_clip", { clipId }, { session, grant });
+  const analysis = invokeTool("audio.get_analysis", { clipId }, { session, grant });
+  return appendTurn(prepared, userText, formatToolPayload({ clip: clipResult, analysis }));
+}
+
+/**
+ * AUTO-ORCHESTRATION ≠ AUTO-AUTHORIZATION.
+ * Plans intent/context/mode/capability/provider/model, then invokes the existing pipeline.
+ * Never silently escalates grants. Never self-grants. Allow EDIT ≠ Apply EDIT.
+ */
+export async function submitDirectorAutoTurn(
+  state: DirectorHostState,
+  userText: string,
+  runtime: { provider: AIProvider; orchestrator: Orchestrator },
+  signal?: AbortSignal,
+  session?: Session,
+  opts?: { providerInjected?: boolean },
+): Promise<DirectorHostState> {
+  const text = userText.trim();
+  if (!text) return state;
+  const plan = planDirectorTurn(text);
+  const current = effectiveGrant(state);
+  if (grantExceeds(plan.requiredGrant, current)) {
+    return {
+      ...state,
+      lastPlan: plan,
+      heldUserText: text,
+      pendingAuth: {
+        requiredGrant: plan.requiredGrant,
+        currentGrant: state.grant,
+        reason: plan.intent.reason,
+        userText: text,
+      },
+    };
+  }
+
+  const resolved = resolveAutoRuntime({
+    surface: state.surface,
+    providerId: state.providerId,
+    localConfig: state.localConfig,
+    discoveredModels: state.discoveredModels,
+    probePhase: state.connectionProbe.phase,
+  });
+  if (resolved.unavailable && !opts?.providerInjected) {
+    return {
+      ...state,
+      lastPlan: plan,
+      localUnavailable: true,
+      status: "unavailable",
+      statusLabel: "LOCAL AI UNAVAILABLE",
+    };
+  }
+
+  let next = applyOrchestrationPlan(state, plan);
+  if (!opts?.providerInjected && resolved.providerId === "openai-compatible") {
+    const model = pickAutoModel(resolved.model, next.discoveredModels) ?? resolved.model;
+    if (model && model !== next.localConfig.model) {
+      next = applyLocalConfig(next, { model });
+    }
+    if (next.providerId !== "openai-compatible") {
+      next = applyProviderId(next, "openai-compatible");
+    }
+  }
+
+  if (plan.intent.kind === "UNSUPPORTED") {
+    const lastNoTool: DirectorNoToolResult = {
+      code: "NO_TOOL",
+      message: "No tool is available for this request. Director will not invent timeline.move_clip.",
+      requested: text,
+    };
+    return appendTurn(next, text, `${lastNoTool.code}: ${lastNoTool.message}`, { lastNoTool });
+  }
+  if (plan.intent.kind === "ASK_CAPABILITY") {
+    return appendTurn(next, text, capabilityReply());
+  }
+  if (plan.intent.kind === "DRAFT_CUT") {
+    return appendTurn(
+      next,
+      text,
+      "Draft only: cutting is not available as a tool. No project changes were made.",
+    );
+  }
+  if (plan.providerAction === "read-tool") {
+    return runReadPlan(state, plan, text, session);
+  }
+
+  const provider = opts?.providerInjected ? runtime.provider : providerForHost(next);
+  return submitDirectorProviderTurn(
+    next,
+    text,
+    { provider, orchestrator: runtime.orchestrator },
+    signal,
+    session,
+  );
+}
+
+export async function retryDirectorLocalHealth(state: DirectorHostState): Promise<DirectorHostState> {
+  clearDiscoveryCache();
+  if (state.providerId !== "openai-compatible") {
+    return { ...state, localUnavailable: false };
+  }
+  const testing = beginDirectorConnectionTest({ ...state, localUnavailable: false });
+  return finishDirectorConnectionTest(testing);
+}
+
+export { clearDiscoveryCache, planDirectorTurn, pickAutoModel, resolveAutoRuntime };
+

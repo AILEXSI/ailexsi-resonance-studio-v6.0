@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
+  allowDirectorGrantOnce,
+  allowDirectorGrantSession,
   applyContextLevel,
+  applyDirectorSurface,
   applyGrant,
   applyHostApproved,
   applyLocalConfig,
   applyMode,
   applyProviderId,
+  cancelDirectorAuth,
   createDirectorRuntime,
   DIRECTOR_MODES,
   GRANTS,
@@ -13,12 +17,14 @@ import {
   persistDirectorHostPrefs,
   providerForHost,
   rejectHostTransaction,
+  retryDirectorLocalHealth,
   setDirectorPanelOpen,
-  submitDirectorProviderTurn,
+  submitDirectorAutoTurn,
   beginDirectorConnectionTest,
   finishDirectorConnectionTest,
   discoverDirectorModels,
   findLocalAiEndpoints,
+  normalStatusLabel,
   type DirectorHostState,
 } from "../../app/ai/host";
 import {
@@ -133,7 +139,9 @@ export function DirectorPanel({
       orchestrator: runtimeRef.current.orchestrator,
     };
     void (async () => {
-      const next = await submitDirectorProviderTurn(current, text, runtime, ctl.signal, session);
+      const next = await submitDirectorAutoTurn(current, text, runtime, ctl.signal, session, {
+        providerInjected: Boolean(provider),
+      });
       if (ctl.signal.aborted || abortRef.current !== ctl) return;
       const live = sessionRef.current;
       if (next.transaction && live && next.transaction.projectId !== live.project.id) {
@@ -165,6 +173,28 @@ export function DirectorPanel({
     }
   };
 
+  const continueHeld = (next: DirectorHostState) => {
+    const text = next.heldUserText?.trim();
+    if (!text) {
+      commit(next);
+      return;
+    }
+    abortRef.current?.abort();
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    const runtime = {
+      provider: provider ?? providerForHost(next),
+      orchestrator: runtimeRef.current.orchestrator,
+    };
+    void (async () => {
+      const resolved = await submitDirectorAutoTurn(next, text, runtime, ctl.signal, session, {
+        providerInjected: Boolean(provider),
+      });
+      if (ctl.signal.aborted || abortRef.current !== ctl) return;
+      commit({ ...resolved, heldUserText: null });
+    })();
+  };
+
   const txn = state.transaction;
   const conflict =
     state.lastGateCode === "TRANSACTION_CONFLICT" ||
@@ -173,7 +203,12 @@ export function DirectorPanel({
   const pendingDraft = txn?.status === "draft";
 
   return (
-    <section className="director" data-testid="director" data-focus={focusMode ? "true" : "false"}>
+    <section
+      className="director"
+      data-testid="director"
+      data-focus={focusMode ? "true" : "false"}
+      data-surface={state.surface}
+    >
       <header className="director-head">
         <h2>Director</h2>
         <div className="director-head-actions">
@@ -210,6 +245,86 @@ export function DirectorPanel({
       {state.panelOpen ? (
         <div id="director-body" className="director-body" data-testid="director-body">
           <div className="director-chrome" data-testid="director-chrome">
+            <div className="director-normal" data-testid="director-normal">
+              <p className="director-normal-status" data-testid="director-normal-status">
+                {normalStatusLabel(state)}
+              </p>
+              <button
+                type="button"
+                data-testid="director-advanced-toggle"
+                aria-expanded={state.surface === "advanced"}
+                onClick={() =>
+                  commit(applyDirectorSurface(state, state.surface === "advanced" ? "normal" : "advanced"))
+                }
+              >
+                {state.surface === "advanced" ? "Normal" : "Advanced"}
+              </button>
+            </div>
+            {state.localUnavailable ? (
+              <div
+                className="director-unavailable"
+                data-testid="director-local-unavailable"
+                role="alert"
+              >
+                <p data-testid="director-unavailable-title">LOCAL AI UNAVAILABLE</p>
+                <p>No cloud fallback. No project changes were made.</p>
+                <div className="director-unavailable-actions">
+                  <button
+                    type="button"
+                    data-testid="director-retry"
+                    onClick={() => {
+                      const gen = ++probeGenRef.current;
+                      void retryDirectorLocalHealth(state).then((next) => {
+                        if (probeGenRef.current === gen) {
+                          persistDirectorHostPrefs(next);
+                          commit(next);
+                        }
+                      });
+                    }}
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="director-open-advanced"
+                    onClick={() => commit(applyDirectorSurface(state, "advanced"))}
+                  >
+                    Advanced
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {state.pendingAuth ? (
+              <div className="director-auth" data-testid="director-auth" role="dialog">
+                <p data-testid="director-auth-reason">
+                  Director needs {state.pendingAuth.requiredGrant}. Current grant is{" "}
+                  {state.pendingAuth.currentGrant}. Allow EDIT is not Apply.
+                </p>
+                <div className="director-auth-actions">
+                  <button
+                    type="button"
+                    data-testid="director-auth-allow-once"
+                    onClick={() => continueHeld(allowDirectorGrantOnce(state))}
+                  >
+                    Allow once
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="director-auth-allow-session"
+                    onClick={() => continueHeld(allowDirectorGrantSession(state))}
+                  >
+                    Allow for session
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="director-auth-cancel"
+                    onClick={() => commit(cancelDirectorAuth(state))}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <dl className="director-meta">
               <div>
                 <dt>Status</dt>
@@ -238,7 +353,12 @@ export function DirectorPanel({
                 <dd data-testid="director-transaction">{state.transactionLabel}</dd>
               </div>
             </dl>
-            <div className="director-config" data-testid="director-config">
+            <div
+              className="director-config"
+              data-testid="director-config"
+              data-advanced={state.surface === "advanced" ? "true" : "false"}
+              hidden={state.surface !== "advanced"}
+            >
               <label htmlFor="director-provider-select">Provider</label>
               <select
                 id="director-provider-select"
