@@ -15,8 +15,8 @@ const MAX = 200;
 function redact(text: string): string {
   return text
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(/apiKey["']?\s*[:=]\s*["'][^"']+/gi, "apiKey:[redacted]")
-    .replace(/sourcePath["']?\s*[:=]\s*["'][^"']+/gi, "sourcePath:[redacted]")
+    .replace(/apiKey["']?\s*[:=]\s*["']?[^"'\s]+/gi, "apiKey:[redacted]")
+    .replace(/sourcePath["']?\s*[:=]\s*["']?[^"'\s]+/gi, "sourcePath:[redacted]")
     .replace(/blob:[^\s"]+/gi, "blob:[redacted]");
 }
 

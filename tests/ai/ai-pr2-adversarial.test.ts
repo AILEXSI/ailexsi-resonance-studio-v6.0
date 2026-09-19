@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCommand } from "../../src/app/commands";
 import {
@@ -21,7 +19,6 @@ import {
 } from "../../src/app/ai/tools/move-clip";
 import {
   applyCommandTransaction,
-  draftCommandTransaction,
   rejectTransaction,
   type AITransaction,
 } from "../../src/app/ai/transactions/transaction";
@@ -87,15 +84,11 @@ function startOf(session: Session, clipId = CLIP_ID): number {
   return session.project.clips.find((c) => c.id === clipId)!.startMs;
 }
 
-function walkAiSources(dir = "src/app/ai"): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) out.push(...walkAiSources(path));
-    else if (path.endsWith(".ts") || path.endsWith(".tsx")) out.push(path);
-  }
-  return out;
-}
+const aiSources = import.meta.glob("../../src/app/ai/**/*.{ts,tsx}", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>;
 
 describe("PR #2 adversarial review", () => {
   it("0 start state: schema 5, revision 0, one mutation one revision", () => {
@@ -424,9 +417,21 @@ describe("PR #2 adversarial review", () => {
     const hanging = createOpenAICompatibleProvider({
       baseUrl: "http://127.0.0.1:9/v1",
       model: "m",
-      timeoutMs: 30,
-      fetchImpl: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      timeoutMs: 5_000,
+      fetchImpl: async (_input, init) => {
+        const signal = init?.signal;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 5_000);
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          };
+          if (signal?.aborted) {
+            onAbort();
+            return;
+          }
+          signal?.addEventListener("abort", onAbort, { once: true });
+        });
         return new Response("{}", { status: 200 });
       },
     });
@@ -474,8 +479,7 @@ describe("PR #2 adversarial review", () => {
     const storage = new Map<string, string>();
     saveAiPrefs(
       {
-        getItem: (k) => storage.get(k) ?? null,
-        setItem: (k, v) => storage.set(k, v),
+        setItem: (k: string, v: string) => storage.set(k, v),
       },
       { providerId: "openai-compatible", baseUrl: "http://127.0.0.1:11434/v1", model: "m" },
     );
@@ -603,15 +607,14 @@ describe("PR #2 adversarial review", () => {
   });
 
   it("21/22/23 no direct AI project writes, no second engine, frame-engine/exporter untouched", () => {
-    const sources = walkAiSources();
-    expect(sources.length).toBeGreaterThan(5);
-    for (const file of sources) {
-      const text = readFileSync(file, "utf8");
+    const files = Object.entries(aiSources);
+    expect(files.length).toBeGreaterThan(5);
+    for (const [file, text] of files) {
       expect(text, file).not.toMatch(/session\.project\.clips\s*=/);
       expect(text, file).not.toMatch(/AIProject|AICommandBus/);
       expect(text, file).not.toMatch(/frame-engine|src\/core\/exporter/);
     }
-    const host = readFileSync("src/app/ai/host.ts", "utf8");
+    const host = files.find(([file]) => file.endsWith("host.ts"))?.[1] ?? "";
     expect(host).toContain("applyCommandTransaction");
     expect(host).not.toContain("applyMove(");
     expect(host).not.toContain("nudgeClip");

@@ -335,6 +335,7 @@ Do not “fix” AFE / exporter / mux / AUDIO-02. `src/core/frame-engine/**` and
 | ADV-5 | **Medium** — local provider SSRF | `OpenAICompatibleProvider` fetched any `baseUrl`, including `https://api.openai.com`. | `isAllowedLocalProviderUrl` allow-list: `localhost`, `127.0.0.1`, `::1` only. Non-loopback throws `PROVIDER_UNAVAILABLE` before `fetch`. Does not rewrite to cloud. | case 15 |
 | ADV-6 | **Low** — stale UI commit | `DirectorPanel` committed an aborted turn’s host state after a newer submit. | Ignore result when `ctl.signal.aborted` or `abortRef.current !== ctl`. | host/orchestrator stale cases in 12 + panel guard |
 | ADV-7 | **Low** — ambiguous selection | `selectedClipId` vs `selectedClipIds[0]` disagreement resolved silently to the list. | `AMBIGUOUS_SELECTION` when both are set and disagree. | case 8 |
+| ADV-8 | **Low** — audit leak | `recordAudit` redacted `apiKey:"…"` but left `apiKey=x` / unquoted forms. | Redact unquoted `apiKey=` / `sourcePath=` values. | case 14 |
 
 ### Proven already closed (no code change)
 
