@@ -15,7 +15,7 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-4** (gate recording) |
+| Highest gate | **AI-5** (gate recording) |
 | Schema | **5** (unchanged) |
 | Mutation path | none |
 | Second engine | none |
@@ -142,7 +142,37 @@ AI-4 — immutable context snapshots.
 
 ---
 
-## AI-4 … AI-7
+## AI-4 — Context snapshots
+
+| Field | Value |
+| --- | --- |
+| Status | SHIPPED (pending full-suite record) |
+| Commit | `feat(ai): add context snapshots` |
+| Intent | Immutable `AIContextSnapshot` captured on intentional submit. Playhead cache is local only. |
+
+### Files
+
+- `src/app/ai/context/types.ts`
+- `src/app/ai/context/snapshot.ts`
+- `src/app/ai/host.ts` / `src/ui/director/DirectorPanel.tsx` / `src/app/App.tsx` (read-only session for capture)
+- `tests/ai/ai-4-context.test.ts`
+
+### Tests
+
+Snapshots, stable ids, no sourcePath/objectUrl/raw media, immutability, SEND_RAW_MEDIA forbidden, Project unchanged, playhead cache does not fetch.
+
+### Limitations
+
+- Snapshot is not persisted in schema 5.
+- SEND_ANALYSIS is a clip+time hint only (no PCM/spectrum).
+
+### Next gate
+
+AI-5 — read-only in-process tool registry.
+
+---
+
+## AI-5 … AI-7
 
 Not started.
 
