@@ -223,6 +223,7 @@ describe("AI Director workspace presentation", () => {
     );
     expect(host!.querySelector('[data-testid="director-diagnostics-compact"]')?.textContent).toMatch(/Mode/);
     expect(host!.querySelector('[data-testid="director-meta"]')?.hasAttribute("hidden")).toBe(true);
+    expect(host!.querySelector('[data-testid="director-config"]')?.hasAttribute("hidden")).toBe(true);
     expect(host!.querySelector('[data-testid="director-status"]')).toBeTruthy();
     await click("director-diagnostics-toggle");
     expect(host!.querySelector('[data-testid="director-chrome"]')?.getAttribute("data-diagnostics-collapsed")).toBe(
