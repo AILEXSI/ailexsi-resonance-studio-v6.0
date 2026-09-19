@@ -17,7 +17,8 @@ import {
   statusLabel,
   type OpenAICompatibleConfig,
 } from "./providers/openai-compatible";
-import type { AIProvider, ProviderId } from "./providers/types";
+import type { AIProvider, ChatMessage, ProviderId } from "./providers/types";
+import { loadAiPrefs, saveAiPrefs, type DirectorAiPrefs } from "./providers/prefs";
 import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
 import type { Session } from "../session";
@@ -27,7 +28,14 @@ import {
   rejectTransaction,
   type AITransaction,
 } from "./transactions/transaction";
-import { draftMoveClip, parseGoldenMovePrompt } from "./tools/move-clip";
+import { draftMoveClip, type MoveClipArgs } from "./tools/move-clip";
+import {
+  DIRECTOR_MUTATING_TOOL,
+  DIRECTOR_RESPONSE_CONTRACT_PROMPT,
+  isKnownMutatingTool,
+  parseDirectorResponse,
+  type DirectorToolRequest,
+} from "./contract";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -62,7 +70,7 @@ export function createDirectorHostState(): DirectorHostState {
     panelOpen: true,
     status: "offline",
     statusLabel: "Offline — mock conversation",
-    providerLabel: "Provider: mock",
+    providerLabel: providerLabelOf("mock"),
     contextLabel: "Context: NONE",
     transactionLabel: "Transaction: —",
     providerId: "mock",
@@ -114,19 +122,39 @@ export function applyHostApproved(
         status: "error",
         statusLabel: `Error — ${result.code}`,
         transactionLabel: `Transaction: ${result.code}`,
+        conversation: appendDirectorMessage(
+          state.conversation,
+          "assistant",
+          `${result.code}: ${result.message}. Manual edit is intact. No project changes were made.`,
+        ),
       },
       session,
     };
   }
   return {
-    state: applyHostTransaction(state, result.transaction),
+    state: {
+      ...applyHostTransaction(state, result.transaction),
+      conversation: appendDirectorMessage(
+        state.conversation,
+        "assistant",
+        `Applied ${result.transaction.toolName}.`,
+      ),
+    },
     session: result.session,
   };
 }
 
 export function rejectHostTransaction(state: DirectorHostState): DirectorHostState {
   if (!state.transaction) return state;
-  return applyHostTransaction(state, rejectTransaction(state.transaction));
+  const rejected = applyHostTransaction(state, rejectTransaction(state.transaction));
+  return {
+    ...rejected,
+    conversation: appendDirectorMessage(
+      rejected.conversation,
+      "assistant",
+      "Rejected. No project changes were made.",
+    ),
+  };
 }
 
 export { DIRECTOR_MODES, GRANTS };
@@ -140,6 +168,12 @@ export function providerForHost(state: DirectorHostState): AIProvider {
     return createOpenAICompatibleProvider(state.localConfig);
   }
   return createMockProvider();
+}
+
+export function providerLabelOf(providerId: ProviderId): string {
+  return providerId === "openai-compatible"
+    ? "Provider: local-openai-compatible"
+    : "Provider: mock (offline, not an LLM)";
 }
 
 export function applyLocalConfig(
@@ -157,8 +191,7 @@ export function applyLocalConfig(
       state.providerId === "openai-compatible"
         ? statusLabel(connectionStatusOf(localConfig, null))
         : state.statusLabel,
-    providerLabel:
-      state.providerId === "openai-compatible" ? "Provider: openai-compatible" : "Provider: mock",
+    providerLabel: providerLabelOf(state.providerId),
   };
 }
 
@@ -167,9 +200,9 @@ export function applyProviderId(state: DirectorHostState, providerId: ProviderId
     return {
       ...state,
       providerId,
-      status: "not-configured",
+      status: isConfigured(state.localConfig) ? state.status : "not-configured",
       statusLabel: statusLabel(connectionStatusOf(state.localConfig, null)),
-      providerLabel: "Provider: openai-compatible",
+      providerLabel: providerLabelOf("openai-compatible"),
     };
   }
   return {
@@ -177,8 +210,45 @@ export function applyProviderId(state: DirectorHostState, providerId: ProviderId
     providerId: "mock",
     status: "offline",
     statusLabel: "Offline — mock conversation",
-    providerLabel: "Provider: mock",
+    providerLabel: providerLabelOf("mock"),
   };
+}
+
+function browserPrefsStorage(): {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+} | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Application prefs only. Never Project / schema / apiKey. */
+export function persistDirectorHostPrefs(
+  state: DirectorHostState,
+  storage: { setItem(key: string, value: string): void } | null = browserPrefsStorage(),
+): void {
+  const prefs: DirectorAiPrefs = {
+    providerId: state.providerId === "openai-compatible" ? "openai-compatible" : "mock",
+    baseUrl: state.localConfig.baseUrl,
+    model: state.localConfig.model,
+  };
+  saveAiPrefs(storage, prefs);
+}
+
+/** Hydrate provider URL/model. Does not test connection or fetch. */
+export function hydrateDirectorHostFromPrefs(
+  storage: { getItem(key: string): string | null } | null = browserPrefsStorage(),
+  base: DirectorHostState = createDirectorHostState(),
+): DirectorHostState {
+  const prefs = loadAiPrefs(storage);
+  return applyLocalConfig(applyProviderId(base, prefs.providerId), {
+    baseUrl: prefs.baseUrl,
+    model: prefs.model,
+  });
 }
 
 export async function testDirectorConnection(state: DirectorHostState): Promise<DirectorHostState> {
@@ -196,6 +266,7 @@ export async function testDirectorConnection(state: DirectorHostState): Promise<
       ...connecting,
       status: "connected",
       statusLabel: statusLabel("connected"),
+      providerLabel: providerLabelOf("openai-compatible"),
     };
   }
   const code = result.error?.code;
@@ -256,9 +327,121 @@ export function createDirectorRuntime(provider?: AIProvider, state?: DirectorHos
   };
 }
 
+export function buildProviderMessages(state: DirectorHostState): ChatMessage[] {
+  const messages: ChatMessage[] = [{ role: "system", content: DIRECTOR_RESPONSE_CONTRACT_PROMPT }];
+  if (state.lastSnapshot && state.contextLevel !== "NONE") {
+    messages.push({
+      role: "system",
+      content: JSON.stringify({
+        projectId: state.lastSnapshot.projectId,
+        selection: state.lastSnapshot.selection,
+        structure: state.lastSnapshot.structure,
+        playheadMs: state.lastSnapshot.playheadMs,
+        level: state.lastSnapshot.level,
+      }),
+    });
+  }
+  for (const message of state.conversation.messages) {
+    messages.push({ role: message.role, content: message.text });
+  }
+  return messages;
+}
+
+function asMoveClipArgs(args: Record<string, unknown>): MoveClipArgs {
+  return {
+    clipId: typeof args.clipId === "string" ? args.clipId : undefined,
+    deltaMs: typeof args.deltaMs === "number" ? args.deltaMs : undefined,
+    targetStartSeconds: typeof args.targetStartSeconds === "number" ? args.targetStartSeconds : undefined,
+  };
+}
+
+function explainToolDenial(opts: {
+  code: string;
+  detail: string;
+  grant: Grant;
+  mode: DirectorMode;
+  contextLevel: ContextLevel;
+}): string {
+  if (opts.code === "GRANT_DENIED" || opts.code === "INVALID_GRANT") {
+    return `Denied: Mode ${opts.mode} + Grant ${opts.grant} cannot draft ${DIRECTOR_MUTATING_TOOL}. Set Mode AGENT and Grant EDIT. No project changes were made.`;
+  }
+  if (opts.detail === "No clip selected" || opts.detail === "AMBIGUOUS_SELECTION") {
+    return `Denied: a single selected clip is required. ${opts.detail}. No project changes were made.`;
+  }
+  return `Move draft denied: ${opts.detail}. No project changes were made.`;
+}
+
+function applyAssistantStatus(state: DirectorHostState, previous: DirectorHostState): DirectorHostState {
+  if (previous.providerId === "openai-compatible") {
+    return {
+      ...state,
+      status: "connected",
+      statusLabel: statusLabel("connected"),
+      providerLabel: providerLabelOf("openai-compatible"),
+    };
+  }
+  return {
+    ...state,
+    status: "offline",
+    statusLabel: "Offline — mock conversation",
+    providerLabel: providerLabelOf("mock"),
+  };
+}
+
+function draftFromToolRequest(
+  state: DirectorHostState,
+  session: Session,
+  toolRequest: DirectorToolRequest,
+): DirectorHostState {
+  if (!isKnownMutatingTool(toolRequest.name)) {
+    return {
+      ...state,
+      conversation: appendDirectorMessage(
+        state.conversation,
+        "assistant",
+        `Unknown tool '${toolRequest.name}'. No project changes were made.`,
+      ),
+    };
+  }
+  if (state.contextLevel === "NONE") {
+    return {
+      ...state,
+      conversation: appendDirectorMessage(
+        state.conversation,
+        "assistant",
+        "Denied: Context SELECTION is required to move a clip. No project changes were made.",
+      ),
+    };
+  }
+  const drafted = draftMoveClip({
+    session,
+    args: asMoveClipArgs(toolRequest.arguments),
+    grant: state.grant,
+    mode: state.mode,
+  });
+  if (!drafted.ok) {
+    return {
+      ...state,
+      transactionLabel: `Transaction: ${drafted.code}`,
+      conversation: appendDirectorMessage(
+        state.conversation,
+        "assistant",
+        explainToolDenial({
+          code: drafted.code,
+          detail: drafted.message,
+          grant: state.grant,
+          mode: state.mode,
+          contextLevel: state.contextLevel,
+        }),
+      ),
+    };
+  }
+  return applyHostTransaction(state, drafted.transaction);
+}
+
 /**
- * Director → abstraction → provider. Appends the user line first; only applies
- * the assistant line when the outcome is current (not stale).
+ * Director → provider → structured parse → optional draft.
+ * Free-form text never mutates. Tool request alone never applies.
  */
 export async function submitDirectorProviderTurn(
   state: DirectorHostState,
@@ -269,39 +452,23 @@ export async function submitDirectorProviderTurn(
 ): Promise<DirectorHostState> {
   const text = userText.trim();
   if (!text) return state;
+  const boundProjectId = session?.project.id ?? null;
   const base = attachSubmitSnapshot(state, session);
-  let withUser: DirectorHostState = {
-    ...base,
-    conversation: appendDirectorMessage(base.conversation, "user", text),
-    status: "connecting",
-    statusLabel: "Sending…",
-  };
-  if (session && parseGoldenMovePrompt(text)) {
-    const drafted = draftMoveClip({
-      session,
-      args: { deltaMs: 2000 },
-      grant: state.grant,
-      mode: state.mode,
-    });
-    if (drafted.ok) {
-      withUser = applyHostTransaction(withUser, drafted.transaction);
-    } else {
-      withUser = {
-        ...withUser,
-        transactionLabel: `Transaction: ${drafted.code}`,
-        conversation: appendDirectorMessage(
-          withUser.conversation,
-          "assistant",
-          `Move draft denied: ${drafted.message}. No project changes were made.`,
-        ),
-      };
-    }
-  }
-  const messages = withUser.conversation.messages.map((m) => ({
-    role: m.role,
-    content: m.text,
-  }));
-  const outcome = await orchestrateChat(runtime.provider, messages, runtime.orchestrator, signal);
+  const withUser: DirectorHostState = applyHostTransaction(
+    {
+      ...base,
+      conversation: appendDirectorMessage(base.conversation, "user", text),
+      status: "connecting",
+      statusLabel: "Sending…",
+    },
+    null,
+  );
+  const outcome = await orchestrateChat(
+    runtime.provider,
+    buildProviderMessages(withUser),
+    runtime.orchestrator,
+    signal,
+  );
   if (outcome.kind === "stale") return withUser;
   if (outcome.kind === "error") {
     return {
@@ -315,13 +482,49 @@ export async function submitDirectorProviderTurn(
       ),
     };
   }
-  return {
-    ...withUser,
-    status: state.providerId === "openai-compatible" ? "connected" : "offline",
-    statusLabel:
-      state.providerId === "openai-compatible"
-        ? statusLabel("connected")
-        : "Offline — mock conversation",
-    conversation: appendDirectorMessage(withUser.conversation, "assistant", outcome.response.text),
-  };
+  if (signal?.aborted) return withUser;
+  if (boundProjectId && session && session.project.id !== boundProjectId) {
+    return {
+      ...withUser,
+      conversation: appendDirectorMessage(
+        withUser.conversation,
+        "assistant",
+        "Ignored late reply after project switch. No project changes were made.",
+      ),
+    };
+  }
+  const parsed = parseDirectorResponse(outcome.response.text);
+  if (!parsed.ok) {
+    return applyAssistantStatus(
+      {
+        ...withUser,
+        conversation: appendDirectorMessage(
+          withUser.conversation,
+          "assistant",
+          `Invalid provider response: ${parsed.message}. No project changes were made.`,
+        ),
+      },
+      state,
+    );
+  }
+  let next = applyAssistantStatus(
+    {
+      ...withUser,
+      conversation: appendDirectorMessage(withUser.conversation, "assistant", parsed.message),
+    },
+    state,
+  );
+  if (!parsed.toolRequest) return next;
+  if (!session) {
+    return {
+      ...next,
+      conversation: appendDirectorMessage(
+        next.conversation,
+        "assistant",
+        "Denied: no project session is available. No project changes were made.",
+      ),
+    };
+  }
+  next = draftFromToolRequest(next, session, parsed.toolRequest);
+  return next;
 }

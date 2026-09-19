@@ -479,6 +479,10 @@ input[type="range"] { accent-color: var(--accent-2); }
   background: var(--panel-2);
 }
 .director-txn p { margin: 0 0 6px; }
+.director-txn [data-testid="director-txn-phase"] {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
 .director-txn-actions { display: flex; gap: 6px; }
 .layout-split .timeline-focus {
   position: absolute;
