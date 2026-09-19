@@ -31,7 +31,7 @@ import type {
 import { loadAiPrefs, saveAiPrefs, type DirectorAiPrefs } from "./providers/prefs";
 import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
-import { selectionOf, type Session } from "../session";
+import { projectRevisionOf, selectionOf, type Session } from "../session";
 import { DIRECTOR_MODES, GRANTS, grantExceeds, type DirectorMode, type Grant } from "./permissions/policy";
 import {
   applyCommandTransaction,
@@ -89,13 +89,25 @@ export interface DirectorAuthRequest {
 }
 
 /**
- * Request-scoped AUTO plan + sealed clip id.
+ * Request-scoped plan + immutable context snapshot.
+ * Conceptually DirectorRequest { plan, contextSnapshot, authorization }.
  * Immutable. Not React state-as-IPC. Not Advanced dropdowns.
  */
 export interface SealedDirectorRequest {
   readonly plan: DirectorPlan;
   readonly clipId: string | null;
   readonly userText: string;
+  readonly contextSnapshot: AIContextSnapshot | null;
+  readonly projectRevision: number | null;
+}
+
+/** Compact boundary trace. No Project dump. No secrets. */
+export interface DirectorRequestContextTrace {
+  contextLevel: ContextLevel;
+  selectedClipIds: readonly string[];
+  clipId: string | null;
+  projectId: string | null;
+  projectRevision: number | null;
 }
 
 /** Advanced / stored defaults. Never authoritative for an in-flight AUTO request. */
@@ -201,12 +213,39 @@ export function sealDirectorRequest(
   userText: string,
 ): SealedDirectorRequest {
   const sealed = sealDirectorPlan(plan);
-  let clipId: string | null = null;
-  if (sealed.contextLevel === "SELECTION" && session) {
-    const selected = selectionOf(session);
-    clipId = selected.length === 1 ? selected[0]! : null;
-  }
-  return Object.freeze({ plan: sealed, clipId, userText });
+  const selected = session ? selectionOf(session) : [];
+  const clipId =
+    sealed.contextLevel === "SELECTION" && selected.length === 1 ? selected[0]! : null;
+  const contextSnapshot = session
+    ? captureContextSnapshot(session, {
+        level: sealed.contextLevel,
+        outboundClass: "SEND_STRUCTURE",
+        clipIds: sealed.contextLevel === "SELECTION" ? selected : undefined,
+      })
+    : null;
+  return Object.freeze({
+    plan: sealed,
+    clipId,
+    userText,
+    contextSnapshot,
+    projectRevision: session ? projectRevisionOf(session) : null,
+  });
+}
+
+export function requestContextTrace(state: DirectorHostState): DirectorRequestContextTrace {
+  const snap = state.sealedRequest?.contextSnapshot ?? state.lastSnapshot;
+  return {
+    contextLevel: planContextOf(state),
+    selectedClipIds: snap?.selection.clipIds ?? [],
+    clipId: state.sealedRequest?.clipId ?? snap?.selection.primaryClipId ?? null,
+    projectId: snap?.projectId ?? null,
+    projectRevision: state.sealedRequest?.projectRevision ?? null,
+  };
+}
+
+function requestSelectedClipIds(state: DirectorHostState): readonly string[] {
+  const snap = state.sealedRequest?.contextSnapshot ?? state.lastSnapshot;
+  return snap?.selection.clipIds ?? [];
 }
 
 export function applyGrant(state: DirectorHostState, grant: Grant): DirectorHostState {
@@ -566,6 +605,9 @@ export function setDirectorPanelOpen(state: DirectorHostState, open: boolean): D
  * In-memory mock turn (AI-1). No fetch, no tools, no Session/Project writes.
  */
 export function attachSubmitSnapshot(state: DirectorHostState, session?: Session): DirectorHostState {
+  if (state.sealedRequest?.contextSnapshot) {
+    return { ...state, lastSnapshot: state.sealedRequest.contextSnapshot };
+  }
   if (!session) return state;
   const clipId = state.sealedRequest?.clipId;
   const lastSnapshot = captureContextSnapshot(session, {
@@ -646,6 +688,9 @@ function explainToolDenial(opts: {
   if (opts.detail === "No clip selected" || opts.detail === "AMBIGUOUS_SELECTION") {
     return `Denied: a single selected clip is required. ${opts.detail}. No project changes were made.`;
   }
+  if (opts.detail === "TARGET_NOT_IN_SELECTION") {
+    return "Denied: target clip is not in the request selection. No project changes were made.";
+  }
   return `Move draft denied: ${opts.detail}. No project changes were made.`;
 }
 
@@ -691,15 +736,28 @@ function draftFromToolRequest(
       ),
     };
   }
+  const snap = state.sealedRequest?.contextSnapshot ?? state.lastSnapshot;
+  if (snap && session.project.id !== snap.projectId) {
+    return {
+      ...state,
+      conversation: appendDirectorMessage(
+        state.conversation,
+        "assistant",
+        "Denied: request context project does not match. No project changes were made.",
+      ),
+    };
+  }
+  const selectedIds = [...requestSelectedClipIds(state)];
   const args = asMoveClipArgs(toolRequest.arguments);
-  if (!args.clipId && state.sealedRequest?.clipId) {
-    args.clipId = state.sealedRequest.clipId;
+  if (!args.clipId) {
+    args.clipId = state.sealedRequest?.clipId ?? (selectedIds.length === 1 ? selectedIds[0] : undefined);
   }
   const drafted = draftMoveClip({
     session,
     args,
     grant: effectiveGrant(state),
     mode: planModeOf(state),
+    selectedClipIds: selectedIds,
   });
   if (!drafted.ok) {
     return {
@@ -735,7 +793,24 @@ export async function submitDirectorProviderTurn(
   const text = userText.trim();
   if (!text) return state;
   const boundProjectId = session?.project.id ?? null;
-  const base = attachSubmitSnapshot(state, session);
+  const scoped =
+    state.sealedRequest || !session
+      ? state
+      : applyOrchestrationPlan(
+          state,
+          {
+            intent: { kind: "UNCERTAIN", confidence: "uncertain", reason: "manual-settings" },
+            mode: state.mode,
+            requiredGrant: state.grant,
+            contextLevel: state.contextLevel,
+            capability: "chat",
+            toolName: null,
+            providerAction: "chat",
+          },
+          session,
+          text,
+        );
+  const base = attachSubmitSnapshot(scoped, session);
   const withUser: DirectorHostState = applyHostTransaction(
     {
       ...base,

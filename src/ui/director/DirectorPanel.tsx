@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   allowDirectorGrantOnce,
   allowDirectorGrantSession,
@@ -41,12 +41,22 @@ import type { AIProvider, ProviderId } from "../../app/ai/providers/types";
 import { appendDirectorMessage } from "../../app/ai/conversation";
 import type { Session } from "../../app/session";
 import {
+  applyDirectorWorkSplitPointer,
   browserLayoutStorage,
   clampComposerHeightPx,
+  clampDirectorWorkSplitRatio,
   COMPOSER_MAX_PX,
   COMPOSER_MIN_PX,
+  DEFAULT_DIRECTOR_WORK_SPLIT,
+  DIRECTOR_CONVERSATION_MIN_PX,
+  DIRECTOR_RESULT_MIN_PX,
+  DIRECTOR_WORK_SPLITTER_PX,
   loadDirectorComposerHeight,
+  loadDirectorDiagnosticsCollapsed,
+  loadDirectorWorkSplitRatio,
   saveDirectorComposerHeight,
+  saveDirectorDiagnosticsCollapsed,
+  saveDirectorWorkSplitRatio,
 } from "../../core/layout-prefs";
 
 registerBuiltInProviders();
@@ -63,7 +73,7 @@ export interface DirectorPanelProps {
   onCanonicalCommit?: (session: Session) => void;
   /** App chrome: Close hides Director and syncs the toolbar AI toggle. */
   onRequestClose?: () => void;
-  /** Director Focus — collapses Inspector section only. Not app fullscreen. */
+  /** Director Focus — full-height right workspace. Inspector section collapses. Not Project state. */
   focusMode?: boolean;
   onToggleFocus?: () => void;
   /** Existing Session history. Director never owns a second undo stack. */
@@ -93,6 +103,12 @@ export function DirectorPanel({
   const [draft, setDraft] = useState("");
   const layoutStore = browserLayoutStorage();
   const [composerHeight, setComposerHeight] = useState(() => loadDirectorComposerHeight(layoutStore));
+  const [diagnosticsCollapsed, setDiagnosticsCollapsed] = useState(() =>
+    loadDirectorDiagnosticsCollapsed(layoutStore),
+  );
+  const [workSplitRatio, setWorkSplitRatio] = useState(() => loadDirectorWorkSplitRatio(layoutStore));
+  const workRef = useRef<HTMLDivElement | null>(null);
+  const workSplitDragRef = useRef(false);
   const runtimeRef = useRef(createDirectorRuntime(provider, initialState));
   const abortRef = useRef<AbortController | null>(null);
   const probeGenRef = useRef(0);
@@ -122,6 +138,51 @@ export function DirectorPanel({
     saveDirectorComposerHeight(layoutStore, next);
   };
 
+  const persistDiagnosticsCollapsed = (collapsed: boolean) => {
+    setDiagnosticsCollapsed(collapsed);
+    saveDirectorDiagnosticsCollapsed(layoutStore, collapsed);
+  };
+
+  const persistWorkSplit = (ratio: number) => {
+    const next = clampDirectorWorkSplitRatio(
+      ratio,
+      DIRECTOR_CONVERSATION_MIN_PX + DIRECTOR_RESULT_MIN_PX + 240,
+    );
+    setWorkSplitRatio(next);
+    saveDirectorWorkSplitRatio(layoutStore, next);
+  };
+
+  const applyWorkSplitFromEvent = (clientY: number) => {
+    const work = workRef.current;
+    if (!work) return;
+    const rect = work.getBoundingClientRect();
+    const next = applyDirectorWorkSplitPointer({
+      clientY,
+      workTop: rect.top,
+      workHeight: rect.height,
+    });
+    persistWorkSplit(next.ratio);
+  };
+
+  const onWorkSplitPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    workSplitDragRef.current = true;
+    applyWorkSplitFromEvent(event.clientY);
+    const move = (ev: PointerEvent) => {
+      if (!workSplitDragRef.current) return;
+      applyWorkSplitFromEvent(ev.clientY);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      workSplitDragRef.current = false;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   const growComposer = (el: HTMLTextAreaElement) => {
     el.style.height = "auto";
     persistComposerHeight(Math.min(COMPOSER_MAX_PX, Math.max(COMPOSER_MIN_PX, el.scrollHeight)));
@@ -135,12 +196,13 @@ export function DirectorPanel({
     abortRef.current = ctl;
     setDraft("");
     const current = stateRef.current;
+    const liveSession = sessionRef.current;
     const runtime = {
       provider: provider ?? providerForHost(current),
       orchestrator: runtimeRef.current.orchestrator,
     };
     void (async () => {
-      const next = await submitDirectorAutoTurn(current, text, runtime, ctl.signal, session, {
+      const next = await submitDirectorAutoTurn(current, text, runtime, ctl.signal, liveSession, {
         providerInjected: Boolean(provider),
       });
       if (ctl.signal.aborted || abortRef.current !== ctl) return;
@@ -188,7 +250,7 @@ export function DirectorPanel({
       orchestrator: runtimeRef.current.orchestrator,
     };
     void (async () => {
-      const resolved = await submitDirectorAutoTurn(next, text, runtime, ctl.signal, session, {
+      const resolved = await submitDirectorAutoTurn(next, text, runtime, ctl.signal, sessionRef.current, {
         providerInjected: Boolean(provider),
       });
       if (ctl.signal.aborted || abortRef.current !== ctl) return;
@@ -219,7 +281,11 @@ export function DirectorPanel({
               className={`director-focus${focusMode ? " active" : ""}`}
               data-testid="director-focus"
               aria-pressed={focusMode}
-              title={focusMode ? "Exit Director Focus — restore Inspector and split" : "Director Focus — collapse Inspector, Director uses the right space"}
+              title={
+                focusMode
+                  ? "Exit Director Focus — restore docked Inspector width and split"
+                  : "Director Focus — expand Director to a working panel beside Preview"
+              }
               onClick={onToggleFocus}
             >
               {focusMode ? "Exit Focus" : "Focus"}
@@ -245,7 +311,11 @@ export function DirectorPanel({
       </header>
       {state.panelOpen ? (
         <div id="director-body" className="director-body" data-testid="director-body">
-          <div className="director-chrome" data-testid="director-chrome">
+          <div
+            className="director-chrome"
+            data-testid="director-chrome"
+            data-diagnostics-collapsed={diagnosticsCollapsed ? "true" : "false"}
+          >
             <div className="director-normal" data-testid="director-normal">
               <div className="director-normal-copy">
                 <p className="director-orch-kind" data-testid="director-orch-kind">
@@ -257,6 +327,11 @@ export function DirectorPanel({
                   data-plan-mode={state.sealedRequest?.plan.mode ?? state.lastPlan?.mode ?? ""}
                   data-plan-context={state.sealedRequest?.plan.contextLevel ?? state.lastPlan?.contextLevel ?? ""}
                   data-plan-grant={state.sealedRequest?.plan.requiredGrant ?? state.lastPlan?.requiredGrant ?? ""}
+                  data-request-clip-id={state.sealedRequest?.clipId ?? ""}
+                  data-request-selected={
+                    state.sealedRequest?.contextSnapshot?.selection.clipIds.join(",") ?? ""
+                  }
+                  data-request-project-id={state.sealedRequest?.contextSnapshot?.projectId ?? ""}
                 >
                   {autoPlanStatusLabel(state)}
                 </p>
@@ -264,17 +339,38 @@ export function DirectorPanel({
                   {normalStatusLabel(state)}
                 </p>
               </div>
-              <button
-                type="button"
-                data-testid="director-advanced-toggle"
-                aria-expanded={state.surface === "advanced"}
-                onClick={() =>
-                  commit(applyDirectorSurface(state, state.surface === "advanced" ? "normal" : "advanced"))
-                }
-              >
-                {state.surface === "advanced" ? "Normal" : "Advanced"}
-              </button>
+              <div className="director-chrome-actions">
+                <button
+                  type="button"
+                  data-testid="director-diagnostics-toggle"
+                  aria-expanded={!diagnosticsCollapsed}
+                  title={
+                    diagnosticsCollapsed
+                      ? "Show provider, model, mode, and context"
+                      : "Hide provider, model, mode, and context"
+                  }
+                  onClick={() => persistDiagnosticsCollapsed(!diagnosticsCollapsed)}
+                >
+                  {diagnosticsCollapsed ? "Diagnostics" : "Hide diagnostics"}
+                </button>
+                <button
+                  type="button"
+                  data-testid="director-advanced-toggle"
+                  aria-expanded={state.surface === "advanced"}
+                  onClick={() => {
+                    if (state.surface !== "advanced") persistDiagnosticsCollapsed(false);
+                    commit(applyDirectorSurface(state, state.surface === "advanced" ? "normal" : "advanced"));
+                  }}
+                >
+                  {state.surface === "advanced" ? "Normal" : "Advanced"}
+                </button>
+              </div>
             </div>
+            {diagnosticsCollapsed ? (
+              <p className="director-diagnostics-compact" data-testid="director-diagnostics-compact">
+                {state.providerLabel} · {state.modeLabel} · {state.contextLabel}
+              </p>
+            ) : null}
             {state.localUnavailable ? (
               <div
                 className="director-unavailable"
@@ -340,7 +436,7 @@ export function DirectorPanel({
                 </div>
               </div>
             ) : null}
-            <dl className="director-meta">
+            <dl className="director-meta" hidden={diagnosticsCollapsed} data-testid="director-meta">
               <div>
                 <dt>Status</dt>
                 <dd data-testid="director-status">{state.statusLabel}</dd>
@@ -567,88 +663,139 @@ export function DirectorPanel({
               ) : null}
             </div>
           </div>
-          {conflict ? (
-            <div
-              className="director-conflict"
-              data-testid="director-conflict"
-              data-conflict-code="TRANSACTION_CONFLICT"
-              role="alert"
-            >
-              <p data-testid="director-conflict-title">STALE TRANSACTION — CONFLICT</p>
-              <p data-testid="director-conflict-detail">
-                {state.lastGateMessage ?? "The project changed after this preview."} Apply is blocked.
-                Manual edit is intact. Reject this stale draft. Undo / Redo still walk project history and
-                do not revive this preview.
-              </p>
+          <div
+            ref={workRef}
+            className={`director-work${txn || conflict ? " has-txn" : ""}`}
+            data-testid="director-work"
+            data-has-txn={txn || conflict ? "true" : "false"}
+            data-work-split-ratio={workSplitRatio}
+            style={
+              txn || conflict
+                ? {
+                    gridTemplateRows: `minmax(${DIRECTOR_CONVERSATION_MIN_PX}px, ${workSplitRatio}fr) ${DIRECTOR_WORK_SPLITTER_PX}px minmax(${DIRECTOR_RESULT_MIN_PX}px, ${1 - workSplitRatio}fr)`,
+                  }
+                : undefined
+            }
+          >
+            <div className="director-conversation" data-testid="director-conversation">
+              <div className="director-scroll" data-testid="director-scroll">
+                <ol className="director-messages" data-testid="director-messages">
+                  {state.conversation.messages.map((msg) => (
+                    <li
+                      key={msg.id}
+                      className={`director-msg director-msg-${msg.role}`}
+                      data-testid={`director-msg-${msg.role}`}
+                      data-role={msg.role}
+                    >
+                      <span className="director-msg-role">{msg.role}</span>
+                      <span className="director-msg-text">{msg.text}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
-          ) : null}
-          {txn ? (
+            {txn || conflict ? (
+              <div
+                className="director-work-split"
+                data-testid="director-work-split"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Conversation and transaction split"
+                title="Conversation / Result"
+                onPointerDown={onWorkSplitPointerDown}
+                onDoubleClick={() => persistWorkSplit(DEFAULT_DIRECTOR_WORK_SPLIT)}
+              >
+                <span className="director-work-split-grip" data-testid="director-work-split-grip" aria-hidden="true" />
+              </div>
+            ) : null}
             <div
-              className={`director-txn director-txn-${txn.status}${conflict ? " director-txn-conflict" : ""}`}
-              data-testid="director-txn"
-              data-txn-status={txn.status}
-              data-gate={state.lastGateCode ?? ""}
+              className={`director-result${txn || conflict ? " has-txn" : ""}`}
+              data-testid="director-result"
             >
-              <p data-testid="director-txn-phase">
-                {conflict && pendingDraft
-                  ? "STALE — CONFLICT"
-                  : txn.status === "draft"
-                    ? "PREVIEW"
-                    : txn.status === "applied"
-                      ? "APPLIED"
-                      : "REJECTED"}
-              </p>
-              <p data-testid="director-txn-status">
-                {conflict && pendingDraft ? "conflict · stale preview" : `${txn.status} · ${txn.toolName}`}
-              </p>
-              <p data-testid="director-txn-tool">Tool: {txn.toolName}</p>
-              <p data-testid="director-txn-target">Target: {txn.preview.clipId ?? "—"}</p>
-              <p data-testid="director-txn-delta">
-                Delta: {txn.command.type === "moveClips" ? `+${txn.command.deltaMs}ms` : "—"}
-              </p>
-              <p data-testid="director-txn-preview">
-                {txn.preview.clipId ?? "—"}: {txn.preview.beforeStartMs ?? "—"} → {txn.preview.afterStartMs ?? "—"}
-              </p>
-              {txn.status === "rejected" ? (
-                <p className="director-txn-result" data-testid="director-txn-rejected">
-                  REJECTED. Clip was not moved. No history entry.
-                </p>
+              {conflict ? (
+                <div
+                  className="director-conflict"
+                  data-testid="director-conflict"
+                  data-conflict-code="TRANSACTION_CONFLICT"
+                  role="alert"
+                >
+                  <p data-testid="director-conflict-title">STALE TRANSACTION — CONFLICT</p>
+                  <p data-testid="director-conflict-detail">
+                    {state.lastGateMessage ?? "The project changed after this preview."} Apply is blocked.
+                    Manual edit is intact. Reject this stale draft. Undo / Redo still walk project history and
+                    do not revive this preview.
+                  </p>
+                </div>
               ) : null}
-              {txn.status === "applied" ? (
-                <p className="director-txn-result" data-testid="director-txn-applied">
-                  APPLIED. Exact preview committed. Undo / Redo below use the project history.
-                </p>
-              ) : null}
-              {pendingDraft && session ? (
-                <div className="director-txn-actions">
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="director-txn-apply"
-                    disabled={conflict}
-                    title={
-                      conflict
-                        ? "Apply blocked — stale TRANSACTION_CONFLICT. Reject or Undo the later edit first."
-                        : "Apply this preview to the project"
-                    }
-                    onClick={() => {
-                      const live = sessionRef.current;
-                      if (!live) return;
-                      const result = applyHostApproved(state, live);
-                      commit(result.state);
-                      if (result.session !== live) onCanonicalCommit?.(result.session);
-                    }}
-                  >
-                    Apply
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="director-txn-reject"
-                    title="Reject this preview. No project change."
-                    onClick={() => commit(rejectHostTransaction(state))}
-                  >
-                    Reject
-                  </button>
+              {txn ? (
+                <div
+                  className={`director-txn director-txn-${txn.status}${conflict ? " director-txn-conflict" : ""}`}
+                  data-testid="director-txn"
+                  data-txn-status={txn.status}
+                  data-gate={state.lastGateCode ?? ""}
+                >
+                  <p data-testid="director-txn-phase">
+                    {conflict && pendingDraft
+                      ? "STALE — CONFLICT"
+                      : txn.status === "draft"
+                        ? "PREVIEW"
+                        : txn.status === "applied"
+                          ? "APPLIED"
+                          : "REJECTED"}
+                  </p>
+                  <p data-testid="director-txn-status">
+                    {conflict && pendingDraft ? "conflict · stale preview" : `${txn.status} · ${txn.toolName}`}
+                  </p>
+                  <p data-testid="director-txn-tool">Tool: {txn.toolName}</p>
+                  <p data-testid="director-txn-target">Target: {txn.preview.clipId ?? "—"}</p>
+                  <p data-testid="director-txn-delta">
+                    Delta: {txn.command.type === "moveClips" ? `+${txn.command.deltaMs}ms` : "—"}
+                  </p>
+                  <p data-testid="director-txn-preview">
+                    {txn.preview.clipId ?? "—"}: {txn.preview.beforeStartMs ?? "—"} → {txn.preview.afterStartMs ?? "—"}
+                  </p>
+                  {txn.status === "rejected" ? (
+                    <p className="director-txn-result" data-testid="director-txn-rejected">
+                      REJECTED. Clip was not moved. No history entry.
+                    </p>
+                  ) : null}
+                  {txn.status === "applied" ? (
+                    <p className="director-txn-result" data-testid="director-txn-applied">
+                      APPLIED. Exact preview committed. Undo / Redo below use the project history.
+                    </p>
+                  ) : null}
+                  {pendingDraft && session ? (
+                    <div className="director-txn-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                        data-testid="director-txn-apply"
+                        disabled={conflict}
+                        title={
+                          conflict
+                            ? "Apply blocked — stale TRANSACTION_CONFLICT. Reject or Undo the later edit first."
+                            : "Apply this preview to the project"
+                        }
+                        onClick={() => {
+                          const live = sessionRef.current;
+                          if (!live) return;
+                          const result = applyHostApproved(state, live);
+                          commit(result.state);
+                          if (result.session !== live) onCanonicalCommit?.(result.session);
+                        }}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="director-txn-reject"
+                        title="Reject this preview. No project change."
+                        onClick={() => commit(rejectHostTransaction(state))}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {onUndo || onRedo ? (
@@ -674,42 +821,6 @@ export function DirectorPanel({
                 </div>
               ) : null}
             </div>
-          ) : onUndo || onRedo ? (
-            <div className="director-history-actions" data-testid="director-history-actions">
-              <button
-                type="button"
-                data-testid="director-history-undo"
-                disabled={!canUndo || !onUndo}
-                title="Undo last project history entry (same as Transport Undo)"
-                onClick={() => onUndo?.()}
-              >
-                Undo
-              </button>
-              <button
-                type="button"
-                data-testid="director-history-redo"
-                disabled={!canRedo || !onRedo}
-                title="Redo last undone project history entry (same as Transport Redo)"
-                onClick={() => onRedo?.()}
-              >
-                Redo
-              </button>
-            </div>
-          ) : null}
-          <div className="director-scroll" data-testid="director-scroll">
-            <ol className="director-messages" data-testid="director-messages">
-              {state.conversation.messages.map((msg) => (
-                <li
-                  key={msg.id}
-                  className={`director-msg director-msg-${msg.role}`}
-                  data-testid={`director-msg-${msg.role}`}
-                  data-role={msg.role}
-                >
-                  <span className="director-msg-role">{msg.role}</span>
-                  <span className="director-msg-text">{msg.text}</span>
-                </li>
-              ))}
-            </ol>
           </div>
           <form className="director-compose" onSubmit={onSubmit} data-testid="director-compose">
             <label className="director-compose-label" htmlFor="director-input">

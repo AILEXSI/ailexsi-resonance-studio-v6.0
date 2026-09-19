@@ -34,10 +34,29 @@ export function normalizeDirectorPrompt(text: string): string {
     .trim();
 }
 
-/** Golden "markierten" and human "den Clip" — not a regex maze. */
-function isMoveClipTwoSecondsRight(n: string): boolean {
-  const namesTheClip = n.includes("verschiebe den markierten clip") || n.includes("verschiebe den clip");
-  return namesTheClip && n.includes("zwei sekunden") && n.includes("rechts");
+/** Named selected item: markiert / clip / file (studio slang). */
+function namesSelectedItem(n: string): boolean {
+  return n.includes("markiert") || n.includes("clip") || n.includes("file");
+}
+
+function hasTwoSeconds(n: string): boolean {
+  return n.includes("zwei sekunden") || n.includes("2 sekunden") || n.includes("2sec") || n.includes("2 sec");
+}
+
+function hasThreeSeconds(n: string): boolean {
+  return n.includes("drei sekunden") || n.includes("3 sekunden") || n.includes("3sec") || n.includes("3 sec");
+}
+
+/**
+ * Known move-right family. Golden +2s, human +2s, and the EXE +3s phrasing.
+ * Phrase checks, not a regex maze. Does not invent other tools.
+ */
+export function parseMoveRightPrompt(text: string): { deltaMs: number } | null {
+  const n = normalizeDirectorPrompt(text);
+  if (!n.includes("verschiebe") || !n.includes("rechts") || !namesSelectedItem(n)) return null;
+  if (hasThreeSeconds(n)) return { deltaMs: 3000 };
+  if (hasTwoSeconds(n)) return { deltaMs: 2000 };
+  return null;
 }
 
 /**
@@ -63,8 +82,13 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
   if (n === "was kannst du" || n === "what can you do") {
     return { kind: "ASK_CAPABILITY", confidence: "known", reason: "capability question" };
   }
-  if (isMoveClipTwoSecondsRight(n)) {
-    return { kind: "MOVE_CLIP", confidence: "known", reason: "move selected clip +2s" };
+  const move = parseMoveRightPrompt(text);
+  if (move) {
+    return {
+      kind: "MOVE_CLIP",
+      confidence: "known",
+      reason: move.deltaMs === 3000 ? "move selected clip +3s" : "move selected clip +2s",
+    };
   }
   return { kind: "UNCERTAIN", confidence: "uncertain", reason: "no known route" };
 }
