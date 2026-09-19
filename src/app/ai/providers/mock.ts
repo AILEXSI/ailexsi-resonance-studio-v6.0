@@ -1,4 +1,6 @@
 import { mockDirectorReply } from "../conversation";
+import { DIRECTOR_MUTATING_TOOL } from "../contract";
+import { parseGoldenMovePrompt } from "../tools/move-clip";
 import {
   ProviderError,
   type AIProvider,
@@ -73,9 +75,20 @@ export class MockProvider implements AIProvider {
         throw new ProviderError("CANCELLED", "Request cancelled", request.requestId);
       }
       const lastUser = [...request.messages].reverse().find((m) => m.role === "user");
+      const userText = lastUser?.content ?? "";
+      if (parseGoldenMovePrompt(userText)) {
+        return {
+          requestId: request.requestId,
+          text: JSON.stringify({
+            message: "Preview timeline.move_clip +2000ms on the selected clip. Apply to commit.",
+            toolRequest: { name: DIRECTOR_MUTATING_TOOL, arguments: { deltaMs: 2000 } },
+          }),
+          model: request.model ?? this.modelId,
+        };
+      }
       return {
         requestId: request.requestId,
-        text: mockDirectorReply(lastUser?.content ?? ""),
+        text: mockDirectorReply(userText),
         model: request.model ?? this.modelId,
       };
     } finally {

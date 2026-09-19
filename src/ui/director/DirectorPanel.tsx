@@ -6,10 +6,11 @@ import {
   applyLocalConfig,
   applyMode,
   applyProviderId,
-  createDirectorHostState,
   createDirectorRuntime,
   DIRECTOR_MODES,
   GRANTS,
+  hydrateDirectorHostFromPrefs,
+  persistDirectorHostPrefs,
   providerForHost,
   rejectHostTransaction,
   setDirectorPanelOpen,
@@ -22,6 +23,7 @@ import { cachePlayheadMs } from "../../app/ai/context/snapshot";
 import { CONTEXT_LEVELS, type ContextLevel } from "../../app/ai/context/types";
 import { registerBuiltInProviders } from "../../app/ai/providers";
 import type { AIProvider, ProviderId } from "../../app/ai/providers/types";
+import { appendDirectorMessage } from "../../app/ai/conversation";
 import type { Session } from "../../app/session";
 
 registerBuiltInProviders();
@@ -49,13 +51,15 @@ export function DirectorPanel({
   onRequestClose,
 }: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
-    () => initialState ?? createDirectorHostState(),
+    () => initialState ?? hydrateDirectorHostFromPrefs(),
   );
   const [draft, setDraft] = useState("");
   const runtimeRef = useRef(createDirectorRuntime(provider, initialState));
   const abortRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
+  const sessionRef = useRef(session);
   stateRef.current = state;
+  sessionRef.current = session;
 
   useEffect(() => {
     if (session) cachePlayheadMs(session.project.playheadMs);
@@ -64,6 +68,11 @@ export function DirectorPanel({
   const commit = (next: DirectorHostState) => {
     setState(next);
     onStateChange?.(next);
+  };
+
+  const commitProviderConfig = (next: DirectorHostState) => {
+    persistDirectorHostPrefs(next);
+    commit(next);
   };
 
   const onSubmit = (event: FormEvent) => {
@@ -82,6 +91,20 @@ export function DirectorPanel({
     void (async () => {
       const next = await submitDirectorProviderTurn(current, text, runtime, ctl.signal, session);
       if (ctl.signal.aborted || abortRef.current !== ctl) return;
+      const live = sessionRef.current;
+      if (next.transaction && live && next.transaction.projectId !== live.project.id) {
+        commit({
+          ...next,
+          transaction: null,
+          transactionLabel: "Transaction: —",
+          conversation: appendDirectorMessage(
+            next.conversation,
+            "assistant",
+            "Ignored late reply after project switch. No project changes were made.",
+          ),
+        });
+        return;
+      }
       commit(next);
     })();
   };
@@ -116,7 +139,13 @@ export function DirectorPanel({
             </div>
             <div>
               <dt>Provider</dt>
-              <dd data-testid="director-provider">{state.providerLabel}</dd>
+              <dd
+                data-testid="director-provider"
+                data-provider-kind={state.providerId === "openai-compatible" ? "local-openai-compatible" : "mock"}
+                data-provider-offline={state.providerId === "mock" ? "true" : "false"}
+              >
+                {state.providerLabel}
+              </dd>
             </div>
             <div>
               <dt>Mode</dt>
@@ -140,11 +169,13 @@ export function DirectorPanel({
               value={state.providerId === "openai-compatible" ? "openai-compatible" : "mock"}
               onChange={(e) => {
                 const id = e.target.value as ProviderId;
-                commit(applyProviderId(state, id === "openai-compatible" ? "openai-compatible" : "mock"));
+                commitProviderConfig(
+                  applyProviderId(state, id === "openai-compatible" ? "openai-compatible" : "mock"),
+                );
               }}
             >
-              <option value="mock">mock</option>
-              <option value="openai-compatible">openai-compatible (local)</option>
+              <option value="mock">mock (offline)</option>
+              <option value="openai-compatible">local-openai-compatible</option>
             </select>
             <label htmlFor="director-mode">Mode</label>
             <select
@@ -193,7 +224,7 @@ export function DirectorPanel({
                   data-testid="director-base-url"
                   value={state.localConfig.baseUrl}
                   placeholder="http://127.0.0.1:11434/v1"
-                  onChange={(e) => commit(applyLocalConfig(state, { baseUrl: e.target.value }))}
+                  onChange={(e) => commitProviderConfig(applyLocalConfig(state, { baseUrl: e.target.value }))}
                 />
                 <label htmlFor="director-model">Model</label>
                 <input
@@ -201,7 +232,7 @@ export function DirectorPanel({
                   data-testid="director-model"
                   value={state.localConfig.model}
                   placeholder="local-model"
-                  onChange={(e) => commit(applyLocalConfig(state, { model: e.target.value }))}
+                  onChange={(e) => commitProviderConfig(applyLocalConfig(state, { model: e.target.value }))}
                 />
                 <label htmlFor="director-api-key">API key (optional, memory only)</label>
                 <input
@@ -225,9 +256,26 @@ export function DirectorPanel({
             ) : null}
           </div>
           {state.transaction ? (
-            <div className="director-txn" data-testid="director-txn">
+            <div className="director-txn" data-testid="director-txn" data-txn-status={state.transaction.status}>
+              <p data-testid="director-txn-phase">
+                {state.transaction.status === "draft"
+                  ? "PREVIEW"
+                  : state.transaction.status === "applied"
+                    ? "APPLIED"
+                    : "REJECTED"}
+              </p>
               <p data-testid="director-txn-status">
                 {state.transaction.status} · {state.transaction.toolName}
+              </p>
+              <p data-testid="director-txn-tool">Tool: {state.transaction.toolName}</p>
+              <p data-testid="director-txn-target">
+                Target: {state.transaction.preview.clipId ?? "—"}
+              </p>
+              <p data-testid="director-txn-delta">
+                Delta:{" "}
+                {state.transaction.command.type === "moveClips"
+                  ? `+${state.transaction.command.deltaMs}ms`
+                  : "—"}
               </p>
               <p data-testid="director-txn-preview">
                 {state.transaction.preview.clipId ?? "—"}: {state.transaction.preview.beforeStartMs ?? "—"} →{" "}
