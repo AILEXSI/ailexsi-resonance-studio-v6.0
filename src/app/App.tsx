@@ -1598,7 +1598,7 @@ export function App() {
                 onTransition={(cmd) => setSession(applyCommand(session, cmd))}
                 onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
               />
-              {isDirectorEnabled() ? <DirectorPanel /> : null}
+              {isDirectorEnabled() ? <DirectorPanel session={session} /> : null}
             </div>
           )}
         </div>

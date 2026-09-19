@@ -1,5 +1,6 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  applyContextLevel,
   applyLocalConfig,
   applyProviderId,
   createDirectorHostState,
@@ -10,8 +11,11 @@ import {
   testDirectorConnection,
   type DirectorHostState,
 } from "../../app/ai/host";
+import { cachePlayheadMs } from "../../app/ai/context/snapshot";
+import { CONTEXT_LEVELS, type ContextLevel } from "../../app/ai/context/types";
 import { registerBuiltInProviders } from "../../app/ai/providers";
 import type { AIProvider, ProviderId } from "../../app/ai/providers/types";
+import type { Session } from "../../app/session";
 
 registerBuiltInProviders();
 
@@ -20,10 +24,12 @@ export interface DirectorPanelProps {
   initialState?: DirectorHostState;
   /** Inject a provider (tests). Default: host-selected provider. */
   provider?: AIProvider;
+  /** Read-only session. Used to capture context on submit. Never mutated here. */
+  session?: Session;
   onStateChange?: (state: DirectorHostState) => void;
 }
 
-export function DirectorPanel({ initialState, provider, onStateChange }: DirectorPanelProps) {
+export function DirectorPanel({ initialState, provider, session, onStateChange }: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
     () => initialState ?? createDirectorHostState(),
   );
@@ -32,6 +38,10 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
   const abortRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  useEffect(() => {
+    if (session) cachePlayheadMs(session.project.playheadMs);
+  }, [session, session?.project.playheadMs]);
 
   const commit = (next: DirectorHostState) => {
     setState(next);
@@ -52,7 +62,7 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
       orchestrator: runtimeRef.current.orchestrator,
     };
     void (async () => {
-      const next = await submitDirectorProviderTurn(current, text, runtime, ctl.signal);
+      const next = await submitDirectorProviderTurn(current, text, runtime, ctl.signal, session);
       commit(next);
     })();
   };
@@ -109,6 +119,19 @@ export function DirectorPanel({ initialState, provider, onStateChange }: Directo
             >
               <option value="mock">mock</option>
               <option value="openai-compatible">openai-compatible (local)</option>
+            </select>
+            <label htmlFor="director-context-level">Context level</label>
+            <select
+              id="director-context-level"
+              data-testid="director-context-level"
+              value={state.contextLevel}
+              onChange={(e) => commit(applyContextLevel(state, e.target.value as ContextLevel))}
+            >
+              {CONTEXT_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
             </select>
             {state.providerId === "openai-compatible" ? (
               <>

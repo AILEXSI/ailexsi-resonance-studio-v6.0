@@ -15,7 +15,7 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-3** (gate recording) |
+| Highest gate | **AI-4** (gate recording) |
 | Schema | **5** (unchanged) |
 | Mutation path | none |
 | Second engine | none |
@@ -111,7 +111,38 @@ AI-3 — local OpenAI-compatible provider (CHAT only).
 
 ---
 
-## AI-3 … AI-7
+## AI-3 — Local OpenAI-compatible provider
+
+| Field | Value |
+| --- | --- |
+| Status | SHIPPED (pending full-suite record) |
+| Commit | `feat(ai): add local OpenAI-compatible provider` |
+| Intent | First real provider: generic OpenAI-compatible localhost HTTP. CHAT only. No model download, no spawned binaries, no required public Internet. |
+
+### Files
+
+- `src/app/ai/providers/openai-compatible.ts`
+- `src/app/ai/providers/prefs.ts` — URL/model only; API key never persisted
+- `src/app/ai/host.ts` / `src/ui/director/DirectorPanel.tsx` — config + Test connection
+- `tests/ai/ai-3-openai-compatible.test.ts`
+
+### Tests
+
+Mock HTTP (injected fetch): success, fail codes, malformed, timeout, cancel, unavailable, no Project mutation. Prefs have no secrets.
+
+### Limitations
+
+- Streaming not implemented (optional; skipped to keep the adapter clean).
+- Cloud providers still unregistered (no secret store).
+- Connection test uses `GET /models`.
+
+### Next gate
+
+AI-4 — immutable context snapshots.
+
+---
+
+## AI-4 … AI-7
 
 Not started.
 

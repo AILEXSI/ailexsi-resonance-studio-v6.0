@@ -18,6 +18,9 @@ import {
   type OpenAICompatibleConfig,
 } from "./providers/openai-compatible";
 import type { AIProvider, ProviderId } from "./providers/types";
+import { captureContextSnapshot } from "./context/snapshot";
+import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
+import type { Session } from "../session";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -38,6 +41,9 @@ export interface DirectorHostState {
   transactionLabel: string;
   providerId: ProviderId;
   localConfig: OpenAICompatibleConfig;
+  contextLevel: ContextLevel;
+  outboundClass: OutboundClass;
+  lastSnapshot: AIContextSnapshot | null;
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -48,11 +54,18 @@ export function createDirectorHostState(): DirectorHostState {
     statusLabel: "Offline — mock conversation",
     providerLabel: "Provider: mock",
     modeLabel: "Mode: —",
-    contextLabel: "Context: —",
+    contextLabel: "Context: NONE",
     transactionLabel: "Transaction: —",
     providerId: "mock",
     localConfig: { baseUrl: "", model: "" },
+    contextLevel: "NONE",
+    outboundClass: "SEND_STRUCTURE",
+    lastSnapshot: null,
   };
+}
+
+export function applyContextLevel(state: DirectorHostState, level: ContextLevel): DirectorHostState {
+  return { ...state, contextLevel: level, contextLabel: `Context: ${level}` };
 }
 
 export function providerForHost(state: DirectorHostState): AIProvider {
@@ -138,12 +151,26 @@ export function setDirectorPanelOpen(state: DirectorHostState, open: boolean): D
 /**
  * In-memory mock turn (AI-1). No fetch, no tools, no Session/Project writes.
  */
-export function submitDirectorMockTurn(state: DirectorHostState, userText: string): DirectorHostState {
+export function attachSubmitSnapshot(state: DirectorHostState, session?: Session): DirectorHostState {
+  if (!session) return state;
+  const lastSnapshot = captureContextSnapshot(session, {
+    level: state.contextLevel,
+    outboundClass: state.outboundClass,
+  });
+  return { ...state, lastSnapshot, contextLabel: `Context: ${lastSnapshot.level}` };
+}
+
+export function submitDirectorMockTurn(
+  state: DirectorHostState,
+  userText: string,
+  session?: Session,
+): DirectorHostState {
   const text = userText.trim();
   if (!text) return state;
+  const base = attachSubmitSnapshot(state, session);
   let next = {
-    ...state,
-    conversation: appendDirectorMessage(state.conversation, "user", text),
+    ...base,
+    conversation: appendDirectorMessage(base.conversation, "user", text),
   };
   next = {
     ...next,
@@ -171,12 +198,14 @@ export async function submitDirectorProviderTurn(
   userText: string,
   runtime: { provider: AIProvider; orchestrator: Orchestrator },
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<DirectorHostState> {
   const text = userText.trim();
   if (!text) return state;
+  const base = attachSubmitSnapshot(state, session);
   const withUser: DirectorHostState = {
-    ...state,
-    conversation: appendDirectorMessage(state.conversation, "user", text),
+    ...base,
+    conversation: appendDirectorMessage(base.conversation, "user", text),
     status: "connecting",
     statusLabel: "Sending…",
   };
