@@ -27,6 +27,7 @@ import {
   rejectTransaction,
   type AITransaction,
 } from "./transactions/transaction";
+import { draftMoveClip, parseGoldenMovePrompt } from "./tools/move-clip";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -269,12 +270,33 @@ export async function submitDirectorProviderTurn(
   const text = userText.trim();
   if (!text) return state;
   const base = attachSubmitSnapshot(state, session);
-  const withUser: DirectorHostState = {
+  let withUser: DirectorHostState = {
     ...base,
     conversation: appendDirectorMessage(base.conversation, "user", text),
     status: "connecting",
     statusLabel: "Sending…",
   };
+  if (session && parseGoldenMovePrompt(text)) {
+    const drafted = draftMoveClip({
+      session,
+      args: { deltaMs: 2000 },
+      grant: state.grant,
+      mode: state.mode,
+    });
+    if (drafted.ok) {
+      withUser = applyHostTransaction(withUser, drafted.transaction);
+    } else {
+      withUser = {
+        ...withUser,
+        transactionLabel: `Transaction: ${drafted.code}`,
+        conversation: appendDirectorMessage(
+          withUser.conversation,
+          "assistant",
+          `Move draft denied: ${drafted.message}. No project changes were made.`,
+        ),
+      };
+    }
+  }
   const messages = withUser.conversation.messages.map((m) => ({
     role: m.role,
     content: m.text,

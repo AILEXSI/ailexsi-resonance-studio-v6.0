@@ -15,7 +15,7 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-6** (gate recording) |
+| Highest gate | **AI-7** (gate recording) |
 | Schema | **5** (unchanged) |
 | Mutation path | none |
 | Second engine | none |
@@ -204,9 +204,56 @@ AI-6 — grants, revision, transactions, audit.
 
 ---
 
-## AI-6 … AI-7
+## AI-6 — Permissions and transactions
 
-Not started.
+| Field | Value |
+| --- | --- |
+| Status | SHIPPED (pending full-suite record) |
+| Commit | `feat(ai): add permissions and transaction foundation` |
+| Intent | Grants READ/DRAFT/EDIT. Modes ASK/DRAFT/AGENT. Runtime `projectRevision` on Session (not Project). Draft/Apply/Reject. In-memory audit. |
+
+### Files
+
+- `src/app/session.ts` — `projectRevision` incremented in `withHistory` / undo / redo
+- `src/app/App.tsx` — live move-commit also bumps revision
+- `src/app/ai/permissions/policy.ts`
+- `src/app/ai/transactions/transaction.ts`
+- `src/app/ai/transactions/audit.ts`
+- `src/app/ai/transactions/invoke.ts`
+- `src/app/ai/host.ts` / `src/ui/director/DirectorPanel.tsx`
+- `tests/ai/ai-6-trust.test.ts`
+
+### Tests
+
+READ cannot mutate; DRAFT cannot commit; EDIT without approval denied; invalid grant; draft/reject unchanged; stale revision denied; provider fail unchanged; audit; one txn → one history; schema 5.
+
+### Next gate
+
+AI-7 — `timeline.move_clip` only.
+
+---
+
+## AI-7 — timeline.move_clip
+
+| Field | Value |
+| --- | --- |
+| Status | SHIPPED (pending full-suite record) |
+| Commit | `feat(ai): add transactional move-clip tool` |
+| Intent | First mutation tool. Golden DE prompt → `applyCommand({ type: "moveClips", clipIds, deltaMs: 2000 })`. No applyMove / nudge / drag snap. |
+
+### Files
+
+- `src/app/ai/tools/move-clip.ts`
+- `src/app/ai/host.ts` — golden prompt drafts a transaction
+- `tests/ai/ai-7-move-clip.test.ts`
+
+### Tests
+
+Golden 12/12 reset; chain +2000 × 12; snap true still exact; undo/redo; reject; stale revision; invalid id; locked; NaN/Infinity; provider fail; schema 5.
+
+### Stop
+
+No second mutating tool.
 
 ---
 
