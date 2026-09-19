@@ -36,6 +36,31 @@ export function directorFlagFromStorage(storage: StorageLike | null | undefined)
   }
 }
 
+function resolveStorage(storage?: StorageLike | null): StorageLike | null {
+  if (storage === undefined) {
+    return typeof localStorage !== "undefined" ? localStorage : null;
+  }
+  return storage;
+}
+
+/**
+ * Persist the Director UI preference only. Writes "1" or removes the key.
+ * Application UI state — never Project / schema / conversation / audit / render.
+ */
+export function persistDirectorEnabled(
+  enabled: boolean,
+  storage?: StorageLike | null,
+): void {
+  const store = resolveStorage(storage);
+  if (!store) return;
+  try {
+    if (enabled) store.setItem(DIRECTOR_FLAG_KEY, "1");
+    else store.removeItem(DIRECTOR_FLAG_KEY);
+  } catch {
+    /* private mode / quota */
+  }
+}
+
 /**
  * Resolve whether the Director shell may mount.
  * Order: test override → URL ?ai=1 → localStorage. Default false.

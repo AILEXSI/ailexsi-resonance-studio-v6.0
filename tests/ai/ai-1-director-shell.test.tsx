@@ -9,7 +9,7 @@ import {
   createDirectorConversation,
   mockDirectorReply,
 } from "../../src/app/ai/conversation";
-import { setDirectorEnabledForTests } from "../../src/app/ai/flag";
+import { DIRECTOR_FLAG_KEY, setDirectorEnabledForTests } from "../../src/app/ai/flag";
 import { createDirectorHostState, submitDirectorMockTurn } from "../../src/app/ai/host";
 import { serializeProject, PROJECT_SCHEMA_VERSION } from "../../src/core/project";
 import { createMemoryBlobStore } from "../../src/core/persistence";
@@ -42,6 +42,7 @@ describe("AI-1 Director shell", () => {
 
   beforeEach(() => {
     setDirectorEnabledForTests(null);
+    localStorage.removeItem(DIRECTOR_FLAG_KEY);
     fetchCalls = 0;
     originalFetch = globalThis.fetch;
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -58,6 +59,7 @@ describe("AI-1 Director shell", () => {
     host = undefined;
     root = undefined;
     setDirectorEnabledForTests(null);
+    localStorage.removeItem(DIRECTOR_FLAG_KEY);
     if (originalFetch) globalThis.fetch = originalFetch;
     originalFetch = undefined;
   });
@@ -84,6 +86,7 @@ describe("AI-1 Director shell", () => {
     setDirectorEnabledForTests(false);
     await mountApp();
     expect(host!.querySelector('[data-testid="director"]')).toBeNull();
+    expect(host!.querySelector('[data-testid="toolbar-ai"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="inspector"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="timeline"]')).toBeTruthy();
   });

@@ -389,6 +389,36 @@ No second mutating tool. PR #2 stays unmerged. Do **not** start AI-8 from this r
 
 ---
 
+## PR #2 HUMAN REVIEW FIX — visible AI Director toggle
+
+**Intent:** Director was gated (`?ai=1` / `?director=1` / localStorage) but not openable from normal chrome. Add a visible **AI** button. Do not start AI-8. Schema stays 5.
+
+### UX / persistence
+
+- Chrome: File | Import | Export | ARRANGE | CUTTER | **AI** (existing toolbar button + `button.active` when open).
+- Click closed → enable/open Director in Inspector; click open → close/hide.
+- If Inspector is collapsed when opening, it expands so the user never clicks AI and sees nothing.
+- Preference key remains `resonance-studio-v6-0-ai-director` (`"1"` / removed). Application UI state only — not Project / JSON / schema / conversation / audit / render.
+- React state: `const [directorEnabled, setDirectorEnabled] = useState(() => isDirectorEnabled())`. Render depends on that state, not a live localStorage read. `?ai=1` still enables on mount.
+
+### Files
+
+- `src/app/ai/flag.ts` — `persistDirectorEnabled`
+- `src/ui/toolbar/Toolbar.tsx` — visible AI button
+- `src/app/App.tsx` — `directorEnabled` state + inspector auto-expand
+- `tests/ai/ai-director-ui-toggle.test.tsx`
+- `tests/ai/ai-1-director-shell.test.tsx` — button still visible when gate is off
+
+### Tests
+
+Defaults off; click open/close; active state; preference persist + remount restore; inspector auto-expand; AI-off V6 chrome; Project/history/schema 5 unchanged; no provider request on open; `?ai=1` still works.
+
+### Stop
+
+No AI-8. No new capability. Do not merge from this run.
+
+---
+
 ## Next (outside this run)
 
-Human review of PR. Coordinator may merge. Do **not** implement a second mutating tool on this branch.
+Human retest of the visible AI toggle. Coordinator may merge. Do **not** implement a second mutating tool on this branch.

@@ -65,7 +65,7 @@ import { MediaBrowser } from "../ui/media-browser/MediaBrowser";
 import { Preview } from "../ui/preview/Preview";
 import { Inspector } from "../ui/inspector/Inspector";
 import { DirectorPanel } from "../ui/director/DirectorPanel";
-import { isDirectorEnabled } from "./ai/flag";
+import { isDirectorEnabled, persistDirectorEnabled } from "./ai/flag";
 import { Transport } from "../ui/transport/Transport";
 import { Timeline } from "../ui/timeline/Timeline";
 import { Mixer, type MixPeaks } from "../ui/mixer/Mixer";
@@ -195,6 +195,7 @@ export function App() {
   const layoutStore = browserLayoutStorage();
   const [mixerCollapsed, setMixerCollapsed] = useState(() => loadMixerCollapsed(layoutStore));
   const [inspectorCollapsed, setInspectorCollapsed] = useState(() => loadInspectorCollapsed(layoutStore));
+  const [directorEnabled, setDirectorEnabled] = useState(() => isDirectorEnabled());
   const [collapsedGroupIds, setCollapsedGroupIds] = useState(() => loadCollapsedGroupIds(layoutStore));
   const [openVolumeLaneIds, setOpenVolumeLaneIds] = useState(() => loadOpenVolumeLaneIds(layoutStore));
   const [mixerWidthPx, setMixerWidthPx] = useState(() => loadMixerWidth(layoutStore));
@@ -1182,6 +1183,20 @@ export function App() {
     });
   };
 
+  const toggleDirector = () => {
+    if (directorEnabled && !inspectorCollapsed) {
+      setDirectorEnabled(false);
+      persistDirectorEnabled(false);
+      return;
+    }
+    setDirectorEnabled(true);
+    persistDirectorEnabled(true);
+    if (inspectorCollapsed) {
+      setInspectorCollapsed(false);
+      saveInspectorCollapsed(layoutStore, false);
+    }
+  };
+
   const toggleTimelineFocus = () => {
     const stage = stageRef.current;
     const available = stage ? Math.max(1, stage.getBoundingClientRect().height - SPLITTER_PX) : undefined;
@@ -1427,6 +1442,8 @@ export function App() {
         projectName={session.project.name}
         projectDirty={isProjectDirty(session)}
         onRenameProject={(name) => runCommand({ type: "renameProject", name })}
+        directorEnabled={directorEnabled}
+        onToggleDirector={toggleDirector}
       />
       <input
         type="file"
@@ -1599,7 +1616,7 @@ export function App() {
                 onTransition={(cmd) => setSession(applyCommand(session, cmd))}
                 onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
               />
-              {isDirectorEnabled() ? (
+              {directorEnabled ? (
                 <DirectorPanel session={session} onCanonicalCommit={(next) => setSession(next)} />
               ) : null}
             </div>
