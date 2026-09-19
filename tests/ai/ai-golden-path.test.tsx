@@ -203,12 +203,14 @@ describe("AI Director golden path", () => {
     const session = fixture();
     const ask = await submitGolden(session, goldenHost({ mode: "ASK", modeLabel: "Mode: ASK" }));
     expect(ask.transaction).toBeNull();
-    expect(ask.conversation.messages.at(-1)?.text).toMatch(/Denied: Mode ASK/);
+    expect(ask.conversation.messages.at(-1)?.text).toMatch(/Allow once or Allow for session/);
+    expect(ask.conversation.messages.at(-1)?.text).not.toMatch(/Set Mode AGENT and Grant EDIT/);
     expect(startOf(session)).toBe(30_000);
 
     const read = await submitGolden(session, goldenHost({ grant: "READ" }));
     expect(read.transaction).toBeNull();
-    expect(read.conversation.messages.at(-1)?.text).toMatch(/Grant READ/);
+    expect(read.conversation.messages.at(-1)?.text).toMatch(/Allow once or Allow for session/);
+    expect(read.conversation.messages.at(-1)?.text).not.toMatch(/Set Mode AGENT and Grant EDIT/);
 
     const noneHost = goldenHost({ contextLevel: "NONE", contextLabel: "Context: NONE" });
     const viaCanonical = await submitGolden(session, noneHost);

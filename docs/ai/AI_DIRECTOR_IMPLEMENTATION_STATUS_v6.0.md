@@ -976,6 +976,7 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 
 **Branch:** `cursor/human-retest-auto-gate-31a2`  
 **HEAD BEFORE:** `15846df71953ded06137f18fcff289aa809d512b`  
+**HEAD AFTER:** see latest commit on this branch  
 **Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
 **Intent:** Repair only the human-proven AUTO / selection / layout failures. Schema stays **5**. No AI-8. No new tools.
 
@@ -993,4 +994,18 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 - SELECTION_REQUIRED explains: click a clip; In/Out is not a clip selection. Chrome: `Context NONE · no clip — In/Out is not a selection` when a range exists and `selectedClipIds` is empty.
 - Provider-omitted `clipId` binds the sealed canonical id when exactly one unlocked clip is selected via `selectClips` / `selectionOf`.
 - Measured stages always reclamp, including short windows. Director composer `min-height: 56px`.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AUTO + golden + layout | PASS |
+| `npx vitest run` | **1648 passed / 6 failed / 1654** (185 files passed / 2 failed / 187) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT |
+| New regressions | none |
+| AI-8 | not started |
+| PR #2 | not merged |
 
