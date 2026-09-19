@@ -24,8 +24,9 @@ function sizeEl(el: Element, width: number, height: number) {
   Object.defineProperty(el, "clientHeight", { configurable: true, value: height });
 }
 
-async function flushRaf() {
+async function flushLayout() {
   await act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   });
 }
@@ -53,7 +54,7 @@ describe("preview DOM remasure", () => {
     else delete (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
   });
 
-  async function mountVideo() {
+  async function mountVideo(playing = false) {
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
@@ -62,8 +63,9 @@ describe("preview DOM remasure", () => {
       [asset({ id: "a1", kind: "video", durationMs: 8000, objectUrl: "blob:preview-resize" })],
     );
     await act(async () => {
-      root!.render(<Preview project={project} playing={false} />);
+      root!.render(<Preview project={project} playing={playing} />);
     });
+    return project;
   }
 
   it("window resize remasures video viewport to the current preview-stage box", async () => {
@@ -76,16 +78,58 @@ describe("preview DOM remasure", () => {
 
     sizeEl(stage, 320, 180);
     observers[0]!.fire();
-    await flushRaf();
+    await flushLayout();
     expect(video.style.width).toBe("320px");
     expect(video.style.height).toBe("180px");
     expect(video.style.objectFit).toBe("contain");
 
     sizeEl(stage, 1600, 900);
     window.dispatchEvent(new Event("resize"));
-    await flushRaf();
+    await flushLayout();
     expect(video.style.width).toBe("1600px");
     expect(video.style.height).toBe("900px");
+  });
+
+  it("maximize-sized stage jump remasures without a Play/playhead change", async () => {
+    await mountVideo(false);
+    const stage = host!.querySelector('[data-testid="preview-stage"]') as HTMLElement;
+    const video = host!.querySelector('[data-testid="preview-video"]') as HTMLVideoElement;
+
+    sizeEl(stage, 960, 400);
+    observers[0]!.fire();
+    await flushLayout();
+    expect(video.style.width).toBe("960px");
+    expect(video.style.height).toBe("400px");
+
+    sizeEl(stage, 1920, 980);
+    window.dispatchEvent(new Event("resize"));
+    await flushLayout();
+    expect(video.style.width).toBe("1920px");
+    expect(video.style.height).toBe("980px");
+    expect(video.style.minWidth).toBe("1920px");
+    expect(video.style.maxWidth).toBe("none");
+    expect(video.style.left).toBe("0px");
+  });
+
+  it("splitter shrink keeps full stage width — not a 16:9 postage stamp", async () => {
+    await mountVideo();
+    const stage = host!.querySelector('[data-testid="preview-stage"]') as HTMLElement;
+    const video = host!.querySelector('[data-testid="preview-video"]') as HTMLVideoElement;
+
+    sizeEl(stage, 1600, 720);
+    observers[0]!.fire();
+    await flushLayout();
+    expect(video.style.width).toBe("1600px");
+
+    sizeEl(stage, 1600, 140);
+    observers[0]!.fire();
+    await flushLayout();
+    expect(video.style.width).toBe("1600px");
+    expect(video.style.height).toBe("140px");
+    expect(video.style.minWidth).toBe("1600px");
+    expect(video.style.maxWidth).toBe("none");
+    expect(video.style.aspectRatio).toBe("auto");
+    expect(Number.parseFloat(video.style.width)).not.toBeCloseTo((140 * 16) / 9);
   });
 
   it("splitter-style ResizeObserver remasures video; no postage-stamp after grow", async () => {
@@ -95,13 +139,42 @@ describe("preview DOM remasure", () => {
 
     sizeEl(stage, 480, 200);
     observers[0]!.fire();
-    await flushRaf();
+    await flushLayout();
     expect(video.style.width).toBe("480px");
 
     sizeEl(stage, 1400, 720);
     observers[0]!.fire();
-    await flushRaf();
+    await flushLayout();
     expect(video.style.width).toBe("1400px");
     expect(video.style.height).toBe("720px");
+  });
+
+  it("paused and playing both remasure on layout change", async () => {
+    const project = await mountVideo(false);
+    const stage = host!.querySelector('[data-testid="preview-stage"]') as HTMLElement;
+    const video = host!.querySelector('[data-testid="preview-video"]') as HTMLVideoElement;
+
+    sizeEl(stage, 800, 360);
+    observers[0]!.fire();
+    await flushLayout();
+    expect(video.style.width).toBe("800px");
+
+    await act(async () => {
+      root!.render(<Preview project={project} playing={true} />);
+    });
+    sizeEl(stage, 1600, 200);
+    observers[0]!.fire();
+    await flushLayout();
+    expect(video.style.width).toBe("1600px");
+    expect(video.style.height).toBe("200px");
+
+    await act(async () => {
+      root!.render(<Preview project={project} playing={false} />);
+    });
+    sizeEl(stage, 1100, 500);
+    observers[0]!.fire();
+    await flushLayout();
+    expect(video.style.width).toBe("1100px");
+    expect(video.style.height).toBe("500px");
   });
 });

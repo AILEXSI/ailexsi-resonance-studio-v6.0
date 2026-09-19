@@ -203,6 +203,8 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
+    // Layout-only. Play / playhead must not be the remasure trigger —
+    // maximize and splitter have to settle through subscribePreviewRemeasure.
     return subscribePreviewRemeasure(stage, () => remasureRef.current());
   }, [isStill, showViz, videoAsset?.objectUrl, videoClip?.id]);
 
