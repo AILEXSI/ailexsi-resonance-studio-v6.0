@@ -427,7 +427,7 @@ describe("AI Director zero-config AUTO", () => {
       model: "",
     });
     const session = fixture();
-    const start = applyLocalConfig(applyProviderId(host(), "openai-compatible"), {
+    const start = applyLocalConfig(applyProviderId(host({ grant: "EDIT" }), "openai-compatible"), {
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "local-a",
     });
