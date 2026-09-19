@@ -413,6 +413,16 @@ No second mutating tool. PR #2 stays unmerged. Do **not** start AI-8 from this r
 
 Defaults off; click open/close; active state; preference persist + remount restore; inspector auto-expand; AI-off V6 chrome; Project/history/schema 5 unchanged; no provider request on open; `?ai=1` still works.
 
+### Gates after this fix
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + toggle + adversarial | **87 passed** (56 prior + 22 adversarial + 9 toggle) |
+| `npx vitest run` | **1476 passed / 6 failed / 1482** (170 files passed / 2 failed / 172) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 182 modules) |
+| New regressions | none |
+
 ### Stop
 
 No AI-8. No new capability. Do not merge from this run.
