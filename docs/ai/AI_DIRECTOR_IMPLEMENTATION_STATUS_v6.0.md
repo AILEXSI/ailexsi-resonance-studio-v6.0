@@ -429,6 +429,41 @@ No AI-8. No new capability. Do not merge from this run.
 
 ---
 
+## PR #2 HUMAN REVIEW UI FIX #2 — Director sidebar layout
+
+**Intent:** At 32:9 / 5120×1440 the Director opened but Inspector and Director competed for right-side height; composer/controls were technically present and not usable. Harden the right sidebar only. Do not start AI-8. Schema stays 5.
+
+### Layout
+
+- Right sidebar = Inspector section + Director section (`#inspector-body` grid when Director is open).
+- Director gets its own viewport (`min-height: 0`). Status/provider/mode/context stay pinned; Provider/Mode/Grant/Context/conversation/txn scroll in `director-scroll`; composer is sticky at the bottom of the Director viewport.
+- Open Director caps Inspector at `minmax(64px, 28%)` / Director `minmax(180px, 1fr)` so Inspector cannot starve Director. Inspector stays mounted (state preserved). INS still collapses/expands the whole sidebar.
+- Director Close calls the same disable path as the toolbar **AI** toggle.
+
+### Files
+
+- `src/app/App.tsx` — inspector/director sections + Close sync
+- `src/ui/director/DirectorPanel.tsx` — own scroll + sticky composer + `onRequestClose`
+- `src/styles.css` — sidebar flex/grid, overflow, sticky composer
+- `tests/ai/ai-director-sidebar-layout.test.tsx`
+- `tests/ai/ai-director-ui-toggle.test.tsx` — Close/AI sync
+
+### Gates after this fix
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + toggle + layout + adversarial | **98 passed** (56 prior + 22 adversarial + 10 toggle + 10 layout) |
+| `npx vitest run` | **1487 passed / 6 failed / 1493** (171 files passed / 2 failed / 173) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 182 modules) |
+| New regressions | none |
+
+### Stop
+
+Layout only. No Project / schema / provider / transaction change. Do **not** merge. Do **not** start AI-8.
+
+---
+
 ## Next (outside this run)
 
-Human retest of the visible AI toggle. Coordinator may merge. Do **not** implement a second mutating tool on this branch.
+Human retest of the Director sidebar layout. Coordinator may merge. Do **not** implement a second mutating tool on this branch.

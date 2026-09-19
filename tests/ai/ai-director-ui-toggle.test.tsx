@@ -105,6 +105,7 @@ describe("AI Director visible UI toggle", () => {
     const director = host!.querySelector('[data-testid="director"]');
     expect(director).toBeTruthy();
     expect(host!.querySelector("#inspector-body")?.contains(director)).toBe(true);
+    expect(host!.querySelector('[data-testid="director-section"]')?.contains(director)).toBe(true);
     expect(aiButton().getAttribute("aria-pressed")).toBe("true");
     expect(aiButton().classList.contains("active")).toBe(true);
 
@@ -151,7 +152,20 @@ describe("AI Director visible UI toggle", () => {
     const director = host!.querySelector('[data-testid="director"]');
     expect(director).toBeTruthy();
     expect(host!.querySelector("#inspector-body")?.contains(director)).toBe(true);
+    expect(host!.querySelector('[data-testid="director-section"]')?.contains(director)).toBe(true);
     expect(localStorage.getItem(INSPECTOR_COLLAPSED_KEY)).toBe("0");
+  });
+
+  it("Director Close stays synchronized with the toolbar AI toggle", async () => {
+    await mountApp();
+    await clickAi();
+    expect(aiButton().getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      (host!.querySelector('[data-testid="director-toggle"]') as HTMLButtonElement).click();
+    });
+    expect(host!.querySelector('[data-testid="director"]')).toBeNull();
+    expect(aiButton().getAttribute("aria-pressed")).toBe("false");
+    expect(localStorage.getItem(DIRECTOR_FLAG_KEY)).toBeNull();
   });
 
   it("8 AI OFF preserves normal V6 chrome", async () => {

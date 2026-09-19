@@ -36,6 +36,8 @@ export interface DirectorPanelProps {
   onStateChange?: (state: DirectorHostState) => void;
   /** Apply path: parent owns Session and must use applyCommand/withHistory. */
   onCanonicalCommit?: (session: Session) => void;
+  /** App chrome: Close hides Director and syncs the toolbar AI toggle. */
+  onRequestClose?: () => void;
 }
 
 export function DirectorPanel({
@@ -44,6 +46,7 @@ export function DirectorPanel({
   session,
   onStateChange,
   onCanonicalCommit,
+  onRequestClose,
 }: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
     () => initialState ?? createDirectorHostState(),
@@ -93,7 +96,13 @@ export function DirectorPanel({
           data-testid="director-toggle"
           aria-expanded={state.panelOpen}
           aria-controls="director-body"
-          onClick={() => commit(setDirectorPanelOpen(state, !state.panelOpen))}
+          onClick={() => {
+            if (state.panelOpen && onRequestClose) {
+              onRequestClose();
+              return;
+            }
+            commit(setDirectorPanelOpen(state, !state.panelOpen));
+          }}
         >
           {state.panelOpen ? "Close" : "Open"}
         </button>
@@ -122,6 +131,7 @@ export function DirectorPanel({
               <dd data-testid="director-transaction">{state.transactionLabel}</dd>
             </div>
           </dl>
+          <div className="director-scroll" data-testid="director-scroll">
           <div className="director-config" data-testid="director-config">
             <label htmlFor="director-provider-select">Provider</label>
             <select
@@ -260,6 +270,7 @@ export function DirectorPanel({
               </li>
             ))}
           </ol>
+          </div>
           <form className="director-compose" onSubmit={onSubmit} data-testid="director-compose">
             <label className="director-compose-label" htmlFor="director-input">
               Message

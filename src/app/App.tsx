@@ -1183,18 +1183,26 @@ export function App() {
     });
   };
 
-  const toggleDirector = () => {
-    if (directorEnabled && !inspectorCollapsed) {
-      setDirectorEnabled(false);
-      persistDirectorEnabled(false);
-      return;
-    }
+  const closeDirector = () => {
+    setDirectorEnabled(false);
+    persistDirectorEnabled(false);
+  };
+
+  const openDirector = () => {
     setDirectorEnabled(true);
     persistDirectorEnabled(true);
     if (inspectorCollapsed) {
       setInspectorCollapsed(false);
       saveInspectorCollapsed(layoutStore, false);
     }
+  };
+
+  const toggleDirector = () => {
+    if (directorEnabled && !inspectorCollapsed) {
+      closeDirector();
+      return;
+    }
+    openDirector();
   };
 
   const toggleTimelineFocus = () => {
@@ -1555,9 +1563,12 @@ export function App() {
           </div>
         )}
         <div
-          className={`workspace-inspector${inspectorCollapsed ? " collapsed" : ""}`}
+          className={`workspace-inspector${inspectorCollapsed ? " collapsed" : ""}${
+            directorEnabled && !inspectorCollapsed ? " director-open" : ""
+          }`}
           data-testid="workspace-inspector"
           data-collapsed={inspectorCollapsed ? "true" : "false"}
+          data-director-open={directorEnabled && !inspectorCollapsed ? "true" : "false"}
           style={
             inspectorCollapsed
               ? {
@@ -1591,33 +1602,46 @@ export function App() {
             {inspectorCollapsed ? null : <span className="inspector-chrome-label">Ins</span>}
           </div>
           {inspectorCollapsed ? null : (
-            <div id="inspector-body" className="inspector-body">
-              <Inspector
-                project={session.project}
-                selectedClipId={session.selectedClipId}
-                selectedClipIds={session.selectedClipIds}
-                selectedMarkerId={session.selectedMarkerId}
-                selectedVis={session.selectedVis}
-                selectedVisEventId={session.selectedVisEventId}
-                onChange={(clipId, patch) => setSession(applyUpdateClip(session, clipId, patch))}
-                onSetEnabled={(enabled) => runCommand({ type: "setClipsEnabled", enabled })}
-                onSetLocked={(locked) => runCommand({ type: "setClipsLocked", locked })}
-                onFades={(clipId, fadeInMs, fadeOutMs) =>
-                  setSession(applyCommand(session, { type: "setClipFades", clipId, fadeInMs, fadeOutMs }))
-                }
-                onRate={(clipId, rate) =>
-                  setSession(applyCommand(session, { type: "setClipRate", clipId, rate }))
-                }
-                onUnlink={(clipId) => setSession(applyCommand(session, { type: "unlinkClips", clipId }))}
-                onRelink={() => void runRelink()}
-                onRenameMarker={(markerId, label) =>
-                  setSession(applyCommand(session, { type: "renameMarker", markerId, label }))
-                }
-                onTransition={(cmd) => setSession(applyCommand(session, cmd))}
-                onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
-              />
+            <div
+              id="inspector-body"
+              className={`inspector-body${directorEnabled ? " director-open" : ""}`}
+              data-testid="inspector-body"
+              data-director-open={directorEnabled ? "true" : "false"}
+            >
+              <div className="inspector-section" data-testid="inspector-section">
+                <Inspector
+                  project={session.project}
+                  selectedClipId={session.selectedClipId}
+                  selectedClipIds={session.selectedClipIds}
+                  selectedMarkerId={session.selectedMarkerId}
+                  selectedVis={session.selectedVis}
+                  selectedVisEventId={session.selectedVisEventId}
+                  onChange={(clipId, patch) => setSession(applyUpdateClip(session, clipId, patch))}
+                  onSetEnabled={(enabled) => runCommand({ type: "setClipsEnabled", enabled })}
+                  onSetLocked={(locked) => runCommand({ type: "setClipsLocked", locked })}
+                  onFades={(clipId, fadeInMs, fadeOutMs) =>
+                    setSession(applyCommand(session, { type: "setClipFades", clipId, fadeInMs, fadeOutMs }))
+                  }
+                  onRate={(clipId, rate) =>
+                    setSession(applyCommand(session, { type: "setClipRate", clipId, rate }))
+                  }
+                  onUnlink={(clipId) => setSession(applyCommand(session, { type: "unlinkClips", clipId }))}
+                  onRelink={() => void runRelink()}
+                  onRenameMarker={(markerId, label) =>
+                    setSession(applyCommand(session, { type: "renameMarker", markerId, label }))
+                  }
+                  onTransition={(cmd) => setSession(applyCommand(session, cmd))}
+                  onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
+                />
+              </div>
               {directorEnabled ? (
-                <DirectorPanel session={session} onCanonicalCommit={(next) => setSession(next)} />
+                <div className="director-section" data-testid="director-section">
+                  <DirectorPanel
+                    session={session}
+                    onCanonicalCommit={(next) => setSession(next)}
+                    onRequestClose={closeDirector}
+                  />
+                </div>
               ) : null}
             </div>
           )}
