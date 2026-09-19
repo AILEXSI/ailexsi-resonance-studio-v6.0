@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyPreviewCanvasBackingStore,
-  applyPreviewVideoViewport,
   measurePreviewBox,
   remasurePreviewSurfaces,
   subscribePreviewRemeasure,
@@ -103,7 +102,7 @@ describe("preview surface remasure", () => {
 });
 
 describe("subscribePreviewRemeasure", () => {
-  const observers: Array<{ cb: ResizeObserverCallback; fire: () => void }> = [];
+  const observers: Array<{ fire: () => void }> = [];
   const OriginalRO = globalThis.ResizeObserver;
 
   afterEach(() => {
@@ -115,16 +114,19 @@ describe("subscribePreviewRemeasure", () => {
 
   it("fires on observe, ResizeObserver, and window resize (rAF-coalesced)", async () => {
     class MockRO {
-      cb: ResizeObserverCallback;
+      live = true;
       constructor(cb: ResizeObserverCallback) {
-        this.cb = cb;
         observers.push({
-          cb,
-          fire: () => cb([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver),
+          fire: () => {
+            if (!this.live) return;
+            cb([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver);
+          },
         });
       }
       observe() {}
-      disconnect() {}
+      disconnect() {
+        this.live = false;
+      }
       unobserve() {}
     }
     vi.stubGlobal("ResizeObserver", MockRO);
