@@ -115,7 +115,8 @@ input[type="range"] { accent-color: var(--accent-2); }
 .arrange-row > .timeline {
   min-width: 0;
 }
-.arrange-row.mixer-collapsed {
+.arrange-row.mixer-collapsed,
+.arrange-row.mixer-master-only {
   grid-template-columns: minmax(0, 1fr) 56px;
 }
 
@@ -203,6 +204,52 @@ input[type="range"] { accent-color: var(--accent-2); }
   min-height: 120px;
   min-width: 0;
   overflow: hidden;
+}
+.workspace.stage-grid {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  grid-template-columns:
+    minmax(200px, var(--stage-preview-col, 1fr))
+    14px
+    minmax(180px, var(--stage-inspector-col, 1fr));
+  grid-template-rows:
+    minmax(120px, var(--stage-preview-row, 1fr))
+    18px
+    minmax(200px, var(--stage-arrange-row, 1fr));
+  grid-template-areas:
+    "preview hsplit inspector"
+    "vsplit  vsplit  vsplit"
+    "lower   lower   lower";
+}
+.workspace.stage-grid.inspector-collapsed {
+  grid-template-columns: minmax(0, 1fr) var(--stage-inspector-col, 32px);
+  grid-template-areas:
+    "preview inspector"
+    "vsplit  vsplit"
+    "lower   lower";
+}
+.workspace.stage-grid.director-focus {
+  grid-template-areas:
+    "preview hsplit inspector"
+    "vsplit  hsplit inspector"
+    "lower   hsplit inspector";
+}
+.workspace.stage-grid > .workspace-preview { grid-area: preview; }
+.workspace.stage-grid > .layout-split-v { grid-area: hsplit; align-self: stretch; }
+.workspace.stage-grid > .workspace-inspector { grid-area: inspector; max-height: none; }
+.workspace.stage-grid > .layout-split { grid-area: vsplit; }
+.workspace.stage-grid > .lower-stage {
+  grid-area: lower;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.workspace.stage-grid.director-focus > .workspace-inspector {
+  height: auto;
+  align-self: stretch;
 }
 .workspace-preview,
 .workspace-inspector {
@@ -2194,7 +2241,8 @@ body.media-asset-dragging .project-overlay-drawer {
   top: 0;
   max-height: 100%;
 }
-.mixer.collapsed {
+.mixer.collapsed,
+.mixer.master-only {
   min-width: 56px;
   width: 56px;
   max-width: 56px;
@@ -2287,7 +2335,8 @@ body.media-asset-dragging .project-overlay-drawer {
 .mix-strip.muted { opacity: 0.55; }
 .mix-strip.soloed { border-color: var(--accent); }
 .mix-strip.master { border-left: 1px solid var(--line); margin-left: 2px; }
-.mixer.collapsed .mix-strip.master { border-left: none; margin-left: 0; }
+.mixer.collapsed .mix-strip.master,
+.mixer.master-only .mix-strip.master { border-left: none; margin-left: 0; }
 .mix-name {
   font-size: 10px;
   font-weight: 700;

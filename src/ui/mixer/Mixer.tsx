@@ -37,6 +37,8 @@ interface Props {
   selectedTrackIds?: readonly TrackId[];
   peaks: MixPeaks;
   collapsed?: boolean;
+  /** Director Focus: hide channel strips, keep Master. UI-only — not mixerCollapsed prefs. */
+  masterOnly?: boolean;
   onToggleCollapsed?: () => void;
   onResizePointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onSelectTrack: (id: TrackId, opts?: { toggle?: boolean }) => void;
@@ -234,6 +236,7 @@ export function Mixer({
   selectedTrackIds,
   peaks,
   collapsed = false,
+  masterOnly = false,
   onToggleCollapsed,
   onResizePointerDown,
   onSelectTrack,
@@ -267,15 +270,17 @@ export function Mixer({
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [collapsed, rows.length]);
+  }, [collapsed, masterOnly, rows.length]);
+  const hideChannels = collapsed || masterOnly;
   return (
     <aside
-      className={`mixer${collapsed ? " collapsed" : ""}`}
+      className={`mixer${collapsed ? " collapsed" : ""}${masterOnly ? " master-only" : ""}`}
       data-testid="mixer"
       data-collapsed={collapsed ? "true" : "false"}
+      data-master-only={masterOnly ? "true" : "false"}
       data-playing={playing ? "true" : "false"}
     >
-      {collapsed || !onResizePointerDown ? null : (
+      {hideChannels || !onResizePointerDown ? null : (
         <div
           className="mixer-resize"
           data-testid="mixer-resize"
@@ -305,7 +310,7 @@ export function Mixer({
         {collapsed ? null : <span className="mixer-chrome-label">Mix</span>}
       </div>
       <div className="mixer-strips" id="mixer-channels" data-testid="mixer-channels">
-        {collapsed ? null : (
+        {hideChannels ? null : (
           <div
             ref={channelScrollRef}
             className="mixer-channel-scroll"

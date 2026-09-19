@@ -73,7 +73,7 @@ export interface DirectorPanelProps {
   onCanonicalCommit?: (session: Session) => void;
   /** App chrome: Close hides Director and syncs the toolbar AI toggle. */
   onRequestClose?: () => void;
-  /** Director Focus — collapses Inspector section only. Not app fullscreen. */
+  /** Director Focus — full-height right workspace. Inspector section collapses. Not Project state. */
   focusMode?: boolean;
   onToggleFocus?: () => void;
   /** Existing Session history. Director never owns a second undo stack. */
@@ -196,12 +196,13 @@ export function DirectorPanel({
     abortRef.current = ctl;
     setDraft("");
     const current = stateRef.current;
+    const liveSession = sessionRef.current;
     const runtime = {
       provider: provider ?? providerForHost(current),
       orchestrator: runtimeRef.current.orchestrator,
     };
     void (async () => {
-      const next = await submitDirectorAutoTurn(current, text, runtime, ctl.signal, session, {
+      const next = await submitDirectorAutoTurn(current, text, runtime, ctl.signal, liveSession, {
         providerInjected: Boolean(provider),
       });
       if (ctl.signal.aborted || abortRef.current !== ctl) return;
@@ -249,7 +250,7 @@ export function DirectorPanel({
       orchestrator: runtimeRef.current.orchestrator,
     };
     void (async () => {
-      const resolved = await submitDirectorAutoTurn(next, text, runtime, ctl.signal, session, {
+      const resolved = await submitDirectorAutoTurn(next, text, runtime, ctl.signal, sessionRef.current, {
         providerInjected: Boolean(provider),
       });
       if (ctl.signal.aborted || abortRef.current !== ctl) return;
@@ -326,6 +327,11 @@ export function DirectorPanel({
                   data-plan-mode={state.sealedRequest?.plan.mode ?? state.lastPlan?.mode ?? ""}
                   data-plan-context={state.sealedRequest?.plan.contextLevel ?? state.lastPlan?.contextLevel ?? ""}
                   data-plan-grant={state.sealedRequest?.plan.requiredGrant ?? state.lastPlan?.requiredGrant ?? ""}
+                  data-request-clip-id={state.sealedRequest?.clipId ?? ""}
+                  data-request-selected={
+                    state.sealedRequest?.contextSnapshot?.selection.clipIds.join(",") ?? ""
+                  }
+                  data-request-project-id={state.sealedRequest?.contextSnapshot?.projectId ?? ""}
                 >
                   {autoPlanStatusLabel(state)}
                 </p>

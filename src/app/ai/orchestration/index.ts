@@ -1,6 +1,7 @@
 export {
   classifyDirectorIntent,
   normalizeDirectorPrompt,
+  parseMoveRightPrompt,
   DIRECTOR_INTENT_KINDS,
   type DirectorIntent,
   type DirectorIntentKind,

@@ -128,7 +128,6 @@ import {
 import { relinkSelectionForAsset, relinkSelectionOf } from "../core/relink";
 import { Cutter } from "../ui/cutter/Cutter";
 import {
-  ARRANGE_MIN_PX,
   DEFAULT_DIRECTOR_SPLIT_RATIO,
   DEFAULT_H_SPLIT_RATIO,
   DIRECTOR_SPLITTER_PX,
@@ -137,7 +136,6 @@ import {
   INSPECTOR_MAX_PX,
   INSPECTOR_MIN_PX,
   PREVIEW_H_MIN_PX,
-  PREVIEW_MIN_PX,
   SPLITTER_PX,
   applyDirectorFocusToggle,
   applyDirectorSplitPointer,
@@ -1755,11 +1753,14 @@ export function App() {
 
       <div className="stage" data-testid="stage" ref={stageRef}>
       <div
-        className={`workspace${inspectorCollapsed ? " inspector-collapsed" : ""}`}
+        className={`workspace stage-grid${inspectorCollapsed ? " inspector-collapsed" : ""}${
+          directorFocus && directorEnabled && !inspectorCollapsed ? " director-focus" : ""
+        }`}
         data-testid="preview-pane"
         data-preview-ratio={splitRatio}
         data-h-split-ratio={hSplitRatio}
         data-inspector-collapsed={inspectorCollapsed ? "true" : "false"}
+        data-director-focus={directorFocus && directorEnabled && !inspectorCollapsed ? "true" : "false"}
         data-director-presentation={directorPresentationOf({
           inspectorCollapsed,
           directorEnabled,
@@ -1767,17 +1768,16 @@ export function App() {
         })}
         data-timeline-focus={timelineFocus ? "true" : "false"}
         ref={workspaceRef}
-        style={{ flex: `${splitRatio} 1 ${PREVIEW_MIN_PX}px` }}
+        style={{
+          ["--stage-preview-row" as string]: `${splitRatio}fr`,
+          ["--stage-arrange-row" as string]: `${1 - splitRatio}fr`,
+          ["--stage-preview-col" as string]: inspectorCollapsed ? "1fr" : `${hSplitRatio}fr`,
+          ["--stage-inspector-col" as string]: inspectorCollapsed
+            ? `${INSPECTOR_COLLAPSED_PX}px`
+            : `${1 - hSplitRatio}fr`,
+        }}
       >
-        <div
-          className="workspace-preview"
-          data-testid="workspace-preview"
-          style={
-            inspectorCollapsed
-              ? { flex: `1 1 ${PREVIEW_H_MIN_PX}px` }
-              : { flex: `${hSplitRatio} 1 ${PREVIEW_H_MIN_PX}px` }
-          }
-        >
+        <div className="workspace-preview" data-testid="workspace-preview">
           <Preview
             project={session.project}
             playing={session.playing}
@@ -1959,7 +1959,6 @@ export function App() {
             </div>
           )}
         </div>
-      </div>
 
       <div
         className="layout-split"
@@ -1988,11 +1987,7 @@ export function App() {
         </button>
       </div>
 
-      <div
-        className="lower-stage"
-        data-testid="lower-stage"
-        style={{ flex: `${1 - splitRatio} 1 ${ARRANGE_MIN_PX}px` }}
-      >
+      <div className="lower-stage" data-testid="lower-stage">
       <Transport
         project={session.project}
         playing={session.playing}
@@ -2027,14 +2022,17 @@ export function App() {
         />
       ) : null}
       <div
-        className={`arrange-row${mixerCollapsed ? " mixer-collapsed" : ""}`}
+        className={`arrange-row${mixerCollapsed ? " mixer-collapsed" : ""}${
+          directorFocus && directorEnabled ? " mixer-master-only" : ""
+        }`}
         data-testid="arrange-row"
+        data-mixer-master-only={directorFocus && directorEnabled ? "true" : "false"}
         data-mixer-width={mixerWidthPx}
         ref={arrangeRowRef}
         style={{
           overflow: "hidden",
           ["--mixer-width" as string]: `${mixerWidthPx}px`,
-          ...(mixerCollapsed
+          ...(mixerCollapsed || (directorFocus && directorEnabled)
             ? {}
             : {
                 gridTemplateColumns: `minmax(${TIMELINE_MIN_PX}px, 1fr) ${mixerWidthPx}px`,
@@ -2178,6 +2176,7 @@ export function App() {
         selectedTrackIds={session.selectedTrackIds}
         peaks={mixPeaks}
         collapsed={mixerCollapsed}
+        masterOnly={directorFocus && directorEnabled}
         onToggleCollapsed={toggleMixerCollapsed}
         onResizePointerDown={onMixerResizePointerDown}
         onSelectTrack={(id, opts) => setSession((s) => applySelectTracks(s, id, opts))}
@@ -2199,6 +2198,7 @@ export function App() {
           }, WRITE_POINTER_UP_MS);
         }}
       />
+      </div>
       </div>
       </div>
       </div>
