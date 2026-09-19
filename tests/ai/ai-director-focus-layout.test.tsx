@@ -1,5 +1,6 @@
 /**
- * Human Gate Repair #2 — Director Focus full-height + Master-only mixer.
+ * Human UX — flexible Director workspace.
+ * Focus is max sidebar height + reversible. Mixer is progressive, not Focus-forced.
  * Layout is UI state only. Must not write Project / History / Revision.
  */
 import { act } from "react";
@@ -33,7 +34,7 @@ const PREF_KEYS = [
   MIXER_COLLAPSED_KEY,
 ];
 
-describe("Director Focus full-height layout", () => {
+describe("Director Focus flexible workspace", () => {
   let host: HTMLDivElement | undefined;
   let root: Root | undefined;
 
@@ -78,10 +79,13 @@ describe("Director Focus full-height layout", () => {
     });
   }
 
-  it("Focus uses full right-side height, Master only, and restores the mixer", async () => {
+  it("Focus is reversible max sidebar height — mixer channels stay unless user/auto compact", async () => {
     await mountApp(1920, 1080);
     await click("toolbar-ai");
     expect(host!.querySelector('[data-testid="preview-pane"]')?.getAttribute("data-director-focus")).toBe("false");
+    expect(host!.querySelector('[data-testid="preview-pane"]')?.getAttribute("data-director-full-height")).toBe(
+      "false",
+    );
     expect(host!.querySelector('[data-testid="mixer"]')?.getAttribute("data-master-only")).toBe("false");
     expect(host!.querySelector('[data-testid="mix-V1"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="mix-V2"]')).toBeTruthy();
@@ -95,25 +99,35 @@ describe("Director Focus full-height layout", () => {
     const inspector = host!.querySelector('[data-testid="workspace-inspector"]') as HTMLElement;
     expect(pane.classList.contains("director-focus")).toBe(true);
     expect(pane.getAttribute("data-director-focus")).toBe("true");
+    expect(pane.getAttribute("data-director-full-height")).toBe("false");
     expect(inspector.getAttribute("data-director-focus")).toBe("true");
     expect(inspector.getAttribute("data-director-presentation")).toBe("focus");
+    expect(inspector.getAttribute("data-inspector-section-collapsed")).toBe("true");
     expect(host!.querySelector('[data-testid="director"]')?.getAttribute("data-focus")).toBe("true");
     expect(host!.querySelector('[data-testid="director-focus"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-input"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-send"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-compose"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="timeline"]')).toBeTruthy();
-    expect(host!.querySelector('[data-testid="mixer"]')?.getAttribute("data-master-only")).toBe("true");
     expect(host!.querySelector('[data-testid="mixer"]')?.getAttribute("data-collapsed")).toBe("false");
-    expect(host!.querySelector('[data-testid="arrange-row"]')?.getAttribute("data-mixer-master-only")).toBe("true");
     expect(host!.querySelector('[data-testid="mix-master"]')).toBeTruthy();
-    expect(host!.querySelector('[data-testid="mix-V1"]')).toBeNull();
-    expect(host!.querySelector('[data-testid="mix-V2"]')).toBeNull();
-    expect(host!.querySelector('[data-testid="mix-A1"]')).toBeNull();
-    expect(host!.querySelector('[data-testid="mix-A2"]')).toBeNull();
-    expect(host!.querySelector('[data-testid="mixer-channel-scroll"]')).toBeNull();
+    expect(host!.querySelector('[data-testid="mix-V1"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="mix-V2"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="mix-A1"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="mix-A2"]')).toBeTruthy();
     expect(localStorage.getItem(DIRECTOR_FOCUS_KEY)).toBe("1");
     expect(localStorage.getItem(MIXER_COLLAPSED_KEY)).not.toBe("1");
+
+    await click("mixer-collapse");
+    expect(host!.querySelector('[data-testid="mixer"]')?.getAttribute("data-collapsed")).toBe("true");
+    expect(host!.querySelector('[data-testid="mix-master"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="mix-V1"]')).toBeNull();
+    expect(localStorage.getItem(MIXER_COLLAPSED_KEY)).toBe("1");
+
+    await click("mixer-collapse");
+    expect(host!.querySelector('[data-testid="mixer"]')?.getAttribute("data-collapsed")).toBe("false");
+    expect(host!.querySelector('[data-testid="mix-V1"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="mix-master"]')).toBeTruthy();
 
     await click("director-focus");
     expect(pane.getAttribute("data-director-focus")).toBe("false");
@@ -128,26 +142,29 @@ describe("Director Focus full-height layout", () => {
   });
 
   it.each(VIEWPORTS)(
-    "viewport $name Focus ON/OFF: Arrange left, Master strip, composer reachable",
+    "viewport $name Focus ON/OFF: Arrange left, MASTER visible, composer reachable",
     async ({ width, height }) => {
       await mountApp(width, height);
       await click("toolbar-ai");
       expect(host!.querySelector('[data-testid="timeline"]')).toBeTruthy();
-      expect(host!.querySelector('[data-testid="mix-V1"]')).toBeTruthy();
+      expect(host!.querySelector('[data-testid="mix-master"]')).toBeTruthy();
       expect(host!.querySelector('[data-testid="director-compose"]')).toBeTruthy();
+      expect(host!.querySelector('[data-testid="director-send"]')).toBeTruthy();
 
       await click("director-focus");
       expect(host!.querySelector('[data-testid="preview-pane"]')?.getAttribute("data-director-focus")).toBe("true");
+      expect(host!.querySelector('[data-testid="preview-pane"]')?.getAttribute("data-director-full-height")).toBe(
+        "false",
+      );
       expect(host!.querySelector('[data-testid="timeline"]')).toBeTruthy();
       expect(host!.querySelector('[data-testid="mix-master"]')).toBeTruthy();
-      expect(host!.querySelector('[data-testid="mix-V1"]')).toBeNull();
       expect(host!.querySelector('[data-testid="director-input"]')).toBeTruthy();
       expect(host!.querySelector('[data-testid="director-send"]')).toBeTruthy();
       expect(host!.querySelector('[data-testid="director-focus"]')).toBeTruthy();
+      expect(host!.querySelector('[data-testid="director-txn-apply"]') ?? true).toBeTruthy();
 
       await click("director-focus");
       expect(host!.querySelector('[data-testid="preview-pane"]')?.getAttribute("data-director-focus")).toBe("false");
-      expect(host!.querySelector('[data-testid="mix-V1"]')).toBeTruthy();
       expect(host!.querySelector('[data-testid="mix-master"]')).toBeTruthy();
     },
   );
@@ -158,12 +175,14 @@ describe("Director Focus full-height layout", () => {
     await mountApp();
     await click("toolbar-ai");
     await click("director-focus");
+    await click("mixer-collapse");
+    await click("mixer-collapse");
     await click("director-focus");
     expect(host!.querySelector('[data-testid="project-dirty"]')).toBeNull();
     const dumped = JSON.parse(serializeProject(empty)) as Record<string, unknown>;
     expect(dumped.schemaVersion).toBe(5);
     expect(dumped).not.toHaveProperty("director");
     expect(dumped).not.toHaveProperty("directorFocus");
-    expect(JSON.stringify(dumped)).not.toMatch(/director-focus|master-only|stage-grid/);
+    expect(JSON.stringify(dumped)).not.toMatch(/director-focus|master-only|stage-grid|mixer-collapsed/);
   });
 });

@@ -1,6 +1,5 @@
 import { clipById, clipIsLocked } from "../../../core/models";
 import { selectionOf, type Session } from "../../session";
-import { parseMoveRightPrompt } from "../orchestration/intent";
 import type { DirectorMode } from "../permissions/policy";
 import {
   applyCommandTransaction,
@@ -19,7 +18,17 @@ export const HUMAN_MOVE_PROMPT = "Verschiebe den Clip zwei Sekunden nach rechts"
 /** Human EXE phrasing that previously planned UNCERTAIN / NONE. */
 export const HUMAN_THREE_SECOND_PROMPT = "Verschiebe markiertes File 3 Sekunden nach rechts";
 
-export { parseMoveRightPrompt };
+/** Zero-config human golden: +3000 via AUTO, no manual AGENT/EDIT/SELECTION. */
+export const AUTO_THREE_SECOND_PROMPT = "Verschiebe den markierten Clip 3 Sekunden nach rechts.";
+
+/** Second AUTO request: exact −2000 via the same timeline.move_clip tool. */
+export const AUTO_TWO_SECOND_LEFT_PROMPT = "Verschiebe den markierten Clip 2 Sekunden nach links.";
+
+export { parseMoveClipPrompt, parseMoveRightPrompt } from "../orchestration/intent";
+
+export function formatMoveDeltaMs(deltaMs: number): string {
+  return `${deltaMs > 0 ? "+" : ""}${deltaMs}ms`;
+}
 
 export const MOVE_CLIP_TOOL = "timeline.move_clip";
 
@@ -37,9 +46,10 @@ export function parseGoldenMovePrompt(text: string): { deltaMs: 2000 } | null {
 const MAX_DELTA_MS = 86_400_000;
 
 function asExactDeltaMs(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > MAX_DELTA_MS) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value === 0) {
     return null;
   }
+  if (Math.abs(value) > MAX_DELTA_MS) return null;
   return value;
 }
 
@@ -81,7 +91,9 @@ export function resolveMoveClipCommand(
       return { error: "INVALID_DELTA" };
     }
     const raw = args.targetStartSeconds * 1000 - clip.startMs;
-    if (!Number.isSafeInteger(raw) || raw <= 0 || raw > MAX_DELTA_MS) return { error: "INVALID_DELTA" };
+    if (!Number.isSafeInteger(raw) || raw === 0 || Math.abs(raw) > MAX_DELTA_MS) {
+      return { error: "INVALID_DELTA" };
+    }
     deltaMs = raw;
   } else {
     deltaMs = asExactDeltaMs(args.deltaMs);

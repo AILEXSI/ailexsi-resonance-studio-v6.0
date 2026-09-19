@@ -900,3 +900,26 @@ Schema **5**. No provider / tool / transaction / command / history / Frame Engin
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
 
+---
+
+## HUMAN UX + AUTO ORCHESTRATION HARDENING
+
+**Branch:** `cursor/human-ux-auto-orch-dc1c`  
+**HEAD BEFORE:** `3af280fe23273095dc8522033dd18487c2caae0b`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Flexible Director workspace + zero-config AUTO. Schema stays **5**. No AI-8.
+
+### Part A — workspace
+
+- Focus = max sidebar height (Inspector section collapses). Reversible. Restores prior width/split. Does **not** force a full-viewport Director column over Arrange/Mixer.
+- User grows Director toward the bottom with the existing Preview/Arrange splitter.
+- Mixer is progressive: user compact or auto-compact when Arrange is narrower than `TIMELINE_MIN_PX + MIXER_MIN_PX`. Compact = `[timeline][MST]`. Expanded = `[timeline][V1 V2 A1 A2 MST]`. Auto-compact is runtime-only and does not persist as `mixerCollapsed`.
+
+### Part B — AUTO
+
+- Normal chrome: `AUTO ●`, model status, permission status, Context automatic.
+- `timeline.move_clip` accepts exact non-zero integer deltas (including −2000). Zero / fractional / NaN still fail closed.
+- Known prompts: +3000 right, −2000 left. No invented tools.
+- MOVE with no/ambiguous selection fail-closed before the EDIT gate.
+- Session EDIT is runtime only; hydrate/restart returns READ. Provider prefs may persist.
+

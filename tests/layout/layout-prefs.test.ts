@@ -17,10 +17,13 @@ import {
   INSPECTOR_MIN_PX,
   INSPECTOR_SECTION_COLLAPSED_KEY,
   INSPECTOR_SECTION_MIN_PX,
+  MIXER_AUTO_COMPACT_ARRANGE_PX,
   MIXER_COLLAPSED_KEY,
   MIXER_EXPANDED_PX,
   MIXER_MAX_PX,
   MIXER_MIN_PX,
+  mixerChromeOf,
+  shouldAutoCompactMixer,
   MIXER_WIDTH_KEY,
   NORMAL_SPLIT_RATIO_KEY,
   TIMELINE_FOCUS_KEY,
@@ -259,6 +262,18 @@ describe("layout prefs", () => {
     saveMixerWidth(store, 8);
     expect(loadMixerWidth(store)).toBe(MIXER_MIN_PX);
     expect(loadMixerWidth(memoryStorage({ [MIXER_WIDTH_KEY]: "nope" }))).toBe(MIXER_EXPANDED_PX);
+  });
+
+  it("auto-compacts mixer when Arrange is too narrow; unknown width stays expanded", () => {
+    expect(MIXER_AUTO_COMPACT_ARRANGE_PX).toBe(TIMELINE_MIN_PX + MIXER_MIN_PX);
+    expect(shouldAutoCompactMixer(0)).toBe(false);
+    expect(shouldAutoCompactMixer(Number.NaN)).toBe(false);
+    expect(shouldAutoCompactMixer(MIXER_AUTO_COMPACT_ARRANGE_PX - 1)).toBe(true);
+    expect(shouldAutoCompactMixer(MIXER_AUTO_COMPACT_ARRANGE_PX)).toBe(false);
+    expect(shouldAutoCompactMixer(1920)).toBe(false);
+    expect(mixerChromeOf({ collapsed: false, autoCompact: false })).toBe("expanded");
+    expect(mixerChromeOf({ collapsed: true, autoCompact: false })).toBe("compact");
+    expect(mixerChromeOf({ collapsed: false, autoCompact: true })).toBe("compact");
   });
 
   it("persists chapter-group collapse ids in layout prefs", () => {

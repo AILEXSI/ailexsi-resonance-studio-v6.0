@@ -231,11 +231,14 @@ input[type="range"] { accent-color: var(--accent-2); }
     "vsplit  vsplit"
     "lower   lower";
 }
+/* Focus is max sidebar height inside the Inspector column — never a forced
+   full-viewport span over Arrange / Mixer. User grows Director toward the
+   bottom with the existing Preview/Arrange splitter. */
 .workspace.stage-grid.director-focus {
   grid-template-areas:
     "preview hsplit inspector"
-    "vsplit  hsplit inspector"
-    "lower   hsplit inspector";
+    "vsplit  vsplit  vsplit"
+    "lower   lower   lower";
 }
 .workspace.stage-grid > .workspace-preview { grid-area: preview; }
 .workspace.stage-grid > .layout-split-v { grid-area: hsplit; align-self: stretch; }
@@ -523,6 +526,12 @@ input[type="range"] { accent-color: var(--accent-2); }
   margin: 0;
   font-size: 10px;
   letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.director-permission-status,
+.director-context-auto {
+  margin: 0;
+  font-size: 10px;
   color: var(--muted);
 }
 .director-plan-status {

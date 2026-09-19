@@ -47,16 +47,32 @@ function hasThreeSeconds(n: string): boolean {
   return n.includes("drei sekunden") || n.includes("3 sekunden") || n.includes("3sec") || n.includes("3 sec");
 }
 
+function hasLeftDirection(n: string): boolean {
+  return n.includes("links") || n.includes(" left");
+}
+
+function hasRightDirection(n: string): boolean {
+  return n.includes("rechts") || n.includes(" right");
+}
+
 /**
- * Known move-right family. Golden +2s, human +2s, and the EXE +3s phrasing.
+ * Known move family. Golden +2s, human +2s / +3s, and exact left −2s.
  * Phrase checks, not a regex maze. Does not invent other tools.
  */
-export function parseMoveRightPrompt(text: string): { deltaMs: number } | null {
+export function parseMoveClipPrompt(text: string): { deltaMs: number } | null {
   const n = normalizeDirectorPrompt(text);
-  if (!n.includes("verschiebe") || !n.includes("rechts") || !namesSelectedItem(n)) return null;
-  if (hasThreeSeconds(n)) return { deltaMs: 3000 };
-  if (hasTwoSeconds(n)) return { deltaMs: 2000 };
-  return null;
+  if (!n.includes("verschiebe") || !namesSelectedItem(n)) return null;
+  const left = hasLeftDirection(n);
+  const right = hasRightDirection(n);
+  if (left === right) return null;
+  const magnitude = hasThreeSeconds(n) ? 3000 : hasTwoSeconds(n) ? 2000 : null;
+  if (magnitude == null) return null;
+  return { deltaMs: left ? -magnitude : magnitude };
+}
+
+/** Alias kept for existing golden / mock call sites. */
+export function parseMoveRightPrompt(text: string): { deltaMs: number } | null {
+  return parseMoveClipPrompt(text);
 }
 
 /**
@@ -82,12 +98,14 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
   if (n === "was kannst du" || n === "what can you do") {
     return { kind: "ASK_CAPABILITY", confidence: "known", reason: "capability question" };
   }
-  const move = parseMoveRightPrompt(text);
+  const move = parseMoveClipPrompt(text);
   if (move) {
+    const seconds = Math.abs(move.deltaMs) / 1000;
+    const dir = move.deltaMs < 0 ? "left" : "right";
     return {
       kind: "MOVE_CLIP",
       confidence: "known",
-      reason: move.deltaMs === 3000 ? "move selected clip +3s" : "move selected clip +2s",
+      reason: `move selected clip ${move.deltaMs > 0 ? "+" : ""}${seconds}s ${dir}`,
     };
   }
   return { kind: "UNCERTAIN", confidence: "uncertain", reason: "no known route" };

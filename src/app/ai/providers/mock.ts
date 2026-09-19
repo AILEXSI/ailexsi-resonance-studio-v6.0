@@ -1,7 +1,7 @@
 import { mockDirectorReply } from "../conversation";
 import { DIRECTOR_MUTATING_TOOL } from "../contract";
-import { classifyDirectorIntent, parseMoveRightPrompt } from "../orchestration/intent";
-import { parseGoldenMovePrompt } from "../tools/move-clip";
+import { classifyDirectorIntent, parseMoveClipPrompt } from "../orchestration/intent";
+import { formatMoveDeltaMs, parseGoldenMovePrompt } from "../tools/move-clip";
 import {
   ProviderError,
   type AIProvider,
@@ -77,13 +77,13 @@ export class MockProvider implements AIProvider {
       }
       const lastUser = [...request.messages].reverse().find((m) => m.role === "user");
       const userText = lastUser?.content ?? "";
-      const move = parseMoveRightPrompt(userText) ?? (parseGoldenMovePrompt(userText) ? { deltaMs: 2000 as const } : null);
+      const move = parseMoveClipPrompt(userText) ?? (parseGoldenMovePrompt(userText) ? { deltaMs: 2000 as const } : null);
       if (move || classifyDirectorIntent(userText).kind === "MOVE_CLIP") {
         const deltaMs = move?.deltaMs ?? 2000;
         return {
           requestId: request.requestId,
           text: JSON.stringify({
-            message: `Preview timeline.move_clip +${deltaMs}ms on the selected clip. Apply to commit.`,
+            message: `Preview timeline.move_clip ${formatMoveDeltaMs(deltaMs)} on the selected clip. Apply to commit.`,
             toolRequest: { name: DIRECTOR_MUTATING_TOOL, arguments: { deltaMs } },
           }),
           model: request.model ?? this.modelId,

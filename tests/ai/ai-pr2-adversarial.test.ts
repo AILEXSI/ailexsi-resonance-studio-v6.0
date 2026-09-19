@@ -334,7 +334,6 @@ describe("PR #2 adversarial review", () => {
       Number.POSITIVE_INFINITY,
       Number.NEGATIVE_INFINITY,
       0,
-      -2000,
       2000.4,
       2000.6,
       Number.MAX_SAFE_INTEGER + 1,
@@ -352,6 +351,8 @@ describe("PR #2 adversarial review", () => {
     });
     const ok = resolveMoveClipCommand(session, { deltaMs: 2000 });
     expect(ok).toEqual({ clipIds: [CLIP_ID], deltaMs: 2000 });
+    expect(resolveMoveClipCommand(session, { deltaMs: -2000 })).toEqual({ clipIds: [CLIP_ID], deltaMs: -2000 });
+    expect(resolveMoveClipCommand(session, { deltaMs: 3000 })).toEqual({ clipIds: [CLIP_ID], deltaMs: 3000 });
     const applied = commitMoveClip({ session, args: { deltaMs: 2000 }, ...edit });
     expect(applied.ok).toBe(true);
     if (!applied.ok) return;

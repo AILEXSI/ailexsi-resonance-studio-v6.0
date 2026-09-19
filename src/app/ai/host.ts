@@ -942,12 +942,21 @@ export function cancelDirectorAuth(state: DirectorHostState): DirectorHostState 
     ...state,
     pendingAuth: null,
     heldUserText: null,
+    onceGrant: null,
   };
 }
 
 export function autoPlanStatusLabel(state: DirectorHostState): string {
   const plan = state.sealedRequest?.plan ?? state.lastPlan;
   return plan ? directorPlanStatus(plan) : "—";
+}
+
+/** Compact Normal chrome. Session EDIT is runtime only — never Project. */
+export function permissionStatusLabel(state: DirectorHostState): string {
+  if (state.pendingAuth) return `Permission: ${state.pendingAuth.requiredGrant} required`;
+  if (state.onceGrant) return `Permission: ${state.onceGrant} (once)`;
+  if (state.grant === "EDIT") return "Permission: EDIT (session)";
+  return `Permission: ${state.grant}`;
 }
 
 export function normalStatusLabel(state: DirectorHostState): string {
@@ -1036,6 +1045,17 @@ export async function submitDirectorAutoTurn(
   if (!text) return state;
   const plan = planDirectorTurn(text);
   const sealedRequest = sealDirectorRequest(plan, session, text);
+  if (plan.intent.kind === "MOVE_CLIP") {
+    const selected = session ? selectionOf(session) : [];
+    if (selected.length !== 1) {
+      const prepared = applyOrchestrationPlan(state, plan, session, text);
+      const detail =
+        selected.length === 0
+          ? "SELECTION REQUIRED. No clip selected. A single selected clip is required."
+          : "AMBIGUOUS_SELECTION. A single selected clip is required.";
+      return appendTurn(prepared, text, `${detail} No project changes were made.`);
+    }
+  }
   const current = effectiveGrant(state);
   if (grantExceeds(plan.requiredGrant, current)) {
     return {

@@ -37,7 +37,7 @@ interface Props {
   selectedTrackIds?: readonly TrackId[];
   peaks: MixPeaks;
   collapsed?: boolean;
-  /** Director Focus: hide channel strips, keep Master. UI-only — not mixerCollapsed prefs. */
+  /** Narrow Arrange auto-compact: hide channel strips, keep Master. UI-only — not mixerCollapsed prefs. */
   masterOnly?: boolean;
   onToggleCollapsed?: () => void;
   onResizePointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void;
@@ -278,6 +278,7 @@ export function Mixer({
       data-testid="mixer"
       data-collapsed={collapsed ? "true" : "false"}
       data-master-only={masterOnly ? "true" : "false"}
+      data-mixer-chrome={hideChannels ? "compact" : "expanded"}
       data-playing={playing ? "true" : "false"}
     >
       {hideChannels || !onResizePointerDown ? null : (

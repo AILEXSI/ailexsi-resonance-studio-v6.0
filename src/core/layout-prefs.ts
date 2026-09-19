@@ -96,6 +96,11 @@ export const MIXER_MIN_PX = 120;
 export const MIXER_MAX_PX = 8192;
 /** Thin usable timeline (lane labels + a clip sliver). Divider can reach Follow. */
 export const TIMELINE_MIN_PX = 160;
+/**
+ * Arrange narrower than timeline min + expanded mixer min → compact [timeline][MST].
+ * Runtime only — does not persist as mixerCollapsed. Channels restore when space returns.
+ */
+export const MIXER_AUTO_COMPACT_ARRANGE_PX = TIMELINE_MIN_PX + MIXER_MIN_PX;
 export const MIXER_SPLITTER_PX = 8;
 /** Closed inspector: reopen strip only. Same workspace language as MIXER_COLLAPSED_PX. */
 export const INSPECTOR_COLLAPSED_PX = 32;
@@ -251,6 +256,22 @@ export function mixerWidthMax(arrangeWidthPx?: number): number {
 export function clampMixerWidth(px: number, arrangeWidthPx?: number): number {
   if (!Number.isFinite(px)) return MIXER_EXPANDED_PX;
   return Math.round(Math.min(mixerWidthMax(arrangeWidthPx), Math.max(MIXER_MIN_PX, px)));
+}
+
+/**
+ * Progressive mixer collapse when Arrange is too narrow for channels.
+ * Unknown/zero width stays expanded so jsdom and first paint do not hide V1–A2.
+ * User mixerCollapsed is a separate persisted pref.
+ */
+export function shouldAutoCompactMixer(arrangeWidthPx: number): boolean {
+  if (!Number.isFinite(arrangeWidthPx) || arrangeWidthPx <= 0) return false;
+  return arrangeWidthPx < MIXER_AUTO_COMPACT_ARRANGE_PX;
+}
+
+export type MixerChrome = "compact" | "expanded";
+
+export function mixerChromeOf(opts: { collapsed: boolean; autoCompact: boolean }): MixerChrome {
+  return opts.collapsed || opts.autoCompact ? "compact" : "expanded";
 }
 
 /** Left-edge divider: drag left → wider mixer; drag right → narrower. */

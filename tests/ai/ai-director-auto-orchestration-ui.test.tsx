@@ -231,7 +231,9 @@ describe("AI Director auto-orchestration UI", () => {
   it("AUTO chrome shows plan status; Advanced is MANUAL defaults only", async () => {
     const session = fixture();
     await mountPanel(createDirectorHostState(), session);
-    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO");
+    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO ●");
+    expect(host!.querySelector('[data-testid="director-permission-status"]')?.textContent).toMatch(/Permission:/);
+    expect(host!.querySelector('[data-testid="director-context-auto"]')?.textContent).toBe("Context automatic");
     expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("—");
     await act(async () => {
       (host!.querySelector('[data-testid="director-advanced-toggle"]') as HTMLButtonElement).click();

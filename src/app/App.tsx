@@ -183,6 +183,8 @@ import {
   saveNormalSplitRatio,
   saveSplitRatio,
   saveTimelineFocus,
+  shouldAutoCompactMixer,
+  mixerChromeOf,
   toggleCollapsedGroupId,
   toggleOpenVolumeLaneId,
   TIMELINE_MIN_PX,
@@ -214,6 +216,7 @@ export function App() {
   shortcutsOpenRef.current = shortcutsOpen;
   const layoutStore = browserLayoutStorage();
   const [mixerCollapsed, setMixerCollapsed] = useState(() => loadMixerCollapsed(layoutStore));
+  const [mixerAutoCompact, setMixerAutoCompact] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(() => loadInspectorCollapsed(layoutStore));
   const [inspectorSectionCollapsed, setInspectorSectionCollapsed] = useState(() =>
     loadInspectorSectionCollapsed(layoutStore),
@@ -1593,6 +1596,17 @@ export function App() {
     return () => window.removeEventListener("resize", onResize);
   }, [inspectorCollapsed, directorEnabled, directorFocus, hideInspectorSection]);
 
+  useEffect(() => {
+    const measureMixer = () => {
+      const row = arrangeRowRef.current;
+      const width = row?.getBoundingClientRect().width ?? 0;
+      setMixerAutoCompact(shouldAutoCompactMixer(width));
+    };
+    measureMixer();
+    window.addEventListener("resize", measureMixer);
+    return () => window.removeEventListener("resize", measureMixer);
+  }, [directorFocus, directorEnabled, inspectorCollapsed, hSplitRatio, mixerCollapsed, mixerWidthPx]);
+
   const applyMixerWidthFromEvent = (clientX: number) => {
     const row = arrangeRowRef.current;
     if (!row) return;
@@ -1761,6 +1775,7 @@ export function App() {
         data-h-split-ratio={hSplitRatio}
         data-inspector-collapsed={inspectorCollapsed ? "true" : "false"}
         data-director-focus={directorFocus && directorEnabled && !inspectorCollapsed ? "true" : "false"}
+        data-director-full-height="false"
         data-director-presentation={directorPresentationOf({
           inspectorCollapsed,
           directorEnabled,
@@ -2023,16 +2038,17 @@ export function App() {
       ) : null}
       <div
         className={`arrange-row${mixerCollapsed ? " mixer-collapsed" : ""}${
-          directorFocus && directorEnabled ? " mixer-master-only" : ""
+          mixerAutoCompact && !mixerCollapsed ? " mixer-master-only" : ""
         }`}
         data-testid="arrange-row"
-        data-mixer-master-only={directorFocus && directorEnabled ? "true" : "false"}
+        data-mixer-master-only={mixerAutoCompact && !mixerCollapsed ? "true" : "false"}
+        data-mixer-chrome={mixerChromeOf({ collapsed: mixerCollapsed, autoCompact: mixerAutoCompact })}
         data-mixer-width={mixerWidthPx}
         ref={arrangeRowRef}
         style={{
           overflow: "hidden",
           ["--mixer-width" as string]: `${mixerWidthPx}px`,
-          ...(mixerCollapsed || (directorFocus && directorEnabled)
+          ...(mixerCollapsed || mixerAutoCompact
             ? {}
             : {
                 gridTemplateColumns: `minmax(${TIMELINE_MIN_PX}px, 1fr) ${mixerWidthPx}px`,
@@ -2176,7 +2192,7 @@ export function App() {
         selectedTrackIds={session.selectedTrackIds}
         peaks={mixPeaks}
         collapsed={mixerCollapsed}
-        masterOnly={directorFocus && directorEnabled}
+        masterOnly={mixerAutoCompact && !mixerCollapsed}
         onToggleCollapsed={toggleMixerCollapsed}
         onResizePointerDown={onMixerResizePointerDown}
         onSelectTrack={(id, opts) => setSession((s) => applySelectTracks(s, id, opts))}

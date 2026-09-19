@@ -26,8 +26,10 @@ import {
   discoverDirectorModels,
   findLocalAiEndpoints,
   normalStatusLabel,
+  permissionStatusLabel,
   type DirectorHostState,
 } from "../../app/ai/host";
+import { formatMoveDeltaMs } from "../../app/ai/tools/move-clip";
 import {
   DEFAULT_CHAT_TIMEOUT_MS,
   MAX_CHAT_TIMEOUT_MS,
@@ -73,7 +75,7 @@ export interface DirectorPanelProps {
   onCanonicalCommit?: (session: Session) => void;
   /** App chrome: Close hides Director and syncs the toolbar AI toggle. */
   onRequestClose?: () => void;
-  /** Director Focus — full-height right workspace. Inspector section collapses. Not Project state. */
+  /** Director Focus — max sidebar height (Inspector collapses). Reversible. Not Project state. */
   focusMode?: boolean;
   onToggleFocus?: () => void;
   /** Existing Session history. Director never owns a second undo stack. */
@@ -283,8 +285,8 @@ export function DirectorPanel({
               aria-pressed={focusMode}
               title={
                 focusMode
-                  ? "Exit Director Focus — restore docked Inspector width and split"
-                  : "Director Focus — expand Director to a working panel beside Preview"
+                  ? "Exit Director Focus — restore previous sidebar width, Inspector, and split"
+                  : "Director Focus — max sidebar height. Inspector collapses. Exit restores the previous layout."
               }
               onClick={onToggleFocus}
             >
@@ -319,7 +321,13 @@ export function DirectorPanel({
             <div className="director-normal" data-testid="director-normal">
               <div className="director-normal-copy">
                 <p className="director-orch-kind" data-testid="director-orch-kind">
-                  AUTO
+                  AUTO ●
+                </p>
+                <p className="director-permission-status" data-testid="director-permission-status">
+                  {permissionStatusLabel(state)}
+                </p>
+                <p className="director-context-auto" data-testid="director-context-auto">
+                  Context automatic
                 </p>
                 <p
                   className="director-plan-status"
@@ -749,7 +757,7 @@ export function DirectorPanel({
                   <p data-testid="director-txn-tool">Tool: {txn.toolName}</p>
                   <p data-testid="director-txn-target">Target: {txn.preview.clipId ?? "—"}</p>
                   <p data-testid="director-txn-delta">
-                    Delta: {txn.command.type === "moveClips" ? `+${txn.command.deltaMs}ms` : "—"}
+                    Delta: {txn.command.type === "moveClips" ? formatMoveDeltaMs(txn.command.deltaMs) : "—"}
                   </p>
                   <p data-testid="director-txn-preview">
                     {txn.preview.clipId ?? "—"}: {txn.preview.beforeStartMs ?? "—"} → {txn.preview.afterStartMs ?? "—"}
