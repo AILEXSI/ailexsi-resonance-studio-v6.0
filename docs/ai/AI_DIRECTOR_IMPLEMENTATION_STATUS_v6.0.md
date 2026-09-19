@@ -15,7 +15,7 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-1 PASS** |
+| Highest gate | **AI-2** (gate recording) |
 | Schema | **5** (unchanged) |
 | Mutation path | none |
 | Second engine | none |
@@ -62,13 +62,47 @@ Hidden when off; renders when on; open/close; message + mock; no Project mutatio
 - Provider / mode / context / transaction rows are placeholders.
 - No tools, no providers, no revision, no grants.
 
-### Next gate
+### Next gate (completed)
 
 AI-2 — provider abstraction + MockProvider.
 
 ---
 
-## AI-2 … AI-7
+## AI-2 — Provider abstraction
+
+| Field | Value |
+| --- | --- |
+| Status | SHIPPED (pending full-suite record) |
+| Commit | `feat(ai): add provider abstraction` |
+| Intent | Provider-neutral `AIProvider` + registry. Only Mock implemented. Director chats through the abstraction. Stale replies ignored. Normalized errors. No Project mutation. |
+
+### Files
+
+- `src/app/ai/providers/types.ts` — interface, capabilities, error codes
+- `src/app/ai/providers/registry.ts` — known ids; unknown / unimplemented fail closed
+- `src/app/ai/providers/mock.ts` — MockProvider
+- `src/app/ai/providers/index.ts`
+- `src/app/ai/orchestrator.ts` — requestId + stale gate
+- `src/app/ai/host.ts` / `src/ui/director/DirectorPanel.tsx` — Director → abstraction → Mock
+- `tests/ai/ai-2-provider.test.ts`
+
+### Tests
+
+Mock conforms; registry reserved ids; unknown provider fail; cancel; stale ignored; provider fail leaves Project unchanged; capabilities ≠ permissions.
+
+### Limitations
+
+- No real HTTP provider yet.
+- Cloud ids reserved only.
+- No tools / grants.
+
+### Next gate
+
+AI-3 — local OpenAI-compatible provider (CHAT only).
+
+---
+
+## AI-3 … AI-7
 
 Not started.
 

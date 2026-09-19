@@ -96,7 +96,7 @@ describe("AI-1 Director shell", () => {
     expect(host!.querySelector("#inspector-body")?.contains(director)).toBe(true);
     expect(host!.querySelector('[data-testid="director-status"]')?.textContent).toMatch(/Offline/);
     expect(host!.querySelector('[data-testid="director-status"]')?.textContent).not.toMatch(/OpenAI/i);
-    expect(host!.querySelector('[data-testid="director-provider"]')?.textContent).toMatch(/not configured/i);
+    expect(host!.querySelector('[data-testid="director-provider"]')?.textContent).toMatch(/mock/i);
   });
 
   it("opens and closes without touching Project", async () => {
@@ -122,6 +122,9 @@ describe("AI-1 Director shell", () => {
     });
     await act(async () => {
       (host!.querySelector('[data-testid="director-send"]') as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
     const texts = [...host!.querySelectorAll("[data-role]")].map((el) => el.textContent);
     expect(texts.some((t) => t?.includes("Hello Director"))).toBe(true);

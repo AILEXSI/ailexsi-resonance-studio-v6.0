@@ -1,22 +1,33 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import {
   createDirectorHostState,
+  createDirectorRuntime,
   setDirectorPanelOpen,
-  submitDirectorMockTurn,
+  submitDirectorProviderTurn,
   type DirectorHostState,
 } from "../../app/ai/host";
+import { registerBuiltInProviders } from "../../app/ai/providers";
+import type { AIProvider } from "../../app/ai/providers/types";
+
+registerBuiltInProviders();
 
 export interface DirectorPanelProps {
   /** Optional initial host state (tests). */
   initialState?: DirectorHostState;
+  /** Inject a provider (tests). Default: MockProvider. */
+  provider?: AIProvider;
   onStateChange?: (state: DirectorHostState) => void;
 }
 
-export function DirectorPanel({ initialState, onStateChange }: DirectorPanelProps) {
+export function DirectorPanel({ initialState, provider, onStateChange }: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
     () => initialState ?? createDirectorHostState(),
   );
   const [draft, setDraft] = useState("");
+  const runtimeRef = useRef(createDirectorRuntime(provider));
+  const abortRef = useRef<AbortController | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const commit = (next: DirectorHostState) => {
     setState(next);
@@ -27,9 +38,19 @@ export function DirectorPanel({ initialState, onStateChange }: DirectorPanelProp
     event.preventDefault();
     const text = draft.trim();
     if (!text) return;
-    const next = submitDirectorMockTurn(state, text);
+    abortRef.current?.abort();
+    const ctl = new AbortController();
+    abortRef.current = ctl;
     setDraft("");
-    commit(next);
+    void (async () => {
+      const next = await submitDirectorProviderTurn(
+        stateRef.current,
+        text,
+        runtimeRef.current,
+        ctl.signal,
+      );
+      commit(next);
+    })();
   };
 
   return (
