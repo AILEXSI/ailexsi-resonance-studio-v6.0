@@ -448,6 +448,16 @@ No AI-8. No new capability. Do not merge from this run.
 - `tests/ai/ai-director-sidebar-layout.test.tsx`
 - `tests/ai/ai-director-ui-toggle.test.tsx` — Close/AI sync
 
+### Gates after this fix
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + toggle + layout + adversarial | **98 passed** (56 prior + 22 adversarial + 10 toggle + 10 layout) |
+| `npx vitest run` | **1487 passed / 6 failed / 1493** (171 files passed / 2 failed / 173) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 182 modules) |
+| New regressions | none |
+
 ### Stop
 
 Layout only. No Project / schema / provider / transaction change. Do **not** merge. Do **not** start AI-8.
