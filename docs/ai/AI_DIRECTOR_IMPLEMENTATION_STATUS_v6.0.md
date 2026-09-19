@@ -4,6 +4,7 @@
 **Branch:** `ai/ai-director-foundation-v6`  
 **Base:** `7479fcf0fce2f4f0b81e6ec141f855c47cb613ff` (AI-0 merged on `main`)  
 **HEAD (AI-7 code):** `3e4def1958584a7c153ffc70ef8cb5f6978ecb31`  
+**Reviewed HEAD (this run start):** `d97b10e1a7d650d7c37a989d6184cb6a428c9e57`  
 **Map:** [`AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md`](./AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md) (AI-0 evidence; proposals are not shipped facts)
 
 This file records **what this implementation run actually shipped**, per completed gate. It does not rewrite AI-0 evidence as history.
@@ -315,6 +316,56 @@ From AI-0 / V6 baseline — identical on this branch:
 - STRESS-03 ×4 — `tests/export/stress-03-physical-source.test.ts` H/I/J/K (`STRESS03_CLIP` absent)
 
 Do not “fix” AFE / exporter / mux / AUDIO-02. `src/core/frame-engine/**` and `src/core/exporter/**` were not modified.
+
+---
+
+## PR #2 ADVERSARIAL REVIEW
+
+**Reviewed HEAD:** `d97b10e1a7d650d7c37a989d6184cb6a428c9e57` (matches expected; no REVIEW_BASE_MISMATCH).  
+**Intent:** inspect production code, construct hostile tests, repair proven defects, rerun gates. Do not start AI-8. Do not merge.
+
+### Defects found and repaired
+
+| ID | Risk | Repro | Repair | Test |
+| --- | --- | --- | --- | --- |
+| ADV-1 | **High** — Project replacement / ABA-adjacent apply | Draft `clip_123` on Project A at revision 0. `openSerialized` / `newProject` reset `projectRevision` to 0. Open Project B that also has `clip_123`. Apply used only `baseRevision`, so the move landed on B. | Bind `AITransaction.projectId` + `baseRevision`. `applyCommandTransaction` requires both. `openSerialized` / `newProject` increment Session-lifetime revision instead of resetting to 0. | `tests/ai/ai-pr2-adversarial.test.ts` — cases 2, 5 |
+| ADV-2 | **High** — PREVIEWED !== COMMITTED | `txn.command` was the caller’s object. After draft, `{ ...txn, command: { deltaMs: 99000 } }` applied the forged delta. | `sealCommand` (`structuredClone` + deep freeze). Commit revalidates command vs preview (`before + delta === after`). | case 6 |
+| ADV-3 | **High** — TOCTOU / live drag | Live drag in `App.onMoveLive` mutates `startMs` without bumping revision. Apply would still see matching revision and move from the live position. | At commit: revalidate project identity, revision, frozen command, clip existence, lock, and `clip.startMs === preview.beforeStartMs`. | cases 3 (drag-commit), 7 |
+| ADV-4 | **Medium** — numeric coerce | `Math.round(2000.4)` became 2000; `0` drafted a no-op apply. | `asExactDeltaMs` requires a positive `Number.isSafeInteger`. Fractional / 0 / negative / NaN / Inf / string / null / undefined → `INVALID_DELTA`. | case 9 |
+| ADV-5 | **Medium** — local provider SSRF | `OpenAICompatibleProvider` fetched any `baseUrl`, including `https://api.openai.com`. | `isAllowedLocalProviderUrl` allow-list: `localhost`, `127.0.0.1`, `::1` only. Non-loopback throws `PROVIDER_UNAVAILABLE` before `fetch`. Does not rewrite to cloud. | case 15 |
+| ADV-6 | **Low** — stale UI commit | `DirectorPanel` committed an aborted turn’s host state after a newer submit. | Ignore result when `ctl.signal.aborted` or `abortRef.current !== ctl`. | host/orchestrator stale cases in 12 + panel guard |
+| ADV-7 | **Low** — ambiguous selection | `selectedClipId` vs `selectedClipIds[0]` disagreement resolved silently to the list. | `AMBIGUOUS_SELECTION` when both are set and disagree. | case 8 |
+
+### Proven already closed (no code change)
+
+| Area | Evidence |
+| --- | --- |
+| ABA undo to visual equivalent | `applyUndo` increments revision (`session.ts` `applyUndo`). Apply stale → `TRANSACTION_CONFLICT`. Case 4. |
+| Human move/trim/split/delete/undo/redo | Those commands use `withHistory` / undo-redo revision bumps. Case 3. |
+| Snap path | Golden still `moveClips` +2000. `applyMove` / `applyNudge` snap when `Project.snap=true` and playhead is within 80 ms; AI path does not. Case 10. |
+| History | One approved apply → one `history.past`. Draft / reject / fail / stale → 0. Case 11. |
+| Provider fail / late / malformed | Orchestrator stale-gate + host error path; no `applyCommand`. Case 12. |
+| Context / secrets | Snapshot freeze; prefs URL/model only; audit redacts Bearer/apiKey. Cases 13–14. |
+| RAF / AI-off | Playhead cache local; `isDirectorEnabled()` default false; no startup `testConnection`. Cases 16–17. |
+| Read tools | DTO mutation does not write Project / history / revision. Case 18. |
+| Permission matrix | ASK cannot draft/commit; DRAFT cannot commit; AGENT+EDIT+approval only. Case 19. |
+| Direct mutation / second engine | Grep of `src/app/ai/**`: no `session.project.clips =`, no `AIProject` / `AICommandBus`. Case 21/22. |
+| Frame engine / exporter | `git diff 7479fcf... -- src/core/frame-engine src/core/exporter` empty. Case 23. |
+
+### Residual / accepted for this phase
+
+- Visual ghost overlay still skipped (transaction card remains the preview).
+- Provider streaming still unimplemented.
+- Negative / zero `deltaMs` now fail closed on `timeline.move_clip` (only exact positive integer deltas). Left-nudge is a later tool if needed.
+- Live-drag revision is still committed only on mouse-up (`App.onMoveCommit`); mid-drag is caught by startMs TOCTOU, not by a preview increment.
+
+### Review commits
+
+Recorded after this run’s `fix(ai)` / `test(ai)` / `docs(ai)` commits. Do not squash AI-1…AI-7.
+
+### Stop
+
+No second mutating tool. PR #2 stays unmerged. Do **not** start AI-8 from this run.
 
 ---
 
