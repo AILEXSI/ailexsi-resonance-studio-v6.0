@@ -87,8 +87,10 @@ describe("AI Director auto-orchestration A–N", () => {
     expect(plan.toolName).toBe("timeline.get_selection");
     const next = await autoTurn(session, "What is selected?");
     expect(next.lastPlan?.capability).toBe("timeline.get_selection");
+    expect(next.lastPlan?.mode).toBe("ASK");
+    expect(next.lastPlan?.contextLevel).toBe("SELECTION");
     expect(next.mode).toBe("ASK");
-    expect(next.contextLevel).toBe("SELECTION");
+    expect(next.contextLevel).toBe("NONE");
     expect(next.conversation.messages.at(-1)?.text).toMatch(/clip_test/);
     expect(next.transaction).toBeNull();
     expect(startOf(session)).toBe(30_000);
@@ -328,7 +330,8 @@ describe("AI Director auto-orchestration A–N", () => {
     });
     const session = fixture();
     const unsure = await autoTurn(session, "hmm maybe move something", host({ grant: "EDIT", mode: "AGENT" }));
-    expect(unsure.mode).toBe("ASK");
+    expect(unsure.lastPlan?.mode).toBe("ASK");
+    expect(unsure.mode).toBe("AGENT");
     expect(unsure.contextLevel).toBe("NONE");
     expect(unsure.transaction).toBeNull();
 
@@ -343,7 +346,8 @@ describe("AI Director auto-orchestration A–N", () => {
     expect(draft.mode).toBe("DRAFT");
     expect(draft.toolName).toBeNull();
     const draftTurn = await autoTurn(session, "Vorschlag schneiden");
-    expect(draftTurn.mode).toBe("DRAFT");
+    expect(draftTurn.lastPlan?.mode).toBe("DRAFT");
+    expect(draftTurn.mode).toBe("ASK");
     expect(draftTurn.transaction).toBeNull();
     expect(startOf(session)).toBe(30_000);
   });

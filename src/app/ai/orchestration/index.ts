@@ -7,6 +7,8 @@ export {
 } from "./intent";
 export {
   planDirectorTurn,
+  sealDirectorPlan,
+  directorPlanStatus,
   DIRECTOR_CAPABILITIES,
   type DirectorCapability,
   type DirectorPlan,

@@ -12,6 +12,9 @@ import { recordAudit } from "../transactions/audit";
 export const GOLDEN_MOVE_PROMPT =
   "Verschiebe den markierten Clip exakt zwei Sekunden nach rechts.";
 
+/** Human studio phrasing (no "markierten" / "exakt"). Same +2000 route. */
+export const HUMAN_MOVE_PROMPT = "Verschiebe den Clip zwei Sekunden nach rechts";
+
 export const MOVE_CLIP_TOOL = "timeline.move_clip";
 
 export interface MoveClipArgs {
