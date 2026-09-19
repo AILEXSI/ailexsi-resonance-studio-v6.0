@@ -467,3 +467,55 @@ Layout only. No Project / schema / provider / transaction change. Do **not** mer
 ## Next (outside this run)
 
 Human retest of the Director sidebar layout. Coordinator may merge. Do **not** implement a second mutating tool on this branch.
+
+---
+
+## HUMAN-GATE / GOLDEN-PATH ACTIVATION
+
+**Branch:** `cursor/ai-director-golden-path-activate-bb64`  
+**Start HEAD:** `bc4a10b5e7177af22bf3f80468ece811a712dae8` (`ai/ai-director-foundation-v6`, includes PR #3 layout)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Smallest genuinely useful E2E path. Reuse AI-1…AI-7 + ADV-1…ADV-8. No AI-8. No second mutating tool. ADV-5 loopback unchanged.
+
+### Implementation map before this run (Phase 0)
+
+| Surface | Before | After |
+| --- | --- | --- |
+| DirectorPanel submit | E2E → orchestrator → provider chat | Same, plus structured parse |
+| Mock provider | E2E free-form chat only | Deterministic golden phrase → structured `timeline.move_clip` |
+| Local OpenAI-compatible | Adapter + Test connection UI; prefs unit-tested only (not hydrated) | Prefs hydrate/save in panel; structured JSON content parsed |
+| Provider config UI | Present (mock / openai-compatible, URL, model, memory key) | Labels: mock (offline, not an LLM) / local-openai-compatible |
+| Conversation / orchestrator | E2E stale-gate | Unchanged; draft no longer happens before chat |
+| Context snapshot | Captured on submit, not sent | Sent as a compact system JSON when level ≠ NONE |
+| Read tools | Unit-tested only | Unchanged (not expanded) |
+| `timeline.move_clip` | Host exact-string golden draft **before** provider returned | Only after validated `toolRequest` |
+| Txn preview / Apply / Reject | UI present | Shows tool / target / +2000ms / PREVIEW; still no auto-apply |
+| Revision / conflict / audit / history | Unit + host Apply | Same path; reject/apply also explain in conversation |
+
+### Hard laws kept
+
+- Schema **5**. Config is localStorage prefs (`resonance-studio-v6-0-ai-prefs`), never Project JSON.
+- No cloud adapters / no API keys in Project / prefs.
+- Loopback only: `127.0.0.1` / `localhost` / `::1` (ADV-5).
+- Opening Director does not call the provider. Changing provider does not mutate Project.
+- Free-form text never mutates. Tool request alone never applies.
+- Mutation only via `applyCommand({ type: "moveClips", clipIds, deltaMs: 2000 })`.
+- No `applyMove` / nudge / snap path. No second engine.
+
+### Human golden-path settings
+
+Mode **AGENT**, Grant **EDIT**, Context **SELECTION**, Provider **mock** (offline) or **local-openai-compatible** with loopback Base URL + model. Defaults remain ASK / READ / NONE / mock.
+
+### Files
+
+- `src/app/ai/contract.ts` — structured `{ message, toolRequest? }` parse / validate
+- `src/app/ai/host.ts` — prefs hydrate/persist; provider messages; draft only after validated tool
+- `src/app/ai/providers/mock.ts` — golden German phrase → structured move_clip
+- `src/app/ai/providers/prefs.ts` — reused (URL/model only)
+- `src/ui/director/DirectorPanel.tsx` — prefs, late project-switch drop, txn PREVIEW card
+- `tests/ai/ai-golden-path.test.ts`
+- `tests/ai/ai-golden-path-adversarial.test.ts`
+
+### Stop
+
+No AI-8. Do **not** merge PR #2 to `main`. Do **not** merge this PR to `main`.
