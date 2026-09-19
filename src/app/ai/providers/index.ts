@@ -18,9 +18,18 @@ export {
   isAllowedLocalProviderUrl,
   isConfigured,
   statusLabel,
+  clampChatTimeoutMs,
+  DEFAULT_CHAT_TIMEOUT_MS,
+  DEFAULT_CONNECTION_TIMEOUT_MS,
+  classifyTransportFailure,
   type LocalConnectionStatus,
   type OpenAICompatibleConfig,
 } from "./openai-compatible";
+export {
+  LOOPBACK_DISCOVERY_PORTS,
+  LOOPBACK_DISCOVERY_TIMEOUT_MS,
+  probeLoopbackOpenAiCompatible,
+} from "./local-discovery";
 export {
   clearProviderRegistry,
   createProvider,
@@ -37,7 +46,9 @@ export {
   type AIProvider,
   type ChatRequest,
   type ChatResponse,
+  type ConnectionFailureCategory,
   type ConnectionTestResult,
+  type LocalHttpTransport,
   type ProviderCapabilities,
   type ProviderErrorCode,
   type ProviderId,

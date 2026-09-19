@@ -9,6 +9,8 @@ export interface DirectorAiPrefs {
   providerId: "mock" | "openai-compatible";
   baseUrl: string;
   model: string;
+  /** Chat timeout only. Never an API key. */
+  timeoutMs?: number;
 }
 
 export const DEFAULT_AI_PREFS: DirectorAiPrefs = {
@@ -30,6 +32,9 @@ export function loadAiPrefs(storage: { getItem(key: string): string | null } | n
       providerId: parsed.providerId === "openai-compatible" ? "openai-compatible" : "mock",
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
       model: typeof parsed.model === "string" ? parsed.model : "",
+      timeoutMs: typeof parsed.timeoutMs === "number" && Number.isFinite(parsed.timeoutMs)
+        ? parsed.timeoutMs
+        : undefined,
     };
   } catch {
     return { ...DEFAULT_AI_PREFS };
@@ -46,6 +51,9 @@ export function saveAiPrefs(
     baseUrl: prefs.baseUrl,
     model: prefs.model,
   };
+  if (typeof prefs.timeoutMs === "number" && Number.isFinite(prefs.timeoutMs)) {
+    safe.timeoutMs = prefs.timeoutMs;
+  }
   storage.setItem(AI_PREFS_KEY, JSON.stringify(safe));
 }
 

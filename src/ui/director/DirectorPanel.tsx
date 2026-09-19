@@ -15,9 +15,17 @@ import {
   rejectHostTransaction,
   setDirectorPanelOpen,
   submitDirectorProviderTurn,
-  testDirectorConnection,
+  beginDirectorConnectionTest,
+  finishDirectorConnectionTest,
+  discoverDirectorModels,
+  findLocalAiEndpoints,
   type DirectorHostState,
 } from "../../app/ai/host";
+import {
+  DEFAULT_CHAT_TIMEOUT_MS,
+  MAX_CHAT_TIMEOUT_MS,
+  MIN_CHAT_TIMEOUT_MS,
+} from "../../app/ai/providers/openai-compatible";
 import type { DirectorMode, Grant } from "../../app/ai/permissions/policy";
 import { cachePlayheadMs } from "../../app/ai/context/snapshot";
 import { CONTEXT_LEVELS, type ContextLevel } from "../../app/ai/context/types";
@@ -80,6 +88,7 @@ export function DirectorPanel({
   const [composerHeight, setComposerHeight] = useState(() => loadDirectorComposerHeight(layoutStore));
   const runtimeRef = useRef(createDirectorRuntime(provider, initialState));
   const abortRef = useRef<AbortController | null>(null);
+  const probeGenRef = useRef(0);
   const stateRef = useRef(state);
   const sessionRef = useRef(session);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -300,7 +309,53 @@ export function DirectorPanel({
                     data-testid="director-model"
                     value={state.localConfig.model}
                     placeholder="local-model"
+                    list="director-model-list"
                     onChange={(e) => commitProviderConfig(applyLocalConfig(state, { model: e.target.value }))}
+                  />
+                  <datalist id="director-model-list">
+                    {state.discoveredModels.map((m) => (
+                      <option key={m.id} value={m.id} />
+                    ))}
+                  </datalist>
+                  {state.discoveredModels.length > 0 ? (
+                    <>
+                      <label htmlFor="director-model-select">Discovered</label>
+                      <select
+                        id="director-model-select"
+                        data-testid="director-model-select"
+                        value={
+                          state.discoveredModels.some((m) => m.id === state.localConfig.model)
+                            ? state.localConfig.model
+                            : ""
+                        }
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          commitProviderConfig(applyLocalConfig(state, { model: e.target.value }));
+                        }}
+                      >
+                        <option value="">Select a listed model</option>
+                        {state.discoveredModels.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : null}
+                  <label htmlFor="director-chat-timeout">Chat timeout (ms)</label>
+                  <input
+                    id="director-chat-timeout"
+                    data-testid="director-chat-timeout"
+                    type="number"
+                    min={MIN_CHAT_TIMEOUT_MS}
+                    max={MAX_CHAT_TIMEOUT_MS}
+                    value={state.localConfig.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS}
+                    title="Cold local models may take ~32s on first chat. Default 90000 ms still fail-closes."
+                    onChange={(e) =>
+                      commitProviderConfig(
+                        applyLocalConfig(state, { timeoutMs: Number(e.target.value) }),
+                      )
+                    }
                   />
                   <label htmlFor="director-api-key">API key (optional, memory only)</label>
                   <input
@@ -311,15 +366,65 @@ export function DirectorPanel({
                     value={state.localConfig.apiKey ?? ""}
                     onChange={(e) => commit(applyLocalConfig(state, { apiKey: e.target.value }))}
                   />
-                  <button
-                    type="button"
-                    data-testid="director-test-connection"
-                    onClick={() => {
-                      void testDirectorConnection(state).then(commit);
-                    }}
+                  <div className="director-config-actions">
+                    <button
+                      type="button"
+                      data-testid="director-test-connection"
+                      disabled={state.connectionProbe.phase === "testing"}
+                      onClick={() => {
+                        const gen = ++probeGenRef.current;
+                        const testing = beginDirectorConnectionTest(state);
+                        commit(testing);
+                        void finishDirectorConnectionTest(testing).then((next) => {
+                          if (probeGenRef.current === gen) commit(next);
+                        });
+                      }}
+                    >
+                      {state.connectionProbe.phase === "testing" ? "Testing..." : "Test connection"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="director-discover-models"
+                      disabled={state.connectionProbe.phase === "testing"}
+                      onClick={() => {
+                        const gen = ++probeGenRef.current;
+                        const testing = beginDirectorConnectionTest(state);
+                        commit(testing);
+                        void discoverDirectorModels(testing).then((next) => {
+                          if (probeGenRef.current === gen) commit(next);
+                        });
+                      }}
+                    >
+                      Discover Models
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="director-find-local-ai"
+                      disabled={state.connectionProbe.phase === "testing"}
+                      onClick={() => {
+                        const gen = ++probeGenRef.current;
+                        const testing = beginDirectorConnectionTest(state);
+                        commit(testing);
+                        void findLocalAiEndpoints(testing).then((next) => {
+                          if (probeGenRef.current === gen) {
+                            persistDirectorHostPrefs(next);
+                            commit(next);
+                          }
+                        });
+                      }}
+                    >
+                      Find Local AI
+                    </button>
+                  </div>
+                  <p
+                    className="director-probe"
+                    data-testid="director-connection-probe"
+                    data-phase={state.connectionProbe.phase}
+                    data-category={state.connectionProbe.category ?? ""}
+                    hidden={state.connectionProbe.phase === "idle"}
                   >
-                    Test connection
-                  </button>
+                    {state.connectionProbe.label}
+                  </p>
                 </>
               ) : null}
             </div>

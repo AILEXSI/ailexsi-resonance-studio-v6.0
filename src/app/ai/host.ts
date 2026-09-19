@@ -10,14 +10,24 @@ import {
 } from "./conversation";
 import { createOrchestrator, orchestrateChat, type Orchestrator } from "./orchestrator";
 import { createMockProvider } from "./providers/mock";
+import { probeLoopbackOpenAiCompatible } from "./providers/local-discovery";
 import {
+  clampChatTimeoutMs,
   connectionStatusOf,
   createOpenAICompatibleProvider,
+  DEFAULT_CHAT_TIMEOUT_MS,
   isConfigured,
   statusLabel,
   type OpenAICompatibleConfig,
 } from "./providers/openai-compatible";
-import type { AIProvider, ChatMessage, ProviderId } from "./providers/types";
+import type {
+  AIProvider,
+  ChatMessage,
+  ConnectionFailureCategory,
+  LocalHttpTransport,
+  ProviderId,
+  ProviderModel,
+} from "./providers/types";
 import { loadAiPrefs, saveAiPrefs, type DirectorAiPrefs } from "./providers/prefs";
 import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
@@ -45,6 +55,21 @@ export type DirectorConnectionStatus =
   | "unavailable"
   | "error";
 
+export interface DirectorConnectionProbe {
+  phase: "idle" | "testing" | "connected" | "failed";
+  label: string;
+  endpoint?: string;
+  model?: string;
+  latencyMs?: number;
+  category?: ConnectionFailureCategory;
+  reason?: string;
+  transport?: LocalHttpTransport;
+}
+
+export function idleConnectionProbe(): DirectorConnectionProbe {
+  return { phase: "idle", label: "" };
+}
+
 export interface DirectorHostState {
   conversation: DirectorConversation;
   panelOpen: boolean;
@@ -65,6 +90,9 @@ export interface DirectorHostState {
   /** Last Apply/Reject gate code for Director UI. Runtime only — not Project. */
   lastGateCode: string | null;
   lastGateMessage: string | null;
+  /** Setup probe. Runtime only — not Project. */
+  connectionProbe: DirectorConnectionProbe;
+  discoveredModels: ProviderModel[];
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -87,6 +115,8 @@ export function createDirectorHostState(): DirectorHostState {
     transaction: null,
     lastGateCode: null,
     lastGateMessage: null,
+    connectionProbe: idleConnectionProbe(),
+    discoveredModels: [],
   };
 }
 
@@ -194,6 +224,9 @@ export function applyLocalConfig(
   patch: Partial<OpenAICompatibleConfig>,
 ): DirectorHostState {
   const localConfig = { ...state.localConfig, ...patch };
+  if (patch.timeoutMs !== undefined) {
+    localConfig.timeoutMs = clampChatTimeoutMs(patch.timeoutMs);
+  }
   const configured = isConfigured(localConfig);
   return {
     ...state,
@@ -248,6 +281,7 @@ export function persistDirectorHostPrefs(
     providerId: state.providerId === "openai-compatible" ? "openai-compatible" : "mock",
     baseUrl: state.localConfig.baseUrl,
     model: state.localConfig.model,
+    timeoutMs: state.localConfig.timeoutMs,
   };
   saveAiPrefs(storage, prefs);
 }
@@ -261,33 +295,160 @@ export function hydrateDirectorHostFromPrefs(
   return applyLocalConfig(applyProviderId(base, prefs.providerId), {
     baseUrl: prefs.baseUrl,
     model: prefs.model,
+    timeoutMs: prefs.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS,
   });
 }
 
-export async function testDirectorConnection(state: DirectorHostState): Promise<DirectorHostState> {
+export function beginDirectorConnectionTest(state: DirectorHostState): DirectorHostState {
   if (state.providerId !== "openai-compatible") return state;
-  const connecting: DirectorHostState = {
+  return {
     ...state,
     status: "connecting",
-    statusLabel: statusLabel("connecting"),
-    providerLabel: "Provider: openai-compatible",
+    statusLabel: "Testing...",
+    providerLabel: providerLabelOf("openai-compatible"),
+    connectionProbe: { phase: "testing", label: "Testing..." },
   };
-  const provider = createOpenAICompatibleProvider(state.localConfig);
+}
+
+export function formatConnectionSuccess(result: {
+  endpoint?: string;
+  model?: string;
+  latencyMs?: number;
+}): string {
+  const endpoint = result.endpoint ?? "loopback";
+  const model = result.model ?? "model";
+  const latency = typeof result.latencyMs === "number" ? `${result.latencyMs} ms` : "n/a";
+  return `Connected (${endpoint}, ${model}, ${latency})`;
+}
+
+export function formatConnectionFailure(result: {
+  endpoint?: string;
+  category?: ConnectionFailureCategory;
+  reason?: string;
+}): string {
+  const endpoint = result.endpoint ?? "loopback";
+  const category = result.category ?? "UNKNOWN";
+  const reason = result.reason ?? "Connection failed";
+  return `CONNECTION FAILED (${endpoint}, ${reason}, category: ${category})`;
+}
+
+export async function finishDirectorConnectionTest(state: DirectorHostState): Promise<DirectorHostState> {
+  if (state.providerId !== "openai-compatible") return state;
+  const provider = createOpenAICompatibleProvider({
+    ...state.localConfig,
+    timeoutMs: clampChatTimeoutMs(state.localConfig.timeoutMs),
+  });
   const result = await provider.testConnection();
+  const models = result.models ?? state.discoveredModels;
   if (result.ok) {
+    const label = formatConnectionSuccess(result);
     return {
-      ...connecting,
+      ...state,
       status: "connected",
-      statusLabel: statusLabel("connected"),
+      statusLabel: label,
       providerLabel: providerLabelOf("openai-compatible"),
+      discoveredModels: models,
+      connectionProbe: {
+        phase: "connected",
+        label,
+        endpoint: result.endpoint,
+        model: result.model,
+        latencyMs: result.latencyMs,
+        transport: result.transport,
+      },
     };
   }
   const code = result.error?.code;
   const local = connectionStatusOf(state.localConfig, { ok: false, code });
+  const label = formatConnectionFailure(result);
   return {
-    ...connecting,
+    ...state,
     status: local === "unavailable" ? "unavailable" : "error",
-    statusLabel: statusLabel(local === "not-configured" ? "error" : local),
+    statusLabel: label,
+    discoveredModels: models,
+    connectionProbe: {
+      phase: "failed",
+      label,
+      endpoint: result.endpoint,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      category: result.category,
+      reason: result.reason,
+      transport: result.transport,
+    },
+  };
+}
+
+export async function testDirectorConnection(state: DirectorHostState): Promise<DirectorHostState> {
+  return finishDirectorConnectionTest(beginDirectorConnectionTest(state));
+}
+
+export async function discoverDirectorModels(state: DirectorHostState): Promise<DirectorHostState> {
+  if (state.providerId !== "openai-compatible") return state;
+  const probing = beginDirectorConnectionTest(state);
+  const next = await finishDirectorConnectionTest(probing);
+  if (next.discoveredModels.length === 0 && next.connectionProbe.phase === "connected") {
+    return {
+      ...next,
+      connectionProbe: {
+        ...next.connectionProbe,
+        label: `${next.connectionProbe.label} — no models listed`,
+      },
+    };
+  }
+  return next;
+}
+
+export async function findLocalAiEndpoints(state: DirectorHostState): Promise<DirectorHostState> {
+  if (state.providerId !== "openai-compatible") return state;
+  const testing: DirectorHostState = {
+    ...state,
+    status: "connecting",
+    statusLabel: "Testing...",
+    connectionProbe: { phase: "testing", label: "Testing..." },
+  };
+  const hits = await probeLoopbackOpenAiCompatible({
+    fetchImpl: state.localConfig.fetchImpl,
+  });
+  if (hits.length === 0) {
+    const label = formatConnectionFailure({
+      endpoint: "127.0.0.1",
+      category: "REFUSED",
+      reason: "No OpenAI-compatible /v1/models on the loopback port allowlist",
+    });
+    return {
+      ...testing,
+      status: "unavailable",
+      statusLabel: label,
+      connectionProbe: {
+        phase: "failed",
+        label,
+        endpoint: "http://127.0.0.1",
+        category: "REFUSED",
+        reason: "No OpenAI-compatible /v1/models on the loopback port allowlist",
+      },
+    };
+  }
+  const first = hits[0]!;
+  const model = first.models[0]?.id ?? state.localConfig.model;
+  const configured = applyLocalConfig(testing, { baseUrl: first.baseUrl, model });
+  const label = formatConnectionSuccess({
+    endpoint: first.endpoint,
+    model,
+    latencyMs: first.latencyMs,
+  });
+  return {
+    ...configured,
+    status: "connected",
+    statusLabel: label,
+    discoveredModels: first.models,
+    connectionProbe: {
+      phase: "connected",
+      label,
+      endpoint: first.endpoint,
+      model,
+      latencyMs: first.latencyMs,
+    },
   };
 }
 
@@ -486,6 +647,8 @@ export async function submitDirectorProviderTurn(
   );
   if (outcome.kind === "stale") return withUser;
   if (outcome.kind === "error") {
+    const category = (outcome.error as { category?: string }).category;
+    const detail = category ? ` category: ${category}.` : "";
     return {
       ...withUser,
       status: "error",
@@ -493,7 +656,7 @@ export async function submitDirectorProviderTurn(
       conversation: appendDirectorMessage(
         withUser.conversation,
         "assistant",
-        `Provider error: ${outcome.error.code}. No project changes were made.`,
+        `Provider error: ${outcome.error.code}.${detail} No project changes were made.`,
       ),
     };
   }

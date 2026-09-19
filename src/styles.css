@@ -555,6 +555,28 @@ input[type="range"] { accent-color: var(--accent-2); }
   justify-self: start;
   font-size: 11px;
 }
+.director-config-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.director-config-actions button {
+  grid-column: auto;
+}
+.director-probe {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.director-probe[data-phase="failed"] {
+  color: var(--danger);
+}
+.director-probe[data-phase="connected"] {
+  color: var(--good, var(--accent));
+}
 .director-txn {
   border: 1px solid var(--line);
   border-radius: 5px;
