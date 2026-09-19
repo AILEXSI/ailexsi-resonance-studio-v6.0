@@ -576,6 +576,19 @@ Prefs keys (not Project JSON): `inspector-section-collapsed`, `director-split`, 
 
 Schema **5**. No provider/tool/txn/command/history/Frame Engine/exporter change except host UI copy + `lastGateCode` runtime fields. Mutation path unchanged. No second engine.
 
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **137 passed** (121 prior + 16 workspace / human-gate UI) |
+| `npx vitest run` | **1529 passed / 6 failed / 1535** (174 files passed / 2 failed / 176) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 184 modules) |
+| Golden / Reject / hostile snap / stale / provider fail / ABA / ASK-READ | PASS (existing suites, no regression) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| New regressions | none |
+
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Coordinator may merge to `ai/ai-director-foundation-v6` after Martin’s human gates.
