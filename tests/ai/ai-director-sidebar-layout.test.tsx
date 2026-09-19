@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -17,8 +20,16 @@ const VIEWPORTS = [
   { name: "1366x768", width: 1366, height: 768 },
 ] as const;
 
-function overflowIsInternal(value: string): boolean {
-  return value === "auto" || value === "scroll" || value === "hidden";
+const stylesCss = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../../src/styles.css"),
+  "utf8",
+);
+
+function cssRule(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = stylesCss.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`));
+  expect(match, `missing CSS rule ${selector}`).toBeTruthy();
+  return match![1]!.replace(/\s+/g, " ");
 }
 
 describe("AI Director sidebar layout hardening", () => {
@@ -97,6 +108,33 @@ describe("AI Director sidebar layout hardening", () => {
     };
   }
 
+  it("CSS keeps Director on its own viewport so Inspector cannot starve it", () => {
+    const sidebar = cssRule(".inspector-body.director-open");
+    expect(sidebar).toMatch(/display:\s*grid/);
+    expect(sidebar).toMatch(/minmax\(72px,\s*32%\)/);
+    expect(sidebar).toMatch(/minmax\(0,\s*1fr\)/);
+
+    expect(cssRule(".inspector-body")).toMatch(/overflow:\s*hidden/);
+    expect(cssRule(".inspector-body")).toMatch(/min-height:\s*0/);
+    expect(cssRule(".inspector-section")).toMatch(/overflow:\s*auto/);
+    expect(cssRule(".inspector-body.director-open .inspector-section")).toMatch(/overflow:\s*auto/);
+    expect(cssRule(".director-section")).toMatch(/overflow:\s*hidden/);
+    expect(cssRule(".director-section")).toMatch(/min-height:\s*0/);
+    expect(cssRule(".director")).toMatch(/overflow:\s*hidden/);
+    expect(cssRule(".director")).toMatch(/min-height:\s*0/);
+    expect(cssRule(".director-body")).toMatch(/overflow:\s*hidden/);
+    expect(cssRule(".director-scroll")).toMatch(/overflow-y:\s*auto/);
+    expect(cssRule(".director-messages")).toMatch(/overflow:\s*auto/);
+
+    const compose = cssRule(".director-compose");
+    expect(compose).toMatch(/position:\s*sticky/);
+    expect(compose).toMatch(/bottom:\s*0/);
+    expect(compose).toMatch(/flex:\s*0 0 auto/);
+
+    expect(cssRule(".app")).toMatch(/overflow:\s*hidden/);
+    expect(stylesCss).not.toMatch(/\.workspace-inspector \.director \{[^}]*max-height:\s*48%/);
+  });
+
   it("opens a dedicated Director viewport with internal scroll and sticky composer", async () => {
     await mountApp();
     expect(host!.querySelector('[data-testid="inspector"]')).toBeTruthy();
@@ -108,7 +146,6 @@ describe("AI Director sidebar layout hardening", () => {
     const director = host!.querySelector('[data-testid="director"]') as HTMLElement;
     const directorBody = host!.querySelector('[data-testid="director-body"]') as HTMLElement;
     const directorScroll = host!.querySelector('[data-testid="director-scroll"]') as HTMLElement;
-    const messages = host!.querySelector('[data-testid="director-messages"]') as HTMLElement;
     const compose = host!.querySelector('[data-testid="director-compose"]') as HTMLElement;
 
     expect(body.classList.contains("director-open")).toBe(true);
@@ -121,30 +158,9 @@ describe("AI Director sidebar layout hardening", () => {
     expect(body.contains(inspectorSection)).toBe(true);
     expect(body.contains(directorSection)).toBe(true);
     expect(inspectorSection.contains(director)).toBe(false);
-
-    const bodyStyle = getComputedStyle(body);
-    expect(bodyStyle.display).toBe("grid");
-    expect(bodyStyle.overflow).toBe("hidden");
-    expect(bodyStyle.minHeight).toBe("0px");
-
-    expect(overflowIsInternal(getComputedStyle(inspectorSection).overflowY)).toBe(true);
-    expect(getComputedStyle(directorSection).overflow).toBe("hidden");
-    expect(getComputedStyle(directorSection).minHeight).toBe("0px");
-    expect(getComputedStyle(director).overflow).toBe("hidden");
-    expect(getComputedStyle(director).minHeight).toBe("0px");
-    expect(getComputedStyle(directorBody).overflow).toBe("hidden");
-    expect(getComputedStyle(directorScroll).overflowY === "auto" || getComputedStyle(directorScroll).overflowY === "scroll").toBe(
-      true,
-    );
-    expect(getComputedStyle(messages).overflow === "auto" || getComputedStyle(messages).overflowY === "auto").toBe(
-      true,
-    );
-
-    const composeStyle = getComputedStyle(compose);
-    expect(composeStyle.position).toBe("sticky");
-    expect(composeStyle.bottom).toBe("0px");
-    expect(composeStyle.flexShrink).toBe("0");
     expect(directorBody.lastElementChild).toBe(compose);
+    expect(directorScroll.nextElementSibling?.getAttribute("data-testid")).toBe("director-messages");
+    expect(host!.querySelector('[data-testid="director-messages"]')?.nextElementSibling).toBe(compose);
 
     const controls = directorControls();
     for (const [name, el] of Object.entries(controls)) {
@@ -155,8 +171,11 @@ describe("AI Director sidebar layout hardening", () => {
     expect(directorScroll.contains(controls.mode)).toBe(true);
     expect(directorScroll.contains(controls.grant)).toBe(true);
     expect(directorScroll.contains(controls.context)).toBe(true);
+    expect(directorScroll.contains(controls.status)).toBe(true);
+    expect(directorScroll.contains(controls.provider)).toBe(true);
     expect(directorScroll.contains(controls.compose)).toBe(false);
-    expect(appPageDoesNotOwnDirectorScroll()).toBe(true);
+    expect(directorBody.contains(controls.messages)).toBe(true);
+    expect(directorBody.contains(controls.compose)).toBe(true);
   });
 
   it("keeps Inspector mounted and capped so it cannot starve Director", async () => {
@@ -165,9 +184,10 @@ describe("AI Director sidebar layout hardening", () => {
     expect(inspector).toBeTruthy();
     await clickAi();
     expect(host!.querySelector('[data-testid="inspector"]')).toBe(inspector);
-    const body = host!.querySelector('[data-testid="inspector-body"]') as HTMLElement;
-    expect(getComputedStyle(body).gridTemplateRows).toMatch(/minmax\(72px,\s*32%\)/);
-    expect(getComputedStyle(body).gridTemplateRows).toMatch(/minmax\(0px,\s*1fr\)/);
+    expect(host!.querySelector('[data-testid="inspector-body"]')?.classList.contains("director-open")).toBe(
+      true,
+    );
+    expect(cssRule(".inspector-body.director-open")).toMatch(/minmax\(72px,\s*32%\)/);
   });
 
   it("syncs Director Close with the toolbar AI toggle", async () => {
@@ -226,9 +246,12 @@ describe("AI Director sidebar layout hardening", () => {
         expect(el, `${name} @ ${width}x${height}`).toBeTruthy();
       }
       expect(host!.querySelector('[data-testid="director-txn"]')).toBeNull();
-      expect(appPageDoesNotOwnDirectorScroll()).toBe(true);
-      expect(getComputedStyle(host!.querySelector('[data-testid="director-compose"]')!).position).toBe(
-        "sticky",
+      expect(host!.querySelector('[data-testid="inspector-body"]')?.classList.contains("director-open")).toBe(
+        true,
+      );
+      expect(host!.querySelector('[data-testid="director-scroll"]')).toBeTruthy();
+      expect(host!.querySelector('[data-testid="director-body"]')?.lastElementChild).toBe(
+        host!.querySelector('[data-testid="director-compose"]'),
       );
     },
   );
@@ -255,17 +278,4 @@ describe("AI Director sidebar layout hardening", () => {
     expect(PROJECT_SCHEMA_VERSION).toBe(5);
     expect(fetchCalls).toBe(0);
   });
-
-  function appPageDoesNotOwnDirectorScroll(): boolean {
-    const app = host!.querySelector('[data-testid="app"]') as HTMLElement;
-    const inspectorBody = host!.querySelector('[data-testid="inspector-body"]') as HTMLElement;
-    const directorSection = host!.querySelector('[data-testid="director-section"]') as HTMLElement;
-    const director = host!.querySelector('[data-testid="director"]') as HTMLElement;
-    return (
-      getComputedStyle(app).overflow === "hidden" &&
-      getComputedStyle(inspectorBody).overflow === "hidden" &&
-      getComputedStyle(directorSection).overflow === "hidden" &&
-      getComputedStyle(director).overflow === "hidden"
-    );
-  }
 });
