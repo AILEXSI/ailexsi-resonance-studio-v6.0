@@ -362,7 +362,26 @@ Do not “fix” AFE / exporter / mux / AUDIO-02. `src/core/frame-engine/**` and
 
 ### Review commits
 
-Recorded after this run’s `fix(ai)` / `test(ai)` / `docs(ai)` commits. Do not squash AI-1…AI-7.
+Do not squash AI-1…AI-7.
+
+| SHA | Message |
+| --- | --- |
+| `a3044f4` | `fix(ai): bind project identity and fail-closed transaction apply` |
+| `60ad979` | `test(ai): add PR #2 adversarial review suite` |
+| `d43de6c` | `docs(ai): record PR #2 adversarial review` |
+| `d3b9dbf` | `fix(ai): redact unquoted apiKey in audit details` |
+
+### Adversarial gate (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **78 passed** (56 prior + 22 adversarial) |
+| `npx vitest run` | **1467 passed / 6 failed / 1473** (169 files passed / 2 failed / 171) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 182 modules) |
+| Golden fixture 12/12 | PASS |
+| Chain 12/12 | PASS |
+| New regressions | none |
 
 ### Stop
 
