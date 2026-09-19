@@ -217,6 +217,14 @@ input[type="range"] { accent-color: var(--accent-2); }
   flex: 1 1 auto;
   min-height: 0;
 }
+.workspace-inspector .inspector {
+  overflow: auto;
+}
+.workspace-inspector .director {
+  flex: 0 1 42%;
+  min-height: 140px;
+  max-height: 48%;
+}
 .workspace-inspector {
   background: var(--panel);
   border-left: 1px solid var(--line);
@@ -279,6 +287,100 @@ input[type="range"] { accent-color: var(--accent-2); }
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.director {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.director-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  flex: 0 0 auto;
+}
+.director-head h2 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.director-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.director-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0 8px 8px;
+  gap: 8px;
+}
+.director-meta {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 11px;
+}
+.director-meta > div {
+  display: contents;
+}
+.director-meta dt {
+  color: var(--muted);
+}
+.director-meta dd {
+  margin: 0;
+  color: var(--text);
+}
+.director-messages {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  flex: 1 1 auto;
+  min-height: 48px;
+  overflow: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.director-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.director-msg-role {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.director-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.director-compose-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.director-compose textarea {
+  resize: vertical;
+  min-height: 54px;
+  width: 100%;
 }
 .layout-split .timeline-focus {
   position: absolute;

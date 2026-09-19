@@ -64,6 +64,8 @@ import { wavExportPickerOptions } from "../core/project-file";
 import { MediaBrowser } from "../ui/media-browser/MediaBrowser";
 import { Preview } from "../ui/preview/Preview";
 import { Inspector } from "../ui/inspector/Inspector";
+import { DirectorPanel } from "../ui/director/DirectorPanel";
+import { isDirectorEnabled } from "./ai/flag";
 import { Transport } from "../ui/transport/Transport";
 import { Timeline } from "../ui/timeline/Timeline";
 import { Mixer, type MixPeaks } from "../ui/mixer/Mixer";
@@ -1596,6 +1598,7 @@ export function App() {
                 onTransition={(cmd) => setSession(applyCommand(session, cmd))}
                 onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
               />
+              {isDirectorEnabled() ? <DirectorPanel /> : null}
             </div>
           )}
         </div>
