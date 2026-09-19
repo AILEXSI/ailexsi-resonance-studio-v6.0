@@ -31,7 +31,9 @@ export const DIRECTOR_RESPONSE_CONTRACT_PROMPT = [
   '{"message":"string","toolRequest":{"name":"timeline.move_clip","arguments":{"deltaMs":2000}}}',
   "toolRequest is optional. Free-form prose never mutates the project.",
   "The only mutating tool is timeline.move_clip.",
-  "Use the selected clip id when present. Exact positive millisecond integers only.",
+  "Use the selected clip id when present. Exact signed millisecond integers only.",
+  "Before Apply, Resonance has not committed. Describe a preview only:",
+  'use "Prepared move…" / "Preview…". Never say moved, done, completed, or changed.',
 ].join(" ");
 
 export function parseDirectorResponse(text: string): DirectorStructuredParse {

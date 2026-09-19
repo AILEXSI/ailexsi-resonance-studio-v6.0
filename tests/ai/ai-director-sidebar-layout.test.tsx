@@ -131,6 +131,8 @@ describe("AI Director sidebar layout hardening", () => {
     expect(cssRule(".director")).toMatch(/min-height:\s*0/);
     expect(cssRule(".director-body")).toMatch(/overflow-y:\s*hidden/);
     expect(cssRule(".director-chrome")).toMatch(/overflow-y:\s*auto/);
+    expect(cssRule(".director-meta[hidden]")).toMatch(/display:\s*none/);
+    expect(cssRule(".director-config[hidden]")).toMatch(/display:\s*none/);
     expect(cssRule(".director-scroll")).toMatch(/overflow-y:\s*auto/);
     expect(cssRule(".director-messages")).toMatch(/overflow:\s*auto/);
 
