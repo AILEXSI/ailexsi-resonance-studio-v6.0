@@ -80,7 +80,7 @@ export function captureContextSnapshot(
   const clipIds =
     level === "NONE"
       ? []
-      : level === "CUSTOM" && opts.clipIds
+      : opts.clipIds && (level === "CUSTOM" || level === "SELECTION")
         ? [...opts.clipIds]
         : selected;
   const trackIds = resolveTrackIds(session, level, clipIds);

@@ -1,5 +1,6 @@
 import { mockDirectorReply } from "../conversation";
 import { DIRECTOR_MUTATING_TOOL } from "../contract";
+import { classifyDirectorIntent } from "../orchestration/intent";
 import { parseGoldenMovePrompt } from "../tools/move-clip";
 import {
   ProviderError,
@@ -76,7 +77,7 @@ export class MockProvider implements AIProvider {
       }
       const lastUser = [...request.messages].reverse().find((m) => m.role === "user");
       const userText = lastUser?.content ?? "";
-      if (parseGoldenMovePrompt(userText)) {
+      if (parseGoldenMovePrompt(userText) || classifyDirectorIntent(userText).kind === "MOVE_CLIP") {
         return {
           requestId: request.requestId,
           text: JSON.stringify({

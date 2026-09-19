@@ -34,6 +34,12 @@ export function normalizeDirectorPrompt(text: string): string {
     .trim();
 }
 
+/** Golden "markierten" and human "den Clip" — not a regex maze. */
+function isMoveClipTwoSecondsRight(n: string): boolean {
+  const namesTheClip = n.includes("verschiebe den markierten clip") || n.includes("verschiebe den clip");
+  return namesTheClip && n.includes("zwei sekunden") && n.includes("rechts");
+}
+
 /**
  * Known routes only. Uncertain → less authority (never silent EDIT).
  * Phrase checks, not a regex maze.
@@ -57,11 +63,7 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
   if (n === "was kannst du" || n === "what can you do") {
     return { kind: "ASK_CAPABILITY", confidence: "known", reason: "capability question" };
   }
-  if (
-    n.includes("verschiebe den markierten clip") &&
-    n.includes("zwei sekunden") &&
-    n.includes("rechts")
-  ) {
+  if (isMoveClipTwoSecondsRight(n)) {
     return { kind: "MOVE_CLIP", confidence: "known", reason: "move selected clip +2s" };
   }
   return { kind: "UNCERTAIN", confidence: "uncertain", reason: "no known route" };

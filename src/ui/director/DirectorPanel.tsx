@@ -9,6 +9,7 @@ import {
   applyLocalConfig,
   applyMode,
   applyProviderId,
+  autoPlanStatusLabel,
   cancelDirectorAuth,
   createDirectorRuntime,
   DIRECTOR_MODES,
@@ -246,9 +247,23 @@ export function DirectorPanel({
         <div id="director-body" className="director-body" data-testid="director-body">
           <div className="director-chrome" data-testid="director-chrome">
             <div className="director-normal" data-testid="director-normal">
-              <p className="director-normal-status" data-testid="director-normal-status">
-                {normalStatusLabel(state)}
-              </p>
+              <div className="director-normal-copy">
+                <p className="director-orch-kind" data-testid="director-orch-kind">
+                  AUTO
+                </p>
+                <p
+                  className="director-plan-status"
+                  data-testid="director-plan-status"
+                  data-plan-mode={state.sealedRequest?.plan.mode ?? state.lastPlan?.mode ?? ""}
+                  data-plan-context={state.sealedRequest?.plan.contextLevel ?? state.lastPlan?.contextLevel ?? ""}
+                  data-plan-grant={state.sealedRequest?.plan.requiredGrant ?? state.lastPlan?.requiredGrant ?? ""}
+                >
+                  {autoPlanStatusLabel(state)}
+                </p>
+                <p className="director-normal-status" data-testid="director-normal-status">
+                  {normalStatusLabel(state)}
+                </p>
+              </div>
               <button
                 type="button"
                 data-testid="director-advanced-toggle"
@@ -359,6 +374,9 @@ export function DirectorPanel({
               data-advanced={state.surface === "advanced" ? "true" : "false"}
               hidden={state.surface !== "advanced"}
             >
+              <p className="director-manual-legend" data-testid="director-manual-legend">
+                MANUAL defaults — not authoritative for the in-flight AUTO request
+              </p>
               <label htmlFor="director-provider-select">Provider</label>
               <select
                 id="director-provider-select"

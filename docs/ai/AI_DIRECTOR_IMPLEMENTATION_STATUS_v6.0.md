@@ -734,3 +734,115 @@ Map before coding: Provider mock / openai-compatible (loopback). Modes ASK/DRAFT
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to the foundation branch.
+
+---
+
+## AI DIRECTOR AUTO-ORCHESTRATION — PLAN-LOSS ROOT-CAUSE REPAIR
+
+**Branch:** `cursor/director-auto-orch-plan-loss-fix-b9d7`  
+**Start HEAD BEFORE:** `4bec8a5bc31aa2620dde3324e6960adee83017d5` (Foundation after PR #7 merge)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Root-cause repair only. AUTO-ORCHESTRATION ≠ AUTO-AUTHORIZATION. Schema stays **5**. No AI-8. No new tools / cloud / OllamaProvider / Arrange splitter.
+
+### Phase 0 — verify & map (before this run)
+
+| Item | Evidence |
+| --- | --- |
+| HEAD BEFORE | `4bec8a5bc31aa2620dde3324e6960adee83017d5` = Merge pull request #7 |
+| PR #7 | MERGED into `ai/ai-director-foundation-v6` (auto-orchestration) |
+| PR #6 | MERGED (local provider) |
+| PR #5 | MERGED (workspace UX) |
+| PR #2 | OPEN draft → `main`. Not merged. |
+| Schema | `PROJECT_SCHEMA_VERSION = 5` |
+| AI-8 | Not started |
+| Human-proven | Prior Ollama + discovered `qwen2.5:7b` +2000. This run does **not** claim additional human proof. |
+
+**Send → execution map (before repair):**
+
+`DirectorPanel.sendDraft` → `submitDirectorAutoTurn` → `planDirectorTurn` / `classifyDirectorIntent` → grant check (`grantExceeds`) → `resolveAutoRuntime` → `applyOrchestrationPlan` (Normal wrote Mode/Context dropdowns; Advanced stored `lastPlan` only) → `submitDirectorProviderTurn` → `attachSubmitSnapshot(state.contextLevel)` → `orchestrateChat` → `parseDirectorResponse` → `draftFromToolRequest(state.contextLevel, state.mode)` → `draftMoveClip` → `applyHostApproved(state.mode)`.
+
+### HUMAN FAILURE
+
+| Field | Value |
+| --- | --- |
+| Selection | Video clip selected |
+| Prompt | `Verschiebe den Clip zwei Sekunden nach rechts` |
+| Observed UI | Provider local-openai-compatible · Mode ASK · Grant DRAFT · Context NONE |
+| Conversation | `Denied: Context SELECTION is required to move a clip. No project changes were made.` |
+| Fail-closed | OK (no Project write) |
+| Auto-Orchestration | Failed to deliver plan into execution |
+
+### ROOT CAUSE
+
+Two cooperating defects — not a React setState race and not a second engine.
+
+1. **Intent miss.** `classifyDirectorIntent` required `verschiebe den markierten clip`. The human phrase `Verschiebe den Clip zwei Sekunden nach rechts` classified **UNCERTAIN** → plan ASK / READ / NONE. The local LLM still returned `timeline.move_clip`.
+2. **Plan was not the execution source of truth.** AUTO was implemented by mutating (or failing to mutate) UI dropdowns. Execution re-read Manual ASK / DRAFT / NONE.
+
+### PLAN LOSS LOCATION (exact)
+
+| File | Function | What it did |
+| --- | --- | --- |
+| `src/app/ai/orchestration/intent.ts` | `classifyDirectorIntent` | Human prompt → UNCERTAIN (no `markierten`) |
+| `src/app/ai/host.ts` | `applyOrchestrationPlan` | Advanced: `{ lastPlan }` only, dropdowns unchanged. Normal: `applyMode` + `applyContextLevel` (Auto-by-dropdown — forbidden). |
+| `src/app/ai/host.ts` | `draftFromToolRequest` | `if (state.contextLevel === "NONE")` → the exact human denial. `mode: state.mode` (ASK) for `draftMoveClip`. |
+| `src/app/ai/host.ts` | `attachSubmitSnapshot` | Snapshot `level: state.contextLevel` (UI NONE), not `plan.contextLevel`. |
+| `src/app/ai/host.ts` | `buildProviderMessages` | Gated on `state.contextLevel !== "NONE"`. |
+| `src/app/ai/host.ts` | `applyHostApproved` | Commit `mode: state.mode` (ASK) — would deny Apply even after a lucky draft. |
+| `src/ui/director/DirectorPanel.tsx` | `sendDraft` | Passed host state into AUTO; did **not** keep a request-scoped plan separate from Manual settings. Not a stale-closure discard of a good plan — the plan never governed draft/apply. |
+
+**Not the loss:** provider discovery, Qwen hardcode, Arrange splitter, Project schema, a second command engine, silent Grant=EDIT.
+
+### Phase 1 — failing regression first
+
+`tests/ai/ai-director-auto-orch-plan-loss.test.ts` on HEAD `4bec8a5` **FAILED**:
+
+`expected 'UNCERTAIN' to be 'MOVE_CLIP'` at the human prompt. That is the recorded pre-repair failure. Repair followed; the same test now passes end-to-end (auth → Preview → Apply) with dropdowns still ASK / DRAFT / NONE.
+
+### Repair (Phases 3–8)
+
+Request-scoped immutable plan:
+
+`UserMessage` → `planDirectorTurn` → `sealDirectorPlan` / `sealDirectorRequest` → `authorize(plan)` → `execute(plan)` → `provider` → `validate` → `transaction(plan)` → `applyHostApproved(planModeOf)`.
+
+- `SealedDirectorRequest` holds frozen `DirectorPlan` + stable `clipId`.
+- `applyOrchestrationPlan` stores the seal only. **Never** writes Mode / Grant / Context dropdowns.
+- `planModeOf` / `planContextOf` / `effectiveGrant` are the execution reads.
+- Context from `plan.SELECTION` + sealed clip id (`captureContextSnapshot` may honor SELECTION `clipIds`).
+- `requiredGrant=EDIT` still goes through Allow once / session / Cancel. Never silent Grant=EDIT.
+- Compact AUTO status `AGENT · SELECTION · EDIT`. Advanced = MANUAL defaults, not in-flight authority.
+- Local provider `127.0.0.1:11434/v1` + discovery preserved. No Qwen hardcode. No OllamaProvider.
+
+### Tests A–J
+
+| ID | Case | Result |
+| --- | --- | --- |
+| A | Human regression ASK/DRAFT/NONE + selected video + human prompt | PASS |
+| B | Allow once | PASS |
+| C | Allow session (not Project) | PASS |
+| D | Cancel zero mutation | PASS |
+| E | No selection fail-closed (not Context SELECTION required) | PASS |
+| F | READ with UI NONE | PASS |
+| G | Unsupported delete NO_TOOL | PASS |
+| H | Stale UI mid-flight (clobber ASK/NONE/READ after seal) | PASS |
+| I | Provider failure | PASS |
+| J | Golden AUTO snap +2000 Undo/Redo | PASS |
+
+Prior A–N suite kept; assertions that expected Auto-by-dropdown were retargeted to `lastPlan`.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **185 passed** (172 prior + 13 plan-loss / A–J / UI) |
+| `npx vitest run` | **1577 passed / 6 failed / 1583** (178 files passed / 2 failed / 180) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| Human-proven additional | **not claimed** |
+| New regressions | none |
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.

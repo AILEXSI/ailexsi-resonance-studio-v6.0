@@ -27,12 +27,29 @@ export interface DirectorPlan {
   providerAction: "chat" | "read-tool" | "none";
 }
 
+/** Freeze the plan so later UI / setState writes cannot mutate it. */
+export function sealDirectorPlan(plan: DirectorPlan): DirectorPlan {
+  return Object.freeze({
+    ...plan,
+    intent: Object.freeze({ ...plan.intent }),
+  });
+}
+
+/** Compact AUTO status. Not the Advanced dropdown values. */
+export function directorPlanStatus(plan: DirectorPlan): string {
+  return `${plan.mode} · ${plan.contextLevel} · ${plan.requiredGrant}`;
+}
+
 /**
  * Minimum necessary context. Selected/markierter clip → SELECTION.
  * General / capability / unsupported → NONE. Never PROJECT.
  */
 export function planDirectorTurn(text: string): DirectorPlan {
   const intent = classifyDirectorIntent(text);
+  return sealDirectorPlan(planForIntent(intent));
+}
+
+function planForIntent(intent: DirectorIntent): DirectorPlan {
   switch (intent.kind) {
     case "ASK_SELECTION":
       return {

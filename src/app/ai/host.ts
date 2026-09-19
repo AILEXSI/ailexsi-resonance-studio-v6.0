@@ -49,9 +49,11 @@ import {
 } from "./contract";
 import {
   clearDiscoveryCache,
+  directorPlanStatus,
   pickAutoModel,
   planDirectorTurn,
   resolveAutoRuntime,
+  sealDirectorPlan,
   writeDiscoveryCache,
   type DirectorPlan,
 } from "./orchestration";
@@ -86,6 +88,23 @@ export interface DirectorAuthRequest {
   userText: string;
 }
 
+/**
+ * Request-scoped AUTO plan + sealed clip id.
+ * Immutable. Not React state-as-IPC. Not Advanced dropdowns.
+ */
+export interface SealedDirectorRequest {
+  readonly plan: DirectorPlan;
+  readonly clipId: string | null;
+  readonly userText: string;
+}
+
+/** Advanced / stored defaults. Never authoritative for an in-flight AUTO request. */
+export interface DirectorManualSettings {
+  mode: DirectorMode;
+  grant: Grant;
+  contextLevel: ContextLevel;
+}
+
 export interface DirectorNoToolResult {
   code: "NO_TOOL";
   message: string;
@@ -118,6 +137,8 @@ export interface DirectorHostState {
   /** Normal compact chrome vs Advanced manual controls. Runtime only. */
   surface: "normal" | "advanced";
   lastPlan: DirectorPlan | null;
+  /** Sealed in-flight AUTO request. Execution reads this, not mode/grant/contextLevel. */
+  sealedRequest: SealedDirectorRequest | null;
   pendingAuth: DirectorAuthRequest | null;
   /** One-request grant. Not Project. Cleared after Apply/Reject. */
   onceGrant: Grant | null;
@@ -150,6 +171,7 @@ export function createDirectorHostState(): DirectorHostState {
     discoveredModels: [],
     surface: "normal",
     lastPlan: null,
+    sealedRequest: null,
     pendingAuth: null,
     onceGrant: null,
     heldUserText: null,
@@ -161,6 +183,30 @@ export function createDirectorHostState(): DirectorHostState {
 /** Session grant, or Allow-once elevation for this request only. */
 export function effectiveGrant(state: DirectorHostState): Grant {
   return state.onceGrant ?? state.grant;
+}
+
+/** Mode for the in-flight request. Plan first — never re-read ASK from Advanced. */
+export function planModeOf(state: DirectorHostState): DirectorMode {
+  return state.sealedRequest?.plan.mode ?? state.lastPlan?.mode ?? state.mode;
+}
+
+/** Context for the in-flight request. Plan first — never re-read NONE from Advanced. */
+export function planContextOf(state: DirectorHostState): ContextLevel {
+  return state.sealedRequest?.plan.contextLevel ?? state.lastPlan?.contextLevel ?? state.contextLevel;
+}
+
+export function sealDirectorRequest(
+  plan: DirectorPlan,
+  session: Session | undefined,
+  userText: string,
+): SealedDirectorRequest {
+  const sealed = sealDirectorPlan(plan);
+  let clipId: string | null = null;
+  if (sealed.contextLevel === "SELECTION" && session) {
+    const selected = selectionOf(session);
+    clipId = selected.length === 1 ? selected[0]! : null;
+  }
+  return Object.freeze({ plan: sealed, clipId, userText });
 }
 
 export function applyGrant(state: DirectorHostState, grant: Grant): DirectorHostState {
@@ -190,7 +236,7 @@ export function applyHostApproved(
     session,
     transaction: state.transaction,
     grant: effectiveGrant(state),
-    mode: state.mode,
+    mode: planModeOf(state),
     approval: true,
   });
   if (!result.ok) {
@@ -521,11 +567,13 @@ export function setDirectorPanelOpen(state: DirectorHostState, open: boolean): D
  */
 export function attachSubmitSnapshot(state: DirectorHostState, session?: Session): DirectorHostState {
   if (!session) return state;
+  const clipId = state.sealedRequest?.clipId;
   const lastSnapshot = captureContextSnapshot(session, {
-    level: state.contextLevel,
+    level: planContextOf(state),
     outboundClass: state.outboundClass,
+    clipIds: clipId ? [clipId] : undefined,
   });
-  return { ...state, lastSnapshot, contextLabel: `Context: ${lastSnapshot.level}` };
+  return { ...state, lastSnapshot };
 }
 
 export function submitDirectorMockTurn(
@@ -559,7 +607,7 @@ export function createDirectorRuntime(provider?: AIProvider, state?: DirectorHos
 
 export function buildProviderMessages(state: DirectorHostState): ChatMessage[] {
   const messages: ChatMessage[] = [{ role: "system", content: DIRECTOR_RESPONSE_CONTRACT_PROMPT }];
-  if (state.lastSnapshot && state.contextLevel !== "NONE") {
+  if (state.lastSnapshot && state.lastSnapshot.level !== "NONE") {
     messages.push({
       role: "system",
       content: JSON.stringify({
@@ -633,7 +681,7 @@ function draftFromToolRequest(
       ),
     };
   }
-  if (state.contextLevel === "NONE") {
+  if (planContextOf(state) === "NONE") {
     return {
       ...state,
       conversation: appendDirectorMessage(
@@ -643,11 +691,15 @@ function draftFromToolRequest(
       ),
     };
   }
+  const args = asMoveClipArgs(toolRequest.arguments);
+  if (!args.clipId && state.sealedRequest?.clipId) {
+    args.clipId = state.sealedRequest.clipId;
+  }
   const drafted = draftMoveClip({
     session,
-    args: asMoveClipArgs(toolRequest.arguments),
+    args,
     grant: effectiveGrant(state),
-    mode: state.mode,
+    mode: planModeOf(state),
   });
   if (!drafted.ok) {
     return {
@@ -659,9 +711,9 @@ function draftFromToolRequest(
         explainToolDenial({
           code: drafted.code,
           detail: drafted.message,
-          grant: state.grant,
-          mode: state.mode,
-          contextLevel: state.contextLevel,
+          grant: effectiveGrant(state),
+          mode: planModeOf(state),
+          contextLevel: planContextOf(state),
         }),
       ),
     };
@@ -770,13 +822,21 @@ export function applyDirectorSurface(
   return { ...state, surface };
 }
 
-export function applyOrchestrationPlan(state: DirectorHostState, plan: DirectorPlan): DirectorHostState {
-  if (state.surface === "advanced") {
-    return { ...state, lastPlan: plan, lastNoTool: null, localUnavailable: false };
-  }
+/**
+ * Store the sealed plan. Do NOT write Mode / Grant / Context dropdowns.
+ * Manual settings stay ASK/DRAFT/NONE unless the user changes Advanced.
+ */
+export function applyOrchestrationPlan(
+  state: DirectorHostState,
+  plan: DirectorPlan,
+  session?: Session,
+  userText = "",
+): DirectorHostState {
+  const sealedRequest = sealDirectorRequest(plan, session, userText);
   return {
-    ...applyContextLevel(applyMode(state, plan.mode), plan.contextLevel),
-    lastPlan: plan,
+    ...state,
+    lastPlan: sealedRequest.plan,
+    sealedRequest,
     lastNoTool: null,
     localUnavailable: false,
   };
@@ -808,6 +868,11 @@ export function cancelDirectorAuth(state: DirectorHostState): DirectorHostState 
     pendingAuth: null,
     heldUserText: null,
   };
+}
+
+export function autoPlanStatusLabel(state: DirectorHostState): string {
+  const plan = state.sealedRequest?.plan ?? state.lastPlan;
+  return plan ? directorPlanStatus(plan) : "—";
 }
 
 export function normalStatusLabel(state: DirectorHostState): string {
@@ -860,7 +925,7 @@ function runReadPlan(
   userText: string,
   session: Session | undefined,
 ): DirectorHostState {
-  const prepared = attachSubmitSnapshot(applyOrchestrationPlan(state, plan), session);
+  const prepared = attachSubmitSnapshot(applyOrchestrationPlan(state, plan, session, userText), session);
   const grant = effectiveGrant(prepared);
   if (!session) {
     return appendTurn(prepared, userText, "Denied: no project session is available. No project changes were made.");
@@ -895,11 +960,13 @@ export async function submitDirectorAutoTurn(
   const text = userText.trim();
   if (!text) return state;
   const plan = planDirectorTurn(text);
+  const sealedRequest = sealDirectorRequest(plan, session, text);
   const current = effectiveGrant(state);
   if (grantExceeds(plan.requiredGrant, current)) {
     return {
       ...state,
-      lastPlan: plan,
+      lastPlan: sealedRequest.plan,
+      sealedRequest,
       heldUserText: text,
       pendingAuth: {
         requiredGrant: plan.requiredGrant,
@@ -920,14 +987,15 @@ export async function submitDirectorAutoTurn(
   if (resolved.unavailable && !opts?.providerInjected) {
     return {
       ...state,
-      lastPlan: plan,
+      lastPlan: sealedRequest.plan,
+      sealedRequest,
       localUnavailable: true,
       status: "unavailable",
       statusLabel: "LOCAL AI UNAVAILABLE",
     };
   }
 
-  let next = applyOrchestrationPlan(state, plan);
+  let next = applyOrchestrationPlan(state, plan, session, text);
   if (!opts?.providerInjected && resolved.providerId === "openai-compatible") {
     const model = pickAutoModel(resolved.model, next.discoveredModels) ?? resolved.model;
     if (model && model !== next.localConfig.model) {
@@ -979,5 +1047,12 @@ export async function retryDirectorLocalHealth(state: DirectorHostState): Promis
   return finishDirectorConnectionTest(testing);
 }
 
-export { clearDiscoveryCache, planDirectorTurn, pickAutoModel, resolveAutoRuntime };
+export {
+  clearDiscoveryCache,
+  directorPlanStatus,
+  planDirectorTurn,
+  pickAutoModel,
+  resolveAutoRuntime,
+  sealDirectorPlan,
+};
 

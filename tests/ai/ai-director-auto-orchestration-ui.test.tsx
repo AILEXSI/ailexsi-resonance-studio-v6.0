@@ -8,7 +8,7 @@ import {
   type DirectorHostState,
 } from "../../src/app/ai/host";
 import { DIRECTOR_FLAG_KEY, setDirectorEnabledForTests } from "../../src/app/ai/flag";
-import { GOLDEN_MOVE_PROMPT } from "../../src/app/ai/tools/move-clip";
+import { GOLDEN_MOVE_PROMPT, HUMAN_MOVE_PROMPT } from "../../src/app/ai/tools/move-clip";
 import { clearDiscoveryCache, writeDiscoveryCache } from "../../src/app/ai/orchestration";
 import { createMockProvider } from "../../src/app/ai/providers/mock";
 import { AI_PREFS_KEY } from "../../src/app/ai/providers/prefs";
@@ -218,6 +218,58 @@ describe("AI Director auto-orchestration UI", () => {
     expect(host!.querySelector('[data-testid="director-test-connection"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-discover-models"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="director-find-local-ai"]')).toBeTruthy();
+  });
+
+  it("AUTO chrome shows plan status; Advanced is MANUAL defaults only", async () => {
+    const session = fixture();
+    await mountPanel(createDirectorHostState(), session);
+    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO");
+    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("—");
+    await act(async () => {
+      (host!.querySelector('[data-testid="director-advanced-toggle"]') as HTMLButtonElement).click();
+    });
+    expect(host!.querySelector('[data-testid="director-manual-legend"]')?.textContent).toMatch(/MANUAL defaults/);
+    expect(host!.querySelector('[data-testid="director-mode-select"]')).toBeTruthy();
+  });
+
+  it("human prompt with ASK/DRAFT/NONE still auths then previews; dropdowns stay manual", async () => {
+    const session = fixture();
+    await mountPanel(
+      {
+        ...createDirectorHostState(),
+        grant: "DRAFT",
+        mode: "ASK",
+        modeLabel: "Mode: ASK",
+        contextLevel: "NONE",
+        contextLabel: "Context: NONE",
+        surface: "advanced",
+      },
+      session,
+    );
+    expect((host!.querySelector('[data-testid="director-mode-select"]') as HTMLSelectElement).value).toBe("ASK");
+    expect((host!.querySelector('[data-testid="director-grant-select"]') as HTMLSelectElement).value).toBe("DRAFT");
+    expect((host!.querySelector('[data-testid="director-context-level"]') as HTMLSelectElement).value).toBe("NONE");
+    await send(HUMAN_MOVE_PROMPT);
+    expect(host!.textContent).not.toMatch(/Context SELECTION is required/);
+    expect(host!.querySelector('[data-testid="director-auth"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("AGENT · SELECTION · EDIT");
+    expect((host!.querySelector('[data-testid="director-mode-select"]') as HTMLSelectElement).value).toBe("ASK");
+    expect((host!.querySelector('[data-testid="director-grant-select"]') as HTMLSelectElement).value).toBe("DRAFT");
+    expect((host!.querySelector('[data-testid="director-context-level"]') as HTMLSelectElement).value).toBe("NONE");
+    await act(async () => {
+      (host!.querySelector('[data-testid="director-auth-allow-once"]') as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host!.textContent).not.toMatch(/Context SELECTION is required/);
+    expect(host!.querySelector('[data-testid="director-txn-phase"]')?.textContent).toBe("PREVIEW");
+    expect(host!.querySelector('[data-testid="director-txn-delta"]')?.textContent).toMatch(/\+2000ms/);
+    expect((host!.querySelector('[data-testid="director-mode-select"]') as HTMLSelectElement).value).toBe("ASK");
+    expect((host!.querySelector('[data-testid="director-grant-select"]') as HTMLSelectElement).value).toBe("DRAFT");
+    expect((host!.querySelector('[data-testid="director-context-level"]') as HTMLSelectElement).value).toBe("NONE");
+    expect(session.project.clips[0]!.startMs).toBe(30_000);
   });
 
   it("K UI golden AUTO with EDIT already granted still previews +2000", async () => {
