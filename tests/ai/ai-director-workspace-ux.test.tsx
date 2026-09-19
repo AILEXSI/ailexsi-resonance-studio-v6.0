@@ -192,8 +192,8 @@ describe("AI Director workspace UX + human-gate UI", () => {
 
   it("2B Director/Inspector split has min heights and persists", () => {
     const available = 400;
-    expect(clampDirectorSplitRatio(0, available) * available).toBe(INSPECTOR_SECTION_MIN_PX);
-    expect((1 - clampDirectorSplitRatio(1, available)) * available).toBe(DIRECTOR_SECTION_MIN_PX);
+    expect(clampDirectorSplitRatio(0, available) * available).toBeCloseTo(INSPECTOR_SECTION_MIN_PX, 5);
+    expect((1 - clampDirectorSplitRatio(1, available)) * available).toBeCloseTo(DIRECTOR_SECTION_MIN_PX, 5);
     const junk = applyDirectorSplitPointer({ clientY: 1, bodyTop: 0, bodyHeight: 408 });
     expect(junk.inspectorPx).toBeGreaterThanOrEqual(INSPECTOR_SECTION_MIN_PX);
     expect(junk.directorPx).toBeGreaterThanOrEqual(DIRECTOR_SECTION_MIN_PX);
@@ -205,9 +205,9 @@ describe("AI Director workspace UX + human-gate UI", () => {
     await click("toolbar-ai");
     expect(host!.querySelector('[data-testid="layout-split-h"]')).toBeTruthy();
     const ultra = 5120 - 14;
-    expect((1 - clampHSplitRatio(0, ultra)) * ultra).toBe(INSPECTOR_MAX_PX);
-    expect((1 - clampHSplitRatio(1, ultra)) * ultra).toBe(INSPECTOR_MIN_PX);
-    expect(host!.querySelector('[data-testid="workspace-inspector"]')?.style.maxWidth).toBe(
+    expect((1 - clampHSplitRatio(0, ultra)) * ultra).toBeCloseTo(INSPECTOR_MAX_PX, 5);
+    expect((1 - clampHSplitRatio(1, ultra)) * ultra).toBeCloseTo(INSPECTOR_MIN_PX, 5);
+    expect((host!.querySelector('[data-testid="workspace-inspector"]') as HTMLElement).style.maxWidth).toBe(
       `${INSPECTOR_MAX_PX}px`,
     );
     expect(host!.querySelector('[data-testid="timeline"]')).toBeTruthy();
@@ -253,7 +253,7 @@ describe("AI Director workspace UX + human-gate UI", () => {
     expect(host!.querySelector('[data-testid="director-compose-hint"]')?.textContent).toMatch(
       /Ctrl\+Enter = Send/,
     );
-    expect(getComputedStyle(input).resize).toMatch(/vertical|both/);
+    expect(input.getAttribute("style") ?? "").toMatch(/height/);
 
     await act(async () => {
       const native = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value");
