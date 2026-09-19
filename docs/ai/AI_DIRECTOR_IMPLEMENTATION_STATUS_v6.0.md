@@ -592,3 +592,68 @@ Schema **5**. No provider/tool/txn/command/history/Frame Engine/exporter change 
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Coordinator may merge to `ai/ai-director-foundation-v6` after Martin’s human gates.
+
+---
+
+## LOCAL PROVIDER HUMAN-INTEGRATION
+
+**Branch:** `cursor/local-provider-human-integration-a15e`  
+**Start HEAD:** `b033b1ed2654558161e28ce28ccd44b22ab5b375` (`ai/ai-director-foundation-v6` / Foundation, PR #5 merged)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Diagnose why packaged Director reported `PROVIDER_UNAVAILABLE` against a working loopback `/v1` endpoint, then fix the generic OpenAI-compatible adapter only. Schema stays **5**. No AI-8. No `OllamaProvider`.
+
+### Phase 0 re-verify
+
+| Item | Evidence |
+| --- | --- |
+| Foundation HEAD | `b033b1ed2654558161e28ce28ccd44b22ab5b375` = Merge pull request #5 |
+| PR #5 | MERGED into `ai/ai-director-foundation-v6` |
+| PR #2 | OPEN draft → `main` (`ai/ai-director-foundation-v6`). Not merged. |
+| Schema | `PROJECT_SCHEMA_VERSION = 5` |
+| AI-8 | Not started |
+| `OllamaProvider` | Not added |
+
+### ROOT CAUSE (proven, not guessed)
+
+Two independent defects plus one packaged-WebView transport gap:
+
+1. **Chat timeout floor (code + human latency).** `DEFAULT_TIMEOUT_MS` was **8000**. Human cold `POST /v1/chat/completions` was **32380 ms**. `mergeSignals` aborts at 8s and maps that to `PROVIDER_UNAVAILABLE` / "Connection timed out". Connection test (`GET /models`) can still be fast.
+2. **Test Connection never committed `Testing...`.** `testDirectorConnection` built a connecting state internally, then `await`ed the fetch, and the button handler only `commit`ed the final promise. Button text stayed "Test connection". No Testing / Connected / Failed surface next to the control.
+3. **Packaged WebView Origin / CORS (protocol-proven for Windows Tauri 2 + typical local servers).** Packaged origin is `http://tauri.localhost`. PowerShell has no `Origin`. Local `/v1` servers that allow `127.0.0.1` / `tauri://*` but not `http://tauri.localhost` reject or CORS-hide the browser `fetch`. That also maps to `PROVIDER_UNAVAILABLE` ("Failed to fetch") and hid the category. WebView `TypeError: Failed to fetch` cannot distinguish CORS vs REFUSED; setup now labels that `UNKNOWN` unless the error names CORS/refused/timeout. `csp: null`; no mixed-content (`useHttpsScheme` unset). ADV-5 URL join (`/v1` + `/models`) is correct.
+
+### WHY POWERSHELL WORKED
+
+Native HTTP, no WebView `Origin`, no CORS preflight, default request timeout much longer than 32s.
+
+### WHY PACKAGED FAILED
+
+Browser `fetch` from `http://tauri.localhost` + 8s chat abort + error UI that showed only `PROVIDER_UNAVAILABLE` + Test Connection that did not flip visible state on click.
+
+### Fix (generic provider, ADV-5 kept)
+
+- Chat default **90000 ms** (configurable 8000–180000, still fail-closed). Connection test stays **8000 ms**.
+- Packaged path: Rust `local_ai_http` loopback-only GET/POST (no WebView Origin). Tests / web keep `fetchImpl` / `fetch`.
+- Immediate **Testing...**, then **Connected (endpoint, model, latency ms)** or **CONNECTION FAILED (endpoint, sanitized reason, category)**.
+- `[Discover Models]` and Test Connection populate the model list from `GET {baseUrl}/models`. No vendor hardcoding.
+- Optional user-triggered `[Find Local AI]` on loopback ports `11434, 1234, 8080, 4891, 5000, 8000` only, 800 ms each. No LAN / startup scan.
+- Sanitized diagnostics only (no keys / Authorization / Project dumps).
+
+### Human expected cold latency
+
+First local chat after a model load can be **~32 s** (human `qwen2.5:7b`). Warm **~0.7 s**. Default chat timeout 90s covers cold start and still fail-closes.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **149 passed** (137 prior + 12 human-integration) |
+| `npx vitest run` | **1541 passed / 6 failed / 1547** (175 files passed / 2 failed / 177) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 186 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
+| Windows package | **NOT AVAILABLE** on this Linux VM — coordinator builds EXE |
+| New regressions | none |
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Coordinator may merge to `ai/ai-director-foundation-v6` after Martin’s human gates.

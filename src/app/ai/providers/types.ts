@@ -98,7 +98,42 @@ export interface ChatResponse {
   model?: string;
 }
 
-export interface ConnectionTestResult {
+/** Setup-only categories. Chat may still surface PROVIDER_UNAVAILABLE. */
+export type ConnectionFailureCategory =
+  | "CORS"
+  | "REFUSED"
+  | "TIMEOUT"
+  | "HTTP"
+  | "INVALID_RESPONSE"
+  | "MODEL_NOT_FOUND"
+  | "SECURITY_POLICY"
+  | "UNKNOWN";
+
+export const CONNECTION_FAILURE_CATEGORIES: readonly ConnectionFailureCategory[] = [
+  "CORS",
+  "REFUSED",
+  "TIMEOUT",
+  "HTTP",
+  "INVALID_RESPONSE",
+  "MODEL_NOT_FOUND",
+  "SECURITY_POLICY",
+  "UNKNOWN",
+];
+
+export type LocalHttpTransport = "webview-fetch" | "tauri-loopback";
+
+/** Sanitized connection probe. Never includes API keys, Authorization, or Project dumps. */
+export interface ConnectionDiagnostics {
+  endpoint?: string;
+  model?: string;
+  latencyMs?: number;
+  category?: ConnectionFailureCategory;
+  reason?: string;
+  transport?: LocalHttpTransport;
+  models?: ProviderModel[];
+}
+
+export interface ConnectionTestResult extends ConnectionDiagnostics {
   ok: boolean;
   error?: ProviderError;
 }
