@@ -36,6 +36,20 @@ export function isConfigured(config: OpenAICompatibleConfig): boolean {
   return normalizeBaseUrl(config.baseUrl).length > 0 && config.model.trim().length > 0;
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/** Fail-closed loopback only. Cloud / LAN / DNS-rebinding hosts are rejected. */
+export function isAllowedLocalProviderUrl(raw: string): boolean {
+  try {
+    const url = new URL(normalizeBaseUrl(raw));
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return LOCAL_HOSTS.has(host);
+  } catch {
+    return false;
+  }
+}
+
 export function statusLabel(status: LocalConnectionStatus): string {
   switch (status) {
     case "not-configured":
@@ -218,6 +232,13 @@ export class OpenAICompatibleProvider implements AIProvider {
     requestId?: string,
     extraSignal?: AbortSignal,
   ): Promise<unknown> {
+    if (!isAllowedLocalProviderUrl(this.config.baseUrl)) {
+      throw new ProviderError(
+        "PROVIDER_UNAVAILABLE",
+        "Local provider allows localhost / 127.0.0.1 / ::1 only",
+        requestId,
+      );
+    }
     const combined = extraSignal ?? new AbortController().signal;
     const gate = mergeSignals(combined, this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     try {

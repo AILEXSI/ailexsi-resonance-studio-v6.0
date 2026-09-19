@@ -7,6 +7,7 @@ import {
   type TransactionFail,
   type TransactionOk,
 } from "../transactions/transaction";
+import { recordAudit } from "../transactions/audit";
 
 export const GOLDEN_MOVE_PROMPT =
   "Verschiebe den markierten Clip exakt zwei Sekunden nach rechts.";
@@ -23,9 +24,15 @@ export function parseGoldenMovePrompt(text: string): { deltaMs: 2000 } | null {
   return text.trim() === GOLDEN_MOVE_PROMPT ? { deltaMs: 2000 } : null;
 }
 
-function asFiniteInt(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.round(value);
+function asExactDeltaMs(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) return null;
+  return value;
+}
+
+function selectionIsInconsistent(session: Session, selected: readonly string[]): boolean {
+  if (!session.selectedClipId || selected.length !== 1) return false;
+  if (!session.selectedClipIds || session.selectedClipIds.length === 0) return false;
+  return session.selectedClipId !== selected[0];
 }
 
 export function resolveMoveClipCommand(
@@ -33,23 +40,30 @@ export function resolveMoveClipCommand(
   args: MoveClipArgs,
 ): { clipIds: [string]; deltaMs: number } | { error: string } {
   const selected = selectionOf(session);
+  if (args.clipId === undefined && selectionIsInconsistent(session, selected)) {
+    return { error: "AMBIGUOUS_SELECTION" };
+  }
   const clipId = args.clipId ?? (selected.length === 1 ? selected[0] : undefined);
   if (!clipId) {
     return { error: selected.length > 1 ? "AMBIGUOUS_SELECTION" : "No clip selected" };
   }
+  if (typeof clipId !== "string") return { error: "INVALID_DELTA" };
   const clip = clipById(session.project, clipId);
   if (!clip) {
     return { error: clipId.includes("_") ? "Clip not found" : "Display names are not ids" };
   }
-  if (!clip) return { error: "Clip not found" };
   if (clipIsLocked(clip)) return { error: "Clip is locked" };
 
   let deltaMs: number | null = null;
   if (args.targetStartSeconds !== undefined) {
-    if (!Number.isFinite(args.targetStartSeconds)) return { error: "INVALID_DELTA" };
-    deltaMs = Math.round(args.targetStartSeconds * 1000) - clip.startMs;
+    if (typeof args.targetStartSeconds !== "number" || !Number.isFinite(args.targetStartSeconds)) {
+      return { error: "INVALID_DELTA" };
+    }
+    const raw = args.targetStartSeconds * 1000 - clip.startMs;
+    if (!Number.isSafeInteger(raw) || raw <= 0) return { error: "INVALID_DELTA" };
+    deltaMs = raw;
   } else {
-    deltaMs = asFiniteInt(args.deltaMs);
+    deltaMs = asExactDeltaMs(args.deltaMs);
   }
   if (deltaMs == null) return { error: "INVALID_DELTA" };
   return { clipIds: [clip.id], deltaMs };
@@ -63,6 +77,11 @@ export function draftMoveClip(opts: {
 }): TransactionOk | TransactionFail {
   const resolved = resolveMoveClipCommand(opts.session, opts.args);
   if ("error" in resolved) {
+    try {
+      recordAudit({ action: "draft", toolName: MOVE_CLIP_TOOL, result: "error", detail: resolved.error });
+    } catch {
+      /* audit must not affect Project */
+    }
     return { ok: false, code: "SEMANTIC", message: resolved.error };
   }
   return draftCommandTransaction({

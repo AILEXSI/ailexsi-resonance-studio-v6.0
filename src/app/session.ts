@@ -374,6 +374,7 @@ function withHistory(session: Session, nextProject: Project, status: string): Se
 export function newProject(session: Session): Session {
   return {
     ...createSession(session.store),
+    projectRevision: projectRevisionOf(session) + 1,
     status: "New project",
   };
 }
@@ -2408,7 +2409,7 @@ export function openSerialized(session: Session, text: string): Session {
     savedFutureLength: 0,
     volumeWriteArmedIds: [],
     volumeWriteGesture: null,
-    projectRevision: 0,
+    projectRevision: projectRevisionOf(session) + 1,
   };
 }
 

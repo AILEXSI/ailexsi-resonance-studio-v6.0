@@ -15,6 +15,7 @@ export {
   createOpenAICompatibleProvider,
   OpenAICompatibleProvider,
   connectionStatusOf,
+  isAllowedLocalProviderUrl,
   isConfigured,
   statusLabel,
   type LocalConnectionStatus,

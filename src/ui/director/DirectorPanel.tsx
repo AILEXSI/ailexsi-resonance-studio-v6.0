@@ -78,6 +78,7 @@ export function DirectorPanel({
     };
     void (async () => {
       const next = await submitDirectorProviderTurn(current, text, runtime, ctl.signal, session);
+      if (ctl.signal.aborted || abortRef.current !== ctl) return;
       commit(next);
     })();
   };
