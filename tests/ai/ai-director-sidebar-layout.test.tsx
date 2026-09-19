@@ -129,7 +129,8 @@ describe("AI Director sidebar layout hardening", () => {
     expect(cssRule(".director-section")).toMatch(/min-height:\s*0/);
     expect(cssRule(".director")).toMatch(/overflow:\s*hidden/);
     expect(cssRule(".director")).toMatch(/min-height:\s*0/);
-    expect(cssRule(".director-body")).toMatch(/overflow-y:\s*auto/);
+    expect(cssRule(".director-body")).toMatch(/overflow-y:\s*hidden/);
+    expect(cssRule(".director-chrome")).toMatch(/overflow-y:\s*auto/);
     expect(cssRule(".director-scroll")).toMatch(/overflow-y:\s*auto/);
     expect(cssRule(".director-messages")).toMatch(/overflow:\s*auto/);
 
@@ -173,16 +174,22 @@ describe("AI Director sidebar layout hardening", () => {
       expect(el, name).toBeTruthy();
       expect(director.contains(el), name).toBe(true);
     }
-    expect(directorScroll.contains(controls.providerSelect)).toBe(true);
-    expect(directorScroll.contains(controls.mode)).toBe(true);
-    expect(directorScroll.contains(controls.grant)).toBe(true);
-    expect(directorScroll.contains(controls.context)).toBe(true);
+    const chrome = host!.querySelector('[data-testid="director-chrome"]') as HTMLElement;
+    expect(chrome.contains(controls.status)).toBe(true);
+    expect(chrome.contains(controls.providerSelect)).toBe(true);
+    expect(chrome.contains(controls.mode)).toBe(true);
+    expect(chrome.contains(controls.grant)).toBe(true);
+    expect(chrome.contains(controls.context)).toBe(true);
+    expect(directorScroll.contains(controls.providerSelect)).toBe(false);
     expect(directorScroll.contains(controls.messages)).toBe(true);
     expect(directorBody.contains(controls.status)).toBe(true);
     expect(directorScroll.contains(controls.status)).toBe(false);
     expect(directorScroll.contains(controls.compose)).toBe(false);
     expect(directorBody.contains(controls.messages)).toBe(true);
     expect(directorBody.contains(controls.compose)).toBe(true);
+    expect(host!.querySelector('[data-testid="director-split"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="director-focus"]')).toBeTruthy();
+    expect(host!.querySelector('[data-testid="inspector-section-collapse"]')).toBeTruthy();
   });
 
   it("keeps Inspector mounted and capped so it cannot starve Director", async () => {

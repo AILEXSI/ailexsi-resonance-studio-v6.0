@@ -3,8 +3,13 @@ import { readFileSync } from "node:fs";
 import { exportFrameEngineLabel, getFrameSourceBackend } from "../../src/core/exporter/frame-source";
 import {
   GROUP_COLLAPSED_KEY,
+  DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_FOCUS_KEY,
+  DIRECTOR_NORMAL_SPLIT_KEY,
+  DIRECTOR_SPLIT_RATIO_KEY,
   H_SPLIT_RATIO_KEY,
   INSPECTOR_COLLAPSED_KEY,
+  INSPECTOR_SECTION_COLLAPSED_KEY,
   LANE_HEIGHTS_KEY,
   LANE_LABEL_PX_KEY,
   MIXER_COLLAPSED_KEY,
@@ -54,6 +59,11 @@ describe("V6.0 product identity", () => {
     const keys = [
       MIXER_COLLAPSED_KEY,
       INSPECTOR_COLLAPSED_KEY,
+      INSPECTOR_SECTION_COLLAPSED_KEY,
+      DIRECTOR_SPLIT_RATIO_KEY,
+      DIRECTOR_NORMAL_SPLIT_KEY,
+      DIRECTOR_FOCUS_KEY,
+      DIRECTOR_COMPOSER_HEIGHT_KEY,
       SPLIT_RATIO_KEY,
       H_SPLIT_RATIO_KEY,
       TIMELINE_FOCUS_KEY,

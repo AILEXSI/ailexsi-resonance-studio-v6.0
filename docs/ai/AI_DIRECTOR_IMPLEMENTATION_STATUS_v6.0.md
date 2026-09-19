@@ -537,3 +537,45 @@ Mode **AGENT**, Grant **EDIT**, Context **SELECTION**, Provider **mock** (offlin
 ### Stop
 
 No AI-8. Do **not** merge PR #2 to `main`. Do **not** merge this PR to `main`.
+
+---
+
+## HUMAN-GATE CLOSEOUT + DIRECTOR WORKSPACE UX
+
+**Branch:** `cursor/director-workspace-human-gate-61f3`  
+**Start HEAD:** `f8a48bbc20c11a44ff6aef2da2721a027129bc49` (`ai/ai-director-foundation-v6`, PR #4 merged)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Make Reject / Apply / Undo / Redo / stale `TRANSACTION_CONFLICT` unambiguous in Director UI. Add pure workspace UX (collapse, split, sidebar width, Focus, composer). Schema stays **5**. No AI-8. No tools/cloud/Voice/STT/Builder.
+
+### Human-proven vs still requires Martin
+
+| Gate | Status |
+| --- | --- |
+| Packaged EXE | **HUMAN-PROVEN** (prior) |
+| Preview | **HUMAN-PROVEN** (prior) |
+| explicit Apply | **HUMAN-PROVEN** (prior; examples ~89875→91875 and ~90019→92019) |
+| exact +2000 ms | **HUMAN-PROVEN** (prior). This run preserves Apply exact +2000. Tests are not a substitute. |
+| Reject | **STILL REQUIRES HUMAN CONFIRMATION** — UI now shows a dedicated REJECTED card |
+| Undo / Redo | **STILL REQUIRES HUMAN CONFIRMATION** — Director now exposes the existing Session history buttons |
+| stale TRANSACTION_CONFLICT | **STILL REQUIRES HUMAN CONFIRMATION** — dedicated STALE TRANSACTION — CONFLICT banner; Apply blocked |
+
+### Workspace UX (local prefs only)
+
+| Item | Behavior |
+| --- | --- |
+| 2A Inspector section collapse | Collapse Inspector / Expand Inspector. Content hidden (`hidden`), Director uses the sidebar. Selection/state preserved (Inspector stays mounted). Sidebar INS Collapse/Expand still hides the whole column. |
+| 2B Inspector/Director split | Drag handle when both open. Min inspector 64px / Director 180px. Double-click reset. |
+| 2C Sidebar width | Existing Preview↔Inspector splitter. Added `INSPECTOR_MAX_PX=720` so ultrawide does not starve Preview. Double-click reset. |
+| 2D Director Focus | Focus collapses Inspector section; Exit restores prior Inspector + split. Not app fullscreen. |
+| 2E Composer | Multiline textarea; vertical resize + auto-grow 56–200px; Enter=newline; Ctrl+Enter=Send. |
+| 2F Layout | status/config → pending txn / conflict → conversation → composer/Send. |
+
+Prefs keys (not Project JSON): `inspector-section-collapsed`, `director-split`, `director-normal-split`, `director-focus`, `director-composer-height`. Existing `preview-h-split` / `inspector-collapsed` reused.
+
+### Hard laws kept
+
+Schema **5**. No provider/tool/txn/command/history/Frame Engine/exporter change except host UI copy + `lastGateCode` runtime fields. Mutation path unchanged. No second engine.
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Coordinator may merge to `ai/ai-director-foundation-v6` after Martin’s human gates.

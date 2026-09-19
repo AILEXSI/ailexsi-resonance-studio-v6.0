@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   applyContextLevel,
   applyGrant,
@@ -25,6 +25,14 @@ import { registerBuiltInProviders } from "../../app/ai/providers";
 import type { AIProvider, ProviderId } from "../../app/ai/providers/types";
 import { appendDirectorMessage } from "../../app/ai/conversation";
 import type { Session } from "../../app/session";
+import {
+  browserLayoutStorage,
+  clampComposerHeightPx,
+  COMPOSER_MAX_PX,
+  COMPOSER_MIN_PX,
+  loadDirectorComposerHeight,
+  saveDirectorComposerHeight,
+} from "../../core/layout-prefs";
 
 registerBuiltInProviders();
 
@@ -40,6 +48,14 @@ export interface DirectorPanelProps {
   onCanonicalCommit?: (session: Session) => void;
   /** App chrome: Close hides Director and syncs the toolbar AI toggle. */
   onRequestClose?: () => void;
+  /** Director Focus — collapses Inspector section only. Not app fullscreen. */
+  focusMode?: boolean;
+  onToggleFocus?: () => void;
+  /** Existing Session history. Director never owns a second undo stack. */
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export function DirectorPanel({
@@ -49,15 +65,24 @@ export function DirectorPanel({
   onStateChange,
   onCanonicalCommit,
   onRequestClose,
+  focusMode = false,
+  onToggleFocus,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }: DirectorPanelProps) {
   const [state, setState] = useState<DirectorHostState>(
     () => initialState ?? hydrateDirectorHostFromPrefs(),
   );
   const [draft, setDraft] = useState("");
+  const layoutStore = browserLayoutStorage();
+  const [composerHeight, setComposerHeight] = useState(() => loadDirectorComposerHeight(layoutStore));
   const runtimeRef = useRef(createDirectorRuntime(provider, initialState));
   const abortRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   const sessionRef = useRef(session);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   stateRef.current = state;
   sessionRef.current = session;
 
@@ -75,8 +100,18 @@ export function DirectorPanel({
     commit(next);
   };
 
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
+  const persistComposerHeight = (px: number) => {
+    const next = clampComposerHeightPx(px);
+    setComposerHeight(next);
+    saveDirectorComposerHeight(layoutStore, next);
+  };
+
+  const growComposer = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    persistComposerHeight(Math.min(COMPOSER_MAX_PX, Math.max(COMPOSER_MIN_PX, el.scrollHeight)));
+  };
+
+  const sendDraft = () => {
     const text = draft.trim();
     if (!text) return;
     abortRef.current?.abort();
@@ -109,187 +144,256 @@ export function DirectorPanel({
     })();
   };
 
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    sendDraft();
+  };
+
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      sendDraft();
+    }
+  };
+
+  const txn = state.transaction;
+  const conflict =
+    state.lastGateCode === "TRANSACTION_CONFLICT" ||
+    state.statusLabel.includes("TRANSACTION_CONFLICT") ||
+    state.transactionLabel.includes("TRANSACTION_CONFLICT");
+  const pendingDraft = txn?.status === "draft";
+
   return (
-    <section className="director" data-testid="director">
+    <section className="director" data-testid="director" data-focus={focusMode ? "true" : "false"}>
       <header className="director-head">
         <h2>Director</h2>
-        <button
-          type="button"
-          className="director-toggle"
-          data-testid="director-toggle"
-          aria-expanded={state.panelOpen}
-          aria-controls="director-body"
-          onClick={() => {
-            if (state.panelOpen && onRequestClose) {
-              onRequestClose();
-              return;
-            }
-            commit(setDirectorPanelOpen(state, !state.panelOpen));
-          }}
-        >
-          {state.panelOpen ? "Close" : "Open"}
-        </button>
+        <div className="director-head-actions">
+          {onToggleFocus ? (
+            <button
+              type="button"
+              className={`director-focus${focusMode ? " active" : ""}`}
+              data-testid="director-focus"
+              aria-pressed={focusMode}
+              title={focusMode ? "Exit Director Focus — restore Inspector and split" : "Director Focus — collapse Inspector, Director uses the right space"}
+              onClick={onToggleFocus}
+            >
+              {focusMode ? "Exit Focus" : "Focus"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="director-toggle"
+            data-testid="director-toggle"
+            aria-expanded={state.panelOpen}
+            aria-controls="director-body"
+            onClick={() => {
+              if (state.panelOpen && onRequestClose) {
+                onRequestClose();
+                return;
+              }
+              commit(setDirectorPanelOpen(state, !state.panelOpen));
+            }}
+          >
+            {state.panelOpen ? "Close" : "Open"}
+          </button>
+        </div>
       </header>
       {state.panelOpen ? (
         <div id="director-body" className="director-body" data-testid="director-body">
-          <dl className="director-meta">
-            <div>
-              <dt>Status</dt>
-              <dd data-testid="director-status">{state.statusLabel}</dd>
-            </div>
-            <div>
-              <dt>Provider</dt>
-              <dd
-                data-testid="director-provider"
-                data-provider-kind={state.providerId === "openai-compatible" ? "local-openai-compatible" : "mock"}
-                data-provider-offline={state.providerId === "mock" ? "true" : "false"}
-              >
-                {state.providerLabel}
-              </dd>
-            </div>
-            <div>
-              <dt>Mode</dt>
-              <dd data-testid="director-mode">{state.modeLabel}</dd>
-            </div>
-            <div>
-              <dt>Context</dt>
-              <dd data-testid="director-context">{state.contextLabel}</dd>
-            </div>
-            <div>
-              <dt>Transaction</dt>
-              <dd data-testid="director-transaction">{state.transactionLabel}</dd>
-            </div>
-          </dl>
-          <div className="director-scroll" data-testid="director-scroll">
-          <div className="director-config" data-testid="director-config">
-            <label htmlFor="director-provider-select">Provider</label>
-            <select
-              id="director-provider-select"
-              data-testid="director-provider-select"
-              value={state.providerId === "openai-compatible" ? "openai-compatible" : "mock"}
-              onChange={(e) => {
-                const id = e.target.value as ProviderId;
-                commitProviderConfig(
-                  applyProviderId(state, id === "openai-compatible" ? "openai-compatible" : "mock"),
-                );
-              }}
-            >
-              <option value="mock">mock (offline)</option>
-              <option value="openai-compatible">local-openai-compatible</option>
-            </select>
-            <label htmlFor="director-mode">Mode</label>
-            <select
-              id="director-mode"
-              data-testid="director-mode-select"
-              value={state.mode}
-              onChange={(e) => commit(applyMode(state, e.target.value as DirectorMode))}
-            >
-              {DIRECTOR_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="director-grant">Grant</label>
-            <select
-              id="director-grant"
-              data-testid="director-grant-select"
-              value={state.grant}
-              onChange={(e) => commit(applyGrant(state, e.target.value as Grant))}
-            >
-              {GRANTS.map((grant) => (
-                <option key={grant} value={grant}>
-                  {grant}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="director-context-level">Context level</label>
-            <select
-              id="director-context-level"
-              data-testid="director-context-level"
-              value={state.contextLevel}
-              onChange={(e) => commit(applyContextLevel(state, e.target.value as ContextLevel))}
-            >
-              {CONTEXT_LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-            {state.providerId === "openai-compatible" ? (
-              <>
-                <label htmlFor="director-base-url">Base URL</label>
-                <input
-                  id="director-base-url"
-                  data-testid="director-base-url"
-                  value={state.localConfig.baseUrl}
-                  placeholder="http://127.0.0.1:11434/v1"
-                  onChange={(e) => commitProviderConfig(applyLocalConfig(state, { baseUrl: e.target.value }))}
-                />
-                <label htmlFor="director-model">Model</label>
-                <input
-                  id="director-model"
-                  data-testid="director-model"
-                  value={state.localConfig.model}
-                  placeholder="local-model"
-                  onChange={(e) => commitProviderConfig(applyLocalConfig(state, { model: e.target.value }))}
-                />
-                <label htmlFor="director-api-key">API key (optional, memory only)</label>
-                <input
-                  id="director-api-key"
-                  data-testid="director-api-key"
-                  type="password"
-                  autoComplete="off"
-                  value={state.localConfig.apiKey ?? ""}
-                  onChange={(e) => commit(applyLocalConfig(state, { apiKey: e.target.value }))}
-                />
-                <button
-                  type="button"
-                  data-testid="director-test-connection"
-                  onClick={() => {
-                    void testDirectorConnection(state).then(commit);
-                  }}
+          <div className="director-chrome" data-testid="director-chrome">
+            <dl className="director-meta">
+              <div>
+                <dt>Status</dt>
+                <dd data-testid="director-status">{state.statusLabel}</dd>
+              </div>
+              <div>
+                <dt>Provider</dt>
+                <dd
+                  data-testid="director-provider"
+                  data-provider-kind={state.providerId === "openai-compatible" ? "local-openai-compatible" : "mock"}
+                  data-provider-offline={state.providerId === "mock" ? "true" : "false"}
                 >
-                  Test connection
-                </button>
-              </>
-            ) : null}
+                  {state.providerLabel}
+                </dd>
+              </div>
+              <div>
+                <dt>Mode</dt>
+                <dd data-testid="director-mode">{state.modeLabel}</dd>
+              </div>
+              <div>
+                <dt>Context</dt>
+                <dd data-testid="director-context">{state.contextLabel}</dd>
+              </div>
+              <div>
+                <dt>Transaction</dt>
+                <dd data-testid="director-transaction">{state.transactionLabel}</dd>
+              </div>
+            </dl>
+            <div className="director-config" data-testid="director-config">
+              <label htmlFor="director-provider-select">Provider</label>
+              <select
+                id="director-provider-select"
+                data-testid="director-provider-select"
+                value={state.providerId === "openai-compatible" ? "openai-compatible" : "mock"}
+                onChange={(e) => {
+                  const id = e.target.value as ProviderId;
+                  commitProviderConfig(
+                    applyProviderId(state, id === "openai-compatible" ? "openai-compatible" : "mock"),
+                  );
+                }}
+              >
+                <option value="mock">mock (offline)</option>
+                <option value="openai-compatible">local-openai-compatible</option>
+              </select>
+              <label htmlFor="director-mode">Mode</label>
+              <select
+                id="director-mode"
+                data-testid="director-mode-select"
+                value={state.mode}
+                onChange={(e) => commit(applyMode(state, e.target.value as DirectorMode))}
+              >
+                {DIRECTOR_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {mode}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="director-grant">Grant</label>
+              <select
+                id="director-grant"
+                data-testid="director-grant-select"
+                value={state.grant}
+                onChange={(e) => commit(applyGrant(state, e.target.value as Grant))}
+              >
+                {GRANTS.map((grant) => (
+                  <option key={grant} value={grant}>
+                    {grant}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="director-context-level">Context level</label>
+              <select
+                id="director-context-level"
+                data-testid="director-context-level"
+                value={state.contextLevel}
+                onChange={(e) => commit(applyContextLevel(state, e.target.value as ContextLevel))}
+              >
+                {CONTEXT_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+              {state.providerId === "openai-compatible" ? (
+                <>
+                  <label htmlFor="director-base-url">Base URL</label>
+                  <input
+                    id="director-base-url"
+                    data-testid="director-base-url"
+                    value={state.localConfig.baseUrl}
+                    placeholder="http://127.0.0.1:11434/v1"
+                    onChange={(e) => commitProviderConfig(applyLocalConfig(state, { baseUrl: e.target.value }))}
+                  />
+                  <label htmlFor="director-model">Model</label>
+                  <input
+                    id="director-model"
+                    data-testid="director-model"
+                    value={state.localConfig.model}
+                    placeholder="local-model"
+                    onChange={(e) => commitProviderConfig(applyLocalConfig(state, { model: e.target.value }))}
+                  />
+                  <label htmlFor="director-api-key">API key (optional, memory only)</label>
+                  <input
+                    id="director-api-key"
+                    data-testid="director-api-key"
+                    type="password"
+                    autoComplete="off"
+                    value={state.localConfig.apiKey ?? ""}
+                    onChange={(e) => commit(applyLocalConfig(state, { apiKey: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    data-testid="director-test-connection"
+                    onClick={() => {
+                      void testDirectorConnection(state).then(commit);
+                    }}
+                  >
+                    Test connection
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
-          {state.transaction ? (
-            <div className="director-txn" data-testid="director-txn" data-txn-status={state.transaction.status}>
+          {conflict ? (
+            <div
+              className="director-conflict"
+              data-testid="director-conflict"
+              data-conflict-code="TRANSACTION_CONFLICT"
+              role="alert"
+            >
+              <p data-testid="director-conflict-title">STALE TRANSACTION — CONFLICT</p>
+              <p data-testid="director-conflict-detail">
+                {state.lastGateMessage ?? "The project changed after this preview."} Apply is blocked.
+                Manual edit is intact. Reject this stale draft. Undo / Redo still walk project history and
+                do not revive this preview.
+              </p>
+            </div>
+          ) : null}
+          {txn ? (
+            <div
+              className={`director-txn director-txn-${txn.status}${conflict ? " director-txn-conflict" : ""}`}
+              data-testid="director-txn"
+              data-txn-status={txn.status}
+              data-gate={state.lastGateCode ?? ""}
+            >
               <p data-testid="director-txn-phase">
-                {state.transaction.status === "draft"
-                  ? "PREVIEW"
-                  : state.transaction.status === "applied"
-                    ? "APPLIED"
-                    : "REJECTED"}
+                {conflict && pendingDraft
+                  ? "STALE — CONFLICT"
+                  : txn.status === "draft"
+                    ? "PREVIEW"
+                    : txn.status === "applied"
+                      ? "APPLIED"
+                      : "REJECTED"}
               </p>
               <p data-testid="director-txn-status">
-                {state.transaction.status} · {state.transaction.toolName}
+                {conflict && pendingDraft ? "conflict · stale preview" : `${txn.status} · ${txn.toolName}`}
               </p>
-              <p data-testid="director-txn-tool">Tool: {state.transaction.toolName}</p>
-              <p data-testid="director-txn-target">
-                Target: {state.transaction.preview.clipId ?? "—"}
-              </p>
+              <p data-testid="director-txn-tool">Tool: {txn.toolName}</p>
+              <p data-testid="director-txn-target">Target: {txn.preview.clipId ?? "—"}</p>
               <p data-testid="director-txn-delta">
-                Delta:{" "}
-                {state.transaction.command.type === "moveClips"
-                  ? `+${state.transaction.command.deltaMs}ms`
-                  : "—"}
+                Delta: {txn.command.type === "moveClips" ? `+${txn.command.deltaMs}ms` : "—"}
               </p>
               <p data-testid="director-txn-preview">
-                {state.transaction.preview.clipId ?? "—"}: {state.transaction.preview.beforeStartMs ?? "—"} →{" "}
-                {state.transaction.preview.afterStartMs ?? "—"}
+                {txn.preview.clipId ?? "—"}: {txn.preview.beforeStartMs ?? "—"} → {txn.preview.afterStartMs ?? "—"}
               </p>
-              {state.transaction.status === "draft" && session ? (
+              {txn.status === "rejected" ? (
+                <p className="director-txn-result" data-testid="director-txn-rejected">
+                  REJECTED. Clip was not moved. No history entry.
+                </p>
+              ) : null}
+              {txn.status === "applied" ? (
+                <p className="director-txn-result" data-testid="director-txn-applied">
+                  APPLIED. Exact preview committed. Undo / Redo below use the project history.
+                </p>
+              ) : null}
+              {pendingDraft && session ? (
                 <div className="director-txn-actions">
                   <button
                     type="button"
+                    className="primary"
                     data-testid="director-txn-apply"
+                    disabled={conflict}
+                    title={
+                      conflict
+                        ? "Apply blocked — stale TRANSACTION_CONFLICT. Reject or Undo the later edit first."
+                        : "Apply this preview to the project"
+                    }
                     onClick={() => {
-                      const result = applyHostApproved(state, session);
+                      const live = sessionRef.current;
+                      if (!live) return;
+                      const result = applyHostApproved(state, live);
                       commit(result.state);
-                      if (result.session !== session) onCanonicalCommit?.(result.session);
+                      if (result.session !== live) onCanonicalCommit?.(result.session);
                     }}
                   >
                     Apply
@@ -297,27 +401,72 @@ export function DirectorPanel({
                   <button
                     type="button"
                     data-testid="director-txn-reject"
+                    title="Reject this preview. No project change."
                     onClick={() => commit(rejectHostTransaction(state))}
                   >
                     Reject
                   </button>
                 </div>
               ) : null}
+              {onUndo || onRedo ? (
+                <div className="director-history-actions" data-testid="director-history-actions">
+                  <button
+                    type="button"
+                    data-testid="director-history-undo"
+                    disabled={!canUndo || !onUndo}
+                    title="Undo last project history entry (same as Transport Undo)"
+                    onClick={() => onUndo?.()}
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="director-history-redo"
+                    disabled={!canRedo || !onRedo}
+                    title="Redo last undone project history entry (same as Transport Redo)"
+                    onClick={() => onRedo?.()}
+                  >
+                    Redo
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : onUndo || onRedo ? (
+            <div className="director-history-actions" data-testid="director-history-actions">
+              <button
+                type="button"
+                data-testid="director-history-undo"
+                disabled={!canUndo || !onUndo}
+                title="Undo last project history entry (same as Transport Undo)"
+                onClick={() => onUndo?.()}
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                data-testid="director-history-redo"
+                disabled={!canRedo || !onRedo}
+                title="Redo last undone project history entry (same as Transport Redo)"
+                onClick={() => onRedo?.()}
+              >
+                Redo
+              </button>
             </div>
           ) : null}
-          <ol className="director-messages" data-testid="director-messages">
-            {state.conversation.messages.map((msg) => (
-              <li
-                key={msg.id}
-                className={`director-msg director-msg-${msg.role}`}
-                data-testid={`director-msg-${msg.role}`}
-                data-role={msg.role}
-              >
-                <span className="director-msg-role">{msg.role}</span>
-                <span className="director-msg-text">{msg.text}</span>
-              </li>
-            ))}
-          </ol>
+          <div className="director-scroll" data-testid="director-scroll">
+            <ol className="director-messages" data-testid="director-messages">
+              {state.conversation.messages.map((msg) => (
+                <li
+                  key={msg.id}
+                  className={`director-msg director-msg-${msg.role}`}
+                  data-testid={`director-msg-${msg.role}`}
+                  data-role={msg.role}
+                >
+                  <span className="director-msg-role">{msg.role}</span>
+                  <span className="director-msg-text">{msg.text}</span>
+                </li>
+              ))}
+            </ol>
           </div>
           <form className="director-compose" onSubmit={onSubmit} data-testid="director-compose">
             <label className="director-compose-label" htmlFor="director-input">
@@ -325,12 +474,24 @@ export function DirectorPanel({
             </label>
             <textarea
               id="director-input"
+              ref={composerRef}
               data-testid="director-input"
               rows={3}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              data-composer-min={COMPOSER_MIN_PX}
+              data-composer-max={COMPOSER_MAX_PX}
+              style={{ height: composerHeight }}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                growComposer(e.target);
+              }}
+              onKeyDown={onComposerKeyDown}
+              onMouseUp={(e) => persistComposerHeight(e.currentTarget.getBoundingClientRect().height)}
               placeholder="Talk to Director"
             />
+            <p className="director-compose-hint" data-testid="director-compose-hint">
+              Enter = newline · Ctrl+Enter = Send
+            </p>
             <button type="submit" className="primary" data-testid="director-send">
               Send
             </button>
