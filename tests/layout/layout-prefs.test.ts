@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   ARRANGE_MIN_PX,
+  LOWER_STAGE_MIN_PX,
+  legalSplitMins,
+  normalizePersistedSplitRatio,
+  stageAvailableFromWindow,
+  TRANSPORT_MIN_PX,
   COMPOSER_MAX_PX,
   COMPOSER_MIN_PX,
   DEFAULT_COMPOSER_HEIGHT_PX,
@@ -136,25 +141,42 @@ describe("layout prefs", () => {
   it("clamps the preview/arrange split to the min heights", () => {
     expect(PREVIEW_MIN_PX).toBe(120);
     expect(ARRANGE_MIN_PX).toBe(200);
+    expect(LOWER_STAGE_MIN_PX).toBe(TRANSPORT_MIN_PX + ARRANGE_MIN_PX);
     const available = 600;
     expect(clampSplitRatio(0, available) * available).toBeCloseTo(PREVIEW_MIN_PX, 5);
-    expect((1 - clampSplitRatio(1, available)) * available).toBeCloseTo(ARRANGE_MIN_PX, 5);
+    expect((1 - clampSplitRatio(1, available)) * available).toBeCloseTo(LOWER_STAGE_MIN_PX, 5);
     expect(clampSplitRatio(0.5, available)).toBeCloseTo(0.5, 5);
   });
 
   it("pointer drag maps to a clamped ratio", () => {
-    const stage = PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400 + SPLITTER_PX;
+    const stage = PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400 + SPLITTER_PX;
     const available = stage - SPLITTER_PX;
     const tall = applySplitPointer({ clientY: 80, stageTop: 0, stageHeight: stage });
     expect(tall.previewPx).toBeGreaterThanOrEqual(PREVIEW_MIN_PX);
-    expect(tall.arrangePx).toBeGreaterThanOrEqual(ARRANGE_MIN_PX);
+    expect(tall.arrangePx).toBeGreaterThanOrEqual(LOWER_STAGE_MIN_PX);
 
     const low = applySplitPointer({ clientY: 20, stageTop: 0, stageHeight: stage });
     expect(low.previewPx).toBe(PREVIEW_MIN_PX);
 
     const high = applySplitPointer({ clientY: stage - 10, stageTop: 0, stageHeight: stage });
-    expect(high.arrangePx).toBe(ARRANGE_MIN_PX);
-    expect(high.previewPx).toBe(available - ARRANGE_MIN_PX);
+    expect(high.arrangePx).toBe(LOWER_STAGE_MIN_PX);
+    expect(high.previewPx).toBe(available - LOWER_STAGE_MIN_PX);
+  });
+
+  it("normalizes extreme persisted split ratios against live stage geometry", () => {
+    const available = 500;
+    expect(normalizePersistedSplitRatio(0.99, available)).toBeCloseTo(
+      1 - LOWER_STAGE_MIN_PX / available,
+      5,
+    );
+    expect(normalizePersistedSplitRatio(-1, available)).toBeCloseTo(PREVIEW_MIN_PX / available, 5);
+    expect(normalizePersistedSplitRatio(Number.NaN, available)).toBe(DEFAULT_SPLIT_RATIO);
+    const short = legalSplitMins(200);
+    expect(short.previewMin).toBeGreaterThan(0);
+    expect(short.lowerMin).toBeGreaterThan(0);
+    expect(short.previewMin + short.lowerMin).toBeLessThanOrEqual(200 + 1);
+    expect(stageAvailableFromWindow(800)).toBeLessThan(800);
+    expect(stageAvailableFromWindow(800)).toBeGreaterThan(PREVIEW_MIN_PX);
   });
 
   it("round-trips mixer collapsed and split ratio", () => {

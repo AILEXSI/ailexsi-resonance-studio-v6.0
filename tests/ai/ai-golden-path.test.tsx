@@ -210,9 +210,20 @@ describe("AI Director golden path", () => {
     expect(read.transaction).toBeNull();
     expect(read.conversation.messages.at(-1)?.text).toMatch(/Grant READ/);
 
-    const none = await submitGolden(session, goldenHost({ contextLevel: "NONE", contextLabel: "Context: NONE" }));
+    const noneHost = goldenHost({ contextLevel: "NONE", contextLabel: "Context: NONE" });
+    const viaCanonical = await submitGolden(session, noneHost);
+    expect(viaCanonical.transaction?.status).toBe("draft");
+    expect(viaCanonical.transaction?.command).toEqual({
+      type: "moveClips",
+      clipIds: ["clip_test"],
+      deltaMs: 2000,
+    });
+    expect(startOf(session)).toBe(30_000);
+
+    const empty = { ...session, selectedClipId: null, selectedClipIds: [] };
+    const none = await submitGolden(empty, noneHost);
     expect(none.transaction).toBeNull();
-    expect(none.conversation.messages.at(-1)?.text).toMatch(/Context SELECTION/);
+    expect(none.conversation.messages.at(-1)?.text).toMatch(/SELECTION REQUIRED|No clip selected/);
     expect(startOf(session)).toBe(30_000);
     expect(session.history.past.length).toBe(0);
   });

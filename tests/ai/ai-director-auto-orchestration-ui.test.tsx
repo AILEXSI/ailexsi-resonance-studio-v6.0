@@ -233,7 +233,10 @@ describe("AI Director auto-orchestration UI", () => {
     await mountPanel(createDirectorHostState(), session);
     expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO ●");
     expect(host!.querySelector('[data-testid="director-permission-status"]')?.textContent).toMatch(/Permission:/);
-    expect(host!.querySelector('[data-testid="director-context-auto"]')?.textContent).toBe("Context automatic");
+    expect(host!.querySelector('[data-testid="director-context-auto"]')?.textContent).toBe(
+      "Context SELECTION · 1 clip",
+    );
+    expect(host!.querySelector('[data-testid="director-intent-status"]')?.textContent).toBe("Intent —");
     expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("—");
     await act(async () => {
       (host!.querySelector('[data-testid="director-advanced-toggle"]') as HTMLButtonElement).click();

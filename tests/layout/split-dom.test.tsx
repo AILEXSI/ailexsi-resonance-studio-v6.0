@@ -2,7 +2,7 @@ import { act, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  ARRANGE_MIN_PX,
+  LOWER_STAGE_MIN_PX,
   PREVIEW_MIN_PX,
   SPLITTER_PX,
   applySplitPointer,
@@ -19,13 +19,13 @@ function SplitHarness({ storage }: { storage: StorageLike }) {
     const next = applySplitPointer({
       clientY,
       stageTop: 0,
-      stageHeight: PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400 + SPLITTER_PX,
+      stageHeight: PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400 + SPLITTER_PX,
     });
     setRatio(next.ratio);
     saveSplitRatio(storage, next.ratio);
   };
   return (
-    <div className="stage" ref={stageRef} data-testid="stage" style={{ height: PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400 + SPLITTER_PX, width: 800 }}>
+    <div className="stage" ref={stageRef} data-testid="stage" style={{ height: PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400 + SPLITTER_PX, width: 800 }}>
       <div
         className="workspace"
         data-testid="preview-pane"
@@ -46,7 +46,7 @@ function SplitHarness({ storage }: { storage: StorageLike }) {
       <div
         className="lower-stage"
         data-testid="arrange-pane"
-        style={{ flex: `${1 - ratio} 1 ${ARRANGE_MIN_PX}px` }}
+        style={{ flex: `${1 - ratio} 1 ${LOWER_STAGE_MIN_PX}px` }}
       />
     </div>
   );
@@ -88,7 +88,7 @@ describe("preview / arrange splitter", () => {
     const arrange = () => host!.querySelector('[data-testid="arrange-pane"]') as HTMLElement;
 
     expect(preview().style.flex).toContain(`${PREVIEW_MIN_PX}px`);
-    expect(arrange().style.flex).toContain(`${ARRANGE_MIN_PX}px`);
+    expect(arrange().style.flex).toContain(`${LOWER_STAGE_MIN_PX}px`);
 
     act(() => {
       split.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientY: 420, buttons: 1 }));
@@ -102,7 +102,7 @@ describe("preview / arrange splitter", () => {
     act(() => {
       split.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientY: 10, buttons: 1 }));
     });
-    const available = PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400;
+    const available = PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400;
     const low = Number(preview().getAttribute("data-preview-ratio"));
     expect(low * available).toBeCloseTo(PREVIEW_MIN_PX, 0);
 
@@ -110,13 +110,13 @@ describe("preview / arrange splitter", () => {
       split.dispatchEvent(
         new MouseEvent("mousedown", {
           bubbles: true,
-          clientY: PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400 + SPLITTER_PX - 10,
+          clientY: PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400 + SPLITTER_PX - 10,
           buttons: 1,
         }),
       );
     });
     const high = Number(preview().getAttribute("data-preview-ratio"));
-    expect((1 - high) * available).toBeCloseTo(ARRANGE_MIN_PX, 0);
+    expect((1 - high) * available).toBeCloseTo(LOWER_STAGE_MIN_PX, 0);
     expect(loadSplitRatio(storage)).toBeCloseTo(high, 5);
   });
 });

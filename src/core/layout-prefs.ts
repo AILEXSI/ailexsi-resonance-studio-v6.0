@@ -31,6 +31,11 @@ export interface LaneHeights {
 
 export const PREVIEW_MIN_PX = 120;
 export const ARRANGE_MIN_PX = 200;
+/** Transport lives inside the lower stage row the Preview/Arrange splitter owns. */
+export const TRANSPORT_MIN_PX = 36;
+export const TOOLBAR_ESTIMATE_PX = 36;
+export const STATUS_ESTIMATE_PX = 28;
+export const LOWER_STAGE_MIN_PX = TRANSPORT_MIN_PX + ARRANGE_MIN_PX;
 export const SPLITTER_PX = 18;
 export const DEFAULT_SPLIT_RATIO = 0.52;
 export const PREVIEW_H_MIN_PX = 200;
@@ -113,17 +118,47 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
+export function stageAvailableFromWindow(windowHeight: number): number {
+  if (!Number.isFinite(windowHeight) || windowHeight <= 0) {
+    return PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400;
+  }
+  return Math.max(1, Math.round(windowHeight - TOOLBAR_ESTIMATE_PX - STATUS_ESTIMATE_PX - SPLITTER_PX));
+}
+
+/** Preview + lower-stage mins. Squeeze both on short windows; never 0. */
+export function legalSplitMins(availablePx: number): { previewMin: number; lowerMin: number } {
+  const previewMin = PREVIEW_MIN_PX;
+  const lowerMin = LOWER_STAGE_MIN_PX;
+  if (!Number.isFinite(availablePx) || availablePx <= 0) return { previewMin, lowerMin };
+  if (availablePx >= previewMin + lowerMin) return { previewMin, lowerMin };
+  const scale = availablePx / (previewMin + lowerMin);
+  let nextPreview = Math.max(72, Math.round(previewMin * scale));
+  let nextLower = Math.max(TRANSPORT_MIN_PX + 96, Math.round(lowerMin * scale));
+  if (nextPreview + nextLower > availablePx) {
+    const total = nextPreview + nextLower;
+    nextPreview = Math.max(48, Math.floor((nextPreview / total) * availablePx));
+    nextLower = Math.max(48, availablePx - nextPreview);
+  }
+  return { previewMin: nextPreview, lowerMin: nextLower };
+}
+
 export function clampSplitRatio(ratio: number, availablePx: number): number {
   if (!Number.isFinite(ratio)) return DEFAULT_SPLIT_RATIO;
+  const { previewMin, lowerMin } = legalSplitMins(availablePx);
   if (!Number.isFinite(availablePx) || availablePx <= 0) {
     return Math.min(0.85, Math.max(0.15, ratio));
   }
-  const minR = PREVIEW_MIN_PX / availablePx;
-  const maxR = 1 - ARRANGE_MIN_PX / availablePx;
+  const minR = previewMin / availablePx;
+  const maxR = 1 - lowerMin / availablePx;
   if (minR >= maxR) {
-    return PREVIEW_MIN_PX / (PREVIEW_MIN_PX + ARRANGE_MIN_PX);
+    return previewMin / (previewMin + lowerMin);
   }
   return Math.min(maxR, Math.max(minR, ratio));
+}
+
+/** Re-clamp a stored Preview/Arrange ratio against the live stage. */
+export function normalizePersistedSplitRatio(ratio: number, availablePx: number): number {
+  return clampSplitRatio(ratio, availablePx);
 }
 
 export function applySplitPointer(opts: {
@@ -308,7 +343,7 @@ export function loadSplitRatio(storage?: StorageLike | null): number {
     if (raw == null) return DEFAULT_SPLIT_RATIO;
     const n = Number(raw);
     if (!Number.isFinite(n)) return DEFAULT_SPLIT_RATIO;
-    return clampSplitRatio(n, PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400);
+    return clampSplitRatio(n, PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400);
   } catch {
     return DEFAULT_SPLIT_RATIO;
   }
@@ -396,7 +431,7 @@ export function loadNormalSplitRatio(storage?: StorageLike | null): number {
     if (raw == null) return loadSplitRatio(storage);
     const n = Number(raw);
     if (!Number.isFinite(n)) return loadSplitRatio(storage);
-    return clampSplitRatio(n, PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400);
+    return clampSplitRatio(n, PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400);
   } catch {
     return loadSplitRatio(storage);
   }
@@ -415,7 +450,7 @@ export function timelineFocusSplitRatio(availablePx?: number): number {
   if (availablePx != null && Number.isFinite(availablePx) && availablePx > 0) {
     return clampSplitRatio(TIMELINE_FOCUS_PREVIEW_PX / availablePx, availablePx);
   }
-  return clampSplitRatio(TIMELINE_FOCUS_SPLIT_RATIO, PREVIEW_MIN_PX + ARRANGE_MIN_PX + 400);
+  return clampSplitRatio(TIMELINE_FOCUS_SPLIT_RATIO, PREVIEW_MIN_PX + LOWER_STAGE_MIN_PX + 400);
 }
 
 /** NORMAL ↔ Timeline Focus. Leaving restores the exact stored normal divider. */

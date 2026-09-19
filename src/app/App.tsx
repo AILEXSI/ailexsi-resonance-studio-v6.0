@@ -148,6 +148,10 @@ import {
   clampDirectorSplitRatio,
   clampFocusHSplitRatio,
   clampHSplitRatio,
+  clampSplitRatio,
+  legalSplitMins,
+  normalizePersistedSplitRatio,
+  TRANSPORT_MIN_PX,
   directorPresentationOf,
   DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
   loadCollapsedGroupIds,
@@ -239,6 +243,7 @@ export function App() {
   const arrangeRowRef = useRef<HTMLDivElement>(null);
   const [timelineFocus, setTimelineFocus] = useState(() => loadTimelineFocus(layoutStore));
   const [normalSplitRatio, setNormalSplitRatio] = useState(() => loadNormalSplitRatio(layoutStore));
+  const [stageAvailPx, setStageAvailPx] = useState(0);
   const [splitRatio, setSplitRatio] = useState(() => {
     if (!loadTimelineFocus(layoutStore)) return loadSplitRatio(layoutStore);
     return applyTimelineFocusToggle({
@@ -249,6 +254,8 @@ export function App() {
   });
   const splitRatioRef = useRef(splitRatio);
   splitRatioRef.current = splitRatio;
+  const stageAvailPxRef = useRef(stageAvailPx);
+  stageAvailPxRef.current = stageAvailPx;
   const normalSplitRatioRef = useRef(normalSplitRatio);
   normalSplitRatioRef.current = normalSplitRatio;
   const timelineFocusRef = useRef(timelineFocus);
@@ -1575,7 +1582,18 @@ export function App() {
   };
 
   useEffect(() => {
-    const onResize = () => {
+    const normalizeLayout = () => {
+      const stage = stageRef.current;
+      if (stage) {
+        const stageAvail = Math.max(1, stage.getBoundingClientRect().height - SPLITTER_PX);
+        if (stageAvail !== stageAvailPxRef.current) setStageAvailPx(stageAvail);
+        const stageNext = normalizePersistedSplitRatio(splitRatioRef.current, stageAvail);
+        if (stageNext !== splitRatioRef.current) setSplitRatio(stageNext);
+        if (!timelineFocusRef.current) {
+          const normalNext = clampSplitRatio(normalSplitRatioRef.current, stageAvail);
+          if (normalNext !== normalSplitRatioRef.current) setNormalSplitRatio(normalNext);
+        }
+      }
       if (inspectorCollapsed) return;
       const workspace = workspaceRef.current;
       if (!workspace) return;
@@ -1592,8 +1610,9 @@ export function App() {
         if (splitNext !== directorSplitRatioRef.current) setDirectorSplitRatio(splitNext);
       }
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    normalizeLayout();
+    window.addEventListener("resize", normalizeLayout);
+    return () => window.removeEventListener("resize", normalizeLayout);
   }, [inspectorCollapsed, directorEnabled, directorFocus, hideInspectorSection]);
 
   useEffect(() => {
@@ -1786,11 +1805,17 @@ export function App() {
         style={{
           ["--stage-preview-row" as string]: `${splitRatio}fr`,
           ["--stage-arrange-row" as string]: `${1 - splitRatio}fr`,
+          ["--stage-lower-min" as string]: `${legalSplitMins(stageAvailPx).lowerMin}px`,
+          ["--stage-preview-min" as string]: `${legalSplitMins(stageAvailPx).previewMin}px`,
+          ["--arrange-min" as string]: `${Math.max(96, legalSplitMins(stageAvailPx).lowerMin - TRANSPORT_MIN_PX)}px`,
           ["--stage-preview-col" as string]: inspectorCollapsed ? "1fr" : `${hSplitRatio}fr`,
           ["--stage-inspector-col" as string]: inspectorCollapsed
             ? `${INSPECTOR_COLLAPSED_PX}px`
             : `${1 - hSplitRatio}fr`,
         }}
+        data-stage-avail={stageAvailPx}
+        data-preview-min={legalSplitMins(stageAvailPx).previewMin}
+        data-lower-min={legalSplitMins(stageAvailPx).lowerMin}
       >
         <div className="workspace-preview" data-testid="workspace-preview">
           <Preview

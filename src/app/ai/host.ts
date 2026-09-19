@@ -31,7 +31,13 @@ import type {
 import { loadAiPrefs, saveAiPrefs, type DirectorAiPrefs } from "./providers/prefs";
 import { captureContextSnapshot } from "./context/snapshot";
 import type { AIContextSnapshot, ContextLevel, OutboundClass } from "./context/types";
-import { projectRevisionOf, selectionOf, type Session } from "../session";
+import {
+  canonicalClipSelection,
+  projectRevisionOf,
+  selectionOf,
+  type CanonicalClipSelection,
+  type Session,
+} from "../session";
 import { DIRECTOR_MODES, GRANTS, grantExceeds, type DirectorMode, type Grant } from "./permissions/policy";
 import {
   applyCommandTransaction,
@@ -96,8 +102,11 @@ export interface DirectorAuthRequest {
 export interface SealedDirectorRequest {
   readonly plan: DirectorPlan;
   readonly clipId: string | null;
+  /** Canonical Session selection at submit. Not the Advanced dropdown. */
+  readonly canonicalClipIds: readonly string[];
   readonly userText: string;
   readonly contextSnapshot: AIContextSnapshot | null;
+  readonly projectId: string | null;
   readonly projectRevision: number | null;
 }
 
@@ -213,39 +222,67 @@ export function sealDirectorRequest(
   userText: string,
 ): SealedDirectorRequest {
   const sealed = sealDirectorPlan(plan);
-  const selected = session ? selectionOf(session) : [];
-  const clipId =
-    sealed.contextLevel === "SELECTION" && selected.length === 1 ? selected[0]! : null;
+  const canonical = session ? canonicalClipSelection(session) : emptyCanonical();
+  const wantsSelection =
+    sealed.contextLevel === "SELECTION" || sealed.intent.kind === "MOVE_CLIP";
+  const clipId = wantsSelection || canonical.usableMoveTarget ? canonical.usableMoveTarget : null;
+  const snapshotLevel =
+    wantsSelection && canonical.clipIds.length === 1 ? "SELECTION" : sealed.contextLevel;
   const contextSnapshot = session
     ? captureContextSnapshot(session, {
-        level: sealed.contextLevel,
+        level: snapshotLevel,
         outboundClass: "SEND_STRUCTURE",
-        clipIds: sealed.contextLevel === "SELECTION" ? selected : undefined,
+        clipIds: snapshotLevel === "SELECTION" ? [...canonical.clipIds] : undefined,
       })
     : null;
   return Object.freeze({
     plan: sealed,
     clipId,
+    canonicalClipIds: Object.freeze([...canonical.clipIds]),
     userText,
     contextSnapshot,
+    projectId: session?.project.id ?? null,
     projectRevision: session ? projectRevisionOf(session) : null,
   });
 }
 
+function emptyCanonical(): CanonicalClipSelection {
+  return { clipIds: [], primaryId: null, usableMoveTarget: null };
+}
+
 export function requestContextTrace(state: DirectorHostState): DirectorRequestContextTrace {
   const snap = state.sealedRequest?.contextSnapshot ?? state.lastSnapshot;
+  const selected = requestSelectedClipIds(state);
   return {
-    contextLevel: planContextOf(state),
-    selectedClipIds: snap?.selection.clipIds ?? [],
-    clipId: state.sealedRequest?.clipId ?? snap?.selection.primaryClipId ?? null,
-    projectId: snap?.projectId ?? null,
+    contextLevel: selected.length === 1 ? "SELECTION" : planContextOf(state),
+    selectedClipIds: selected,
+    clipId: state.sealedRequest?.clipId ?? (selected.length === 1 ? selected[0]! : snap?.selection.primaryClipId ?? null),
+    projectId: state.sealedRequest?.projectId ?? snap?.projectId ?? null,
     projectRevision: state.sealedRequest?.projectRevision ?? null,
   };
 }
 
 function requestSelectedClipIds(state: DirectorHostState): readonly string[] {
+  const sealed = state.sealedRequest?.canonicalClipIds;
+  if (sealed && sealed.length > 0) return sealed;
+  if (state.sealedRequest?.clipId) return [state.sealedRequest.clipId];
   const snap = state.sealedRequest?.contextSnapshot ?? state.lastSnapshot;
   return snap?.selection.clipIds ?? [];
+}
+
+/** Live Normal chrome. Dropdown SELECTION is never a substitute. */
+export function canonicalContextLabel(session?: Session): string {
+  if (!session) return "Context NONE · no clip";
+  const canonical = canonicalClipSelection(session);
+  const n = canonical.clipIds.length;
+  if (n === 1) return "Context SELECTION · 1 clip";
+  if (n > 1) return `Context SELECTION · ${n} clips`;
+  return "Context NONE · no clip";
+}
+
+export function intentStatusLabel(state: DirectorHostState): string {
+  const kind = state.sealedRequest?.plan.intent.kind ?? state.lastPlan?.intent.kind;
+  return kind ? `Intent ${kind}` : "Intent —";
 }
 
 export function applyGrant(state: DirectorHostState, grant: Grant): DirectorHostState {
@@ -271,11 +308,39 @@ export function applyHostApproved(
   session: Session,
 ): { state: DirectorHostState; session: Session } {
   if (!state.transaction) return { state, session };
+  const sealedTarget = state.sealedRequest?.clipId ?? state.transaction.preview.clipId;
+  const liveCanonical = canonicalClipSelection(session);
+  if (
+    sealedTarget &&
+    liveCanonical.clipIds.length === 1 &&
+    liveCanonical.clipIds[0] !== sealedTarget
+  ) {
+    return {
+      state: {
+        ...state,
+        onceGrant: null,
+        status: "error",
+        statusLabel: "Error — TRANSACTION_CONFLICT",
+        transactionLabel: "Transaction: TRANSACTION_CONFLICT",
+        lastGateCode: "TRANSACTION_CONFLICT",
+        lastGateMessage: "Selection changed after this preview",
+        conversation: appendDirectorMessage(
+          state.conversation,
+          "assistant",
+          "STALE TRANSACTION — CONFLICT. Selection changed after this preview. Apply is blocked. Manual edit is intact. Reject this stale draft. Undo / Redo still walk project history and do not revive this preview. No project changes were made.",
+        ),
+      },
+      session,
+    };
+  }
   const result = applyCommandTransaction({
     session,
     transaction: state.transaction,
     grant: effectiveGrant(state),
-    mode: planModeOf(state),
+    mode:
+      state.transaction.toolName === DIRECTOR_MUTATING_TOOL
+        ? executionModeForMove(state)
+        : planModeOf(state),
     approval: true,
   });
   if (!result.ok) {
@@ -610,10 +675,11 @@ export function attachSubmitSnapshot(state: DirectorHostState, session?: Session
   }
   if (!session) return state;
   const clipId = state.sealedRequest?.clipId;
+  const canonicalIds = state.sealedRequest?.canonicalClipIds;
   const lastSnapshot = captureContextSnapshot(session, {
-    level: planContextOf(state),
+    level: clipId || (canonicalIds && canonicalIds.length === 1) ? "SELECTION" : planContextOf(state),
     outboundClass: state.outboundClass,
-    clipIds: clipId ? [clipId] : undefined,
+    clipIds: clipId ? [clipId] : canonicalIds && canonicalIds.length > 0 ? [...canonicalIds] : undefined,
   });
   return { ...state, lastSnapshot };
 }
@@ -685,13 +751,24 @@ function explainToolDenial(opts: {
   if (opts.code === "GRANT_DENIED" || opts.code === "INVALID_GRANT") {
     return `Denied: Mode ${opts.mode} + Grant ${opts.grant} cannot draft ${DIRECTOR_MUTATING_TOOL}. Set Mode AGENT and Grant EDIT. No project changes were made.`;
   }
-  if (opts.detail === "No clip selected" || opts.detail === "AMBIGUOUS_SELECTION") {
-    return `Denied: a single selected clip is required. ${opts.detail}. No project changes were made.`;
+  if (
+    opts.detail === "No clip selected" ||
+    opts.detail === "AMBIGUOUS_SELECTION" ||
+    opts.detail === "SELECTION_REQUIRED"
+  ) {
+    return `SELECTION REQUIRED. ${opts.detail === "AMBIGUOUS_SELECTION" ? "AMBIGUOUS_SELECTION. A single selected clip is required." : "No clip selected. A single selected clip is required."} No project changes were made.`;
   }
   if (opts.detail === "TARGET_NOT_IN_SELECTION") {
     return "Denied: target clip is not in the request selection. No project changes were made.";
   }
   return `Move draft denied: ${opts.detail}. No project changes were made.`;
+}
+
+/** AUTO move uses AGENT. Manual Advanced override keeps the dropdown mode. */
+function executionModeForMove(state: DirectorHostState): DirectorMode {
+  const plan = state.sealedRequest?.plan ?? state.lastPlan;
+  if (plan?.intent.reason === "manual-settings") return planModeOf(state);
+  return "AGENT";
 }
 
 function applyAssistantStatus(state: DirectorHostState, previous: DirectorHostState): DirectorHostState {
@@ -726,18 +803,29 @@ function draftFromToolRequest(
       ),
     };
   }
-  if (planContextOf(state) === "NONE") {
+  const sealed = state.sealedRequest;
+  const liveCanonical = canonicalClipSelection(session);
+  const selectedIds = [...requestSelectedClipIds(state)];
+  const usableId =
+    sealed?.clipId ??
+    (selectedIds.length === 1 ? selectedIds[0]! : null) ??
+    liveCanonical.usableMoveTarget;
+  if (!usableId) {
+    const ambiguous = selectedIds.length > 1 || liveCanonical.clipIds.length > 1;
     return {
       ...state,
       conversation: appendDirectorMessage(
         state.conversation,
         "assistant",
-        "Denied: Context SELECTION is required to move a clip. No project changes were made.",
+        ambiguous
+          ? "AMBIGUOUS_SELECTION. A single selected clip is required. No project changes were made."
+          : "SELECTION REQUIRED. No clip selected. A single selected clip is required. No project changes were made.",
       ),
     };
   }
-  const snap = state.sealedRequest?.contextSnapshot ?? state.lastSnapshot;
-  if (snap && session.project.id !== snap.projectId) {
+  const snap = sealed?.contextSnapshot ?? state.lastSnapshot;
+  const boundProjectId = sealed?.projectId ?? snap?.projectId;
+  if (boundProjectId && session.project.id !== boundProjectId) {
     return {
       ...state,
       conversation: appendDirectorMessage(
@@ -747,17 +835,17 @@ function draftFromToolRequest(
       ),
     };
   }
-  const selectedIds = [...requestSelectedClipIds(state)];
   const args = asMoveClipArgs(toolRequest.arguments);
   if (!args.clipId) {
-    args.clipId = state.sealedRequest?.clipId ?? (selectedIds.length === 1 ? selectedIds[0] : undefined);
+    args.clipId = usableId;
   }
+  const requestIds = selectedIds.length > 0 ? selectedIds : [usableId];
   const drafted = draftMoveClip({
     session,
     args,
     grant: effectiveGrant(state),
-    mode: planModeOf(state),
-    selectedClipIds: selectedIds,
+    mode: executionModeForMove(state),
+    selectedClipIds: requestIds,
   });
   if (!drafted.ok) {
     return {
@@ -770,7 +858,7 @@ function draftFromToolRequest(
           code: drafted.code,
           detail: drafted.message,
           grant: effectiveGrant(state),
-          mode: planModeOf(state),
+          mode: executionModeForMove(state),
           contextLevel: planContextOf(state),
         }),
       ),
@@ -1046,11 +1134,11 @@ export async function submitDirectorAutoTurn(
   const plan = planDirectorTurn(text);
   const sealedRequest = sealDirectorRequest(plan, session, text);
   if (plan.intent.kind === "MOVE_CLIP") {
-    const selected = session ? selectionOf(session) : [];
-    if (selected.length !== 1) {
+    const canonical = session ? canonicalClipSelection(session) : emptyCanonical();
+    if (canonical.clipIds.length !== 1) {
       const prepared = applyOrchestrationPlan(state, plan, session, text);
       const detail =
-        selected.length === 0
+        canonical.clipIds.length === 0
           ? "SELECTION REQUIRED. No clip selected. A single selected clip is required."
           : "AMBIGUOUS_SELECTION. A single selected clip is required.";
       return appendTurn(prepared, text, `${detail} No project changes were made.`);

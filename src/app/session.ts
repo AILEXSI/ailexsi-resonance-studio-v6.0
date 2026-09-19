@@ -347,6 +347,31 @@ export function selectionOf(session: Session): string[] {
   return session.selectedClipId ? [session.selectedClipId] : [];
 }
 
+/**
+ * Canonical Resonance clip selection. Not a second store — filters `selectionOf`
+ * to ids that still exist on the live Project. Director AUTO must consume this.
+ */
+export interface CanonicalClipSelection {
+  readonly clipIds: readonly string[];
+  readonly primaryId: string | null;
+  /** Exactly one existing unlocked clip — the only legal AUTO move target. */
+  readonly usableMoveTarget: string | null;
+}
+
+export function canonicalClipSelection(session: Session): CanonicalClipSelection {
+  const raw = selectionOf(session);
+  const clipIds = raw.filter((id) => Boolean(clipById(session.project, id)));
+  const unlocked = clipIds.filter((id) => {
+    const clip = clipById(session.project, id);
+    return Boolean(clip && !clipIsLocked(clip));
+  });
+  return {
+    clipIds,
+    primaryId: clipIds[0] ?? null,
+    usableMoveTarget: unlocked.length === 1 ? unlocked[0]! : null,
+  };
+}
+
 export function withClipSelection(session: Session, ids: string[]): Session {
   const unique = [...new Set(ids)];
   return {

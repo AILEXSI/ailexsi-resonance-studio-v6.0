@@ -245,13 +245,22 @@ describe("AI Director golden-path adversarial", () => {
       goldenHost({ mode: "ASK", modeLabel: "Mode: ASK" }),
     );
     expect(ask.transaction).toBeNull();
+    const noneEmpty = { ...session, selectedClipId: null, selectedClipIds: [] };
     const none = await submitWith(
-      session,
+      noneEmpty,
       createMockProvider(),
       GOLDEN_MOVE_PROMPT,
       goldenHost({ contextLevel: "NONE" }),
     );
     expect(none.transaction).toBeNull();
+    const noneWithSel = await submitWith(
+      session,
+      createMockProvider(),
+      GOLDEN_MOVE_PROMPT,
+      goldenHost({ contextLevel: "NONE" }),
+    );
+    expect(noneWithSel.transaction?.status).toBe("draft");
+    expect(noneWithSel.transaction?.preview.clipId).toBe(CLIP_ID);
 
     const draftOnly = await submitWith(
       session,

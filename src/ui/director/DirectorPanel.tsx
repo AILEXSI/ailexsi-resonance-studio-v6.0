@@ -11,7 +11,9 @@ import {
   applyProviderId,
   autoPlanStatusLabel,
   cancelDirectorAuth,
+  canonicalContextLabel,
   createDirectorRuntime,
+  intentStatusLabel,
   DIRECTOR_MODES,
   GRANTS,
   hydrateDirectorHostFromPrefs,
@@ -267,6 +269,20 @@ export function DirectorPanel({
     state.transactionLabel.includes("TRANSACTION_CONFLICT");
   const pendingDraft = txn?.status === "draft";
 
+  useEffect(() => {
+    const normalizeWork = () => {
+      const work = workRef.current;
+      const available = work
+        ? Math.max(1, work.getBoundingClientRect().height)
+        : DIRECTOR_CONVERSATION_MIN_PX + DIRECTOR_RESULT_MIN_PX + 240;
+      const next = clampDirectorWorkSplitRatio(workSplitRatio, available);
+      if (next !== workSplitRatio) persistWorkSplit(next);
+    };
+    normalizeWork();
+    window.addEventListener("resize", normalizeWork);
+    return () => window.removeEventListener("resize", normalizeWork);
+  }, [workSplitRatio, txn, conflict]);
+
   return (
     <section
       className="director"
@@ -326,8 +342,11 @@ export function DirectorPanel({
                 <p className="director-permission-status" data-testid="director-permission-status">
                   {permissionStatusLabel(state)}
                 </p>
+                <p className="director-intent-status" data-testid="director-intent-status">
+                  {intentStatusLabel(state)}
+                </p>
                 <p className="director-context-auto" data-testid="director-context-auto">
-                  Context automatic
+                  {canonicalContextLabel(session)}
                 </p>
                 <p
                   className="director-plan-status"
@@ -337,9 +356,15 @@ export function DirectorPanel({
                   data-plan-grant={state.sealedRequest?.plan.requiredGrant ?? state.lastPlan?.requiredGrant ?? ""}
                   data-request-clip-id={state.sealedRequest?.clipId ?? ""}
                   data-request-selected={
-                    state.sealedRequest?.contextSnapshot?.selection.clipIds.join(",") ?? ""
+                    state.sealedRequest?.canonicalClipIds.join(",") ??
+                    state.sealedRequest?.contextSnapshot?.selection.clipIds.join(",") ??
+                    ""
                   }
-                  data-request-project-id={state.sealedRequest?.contextSnapshot?.projectId ?? ""}
+                  data-request-project-id={
+                    state.sealedRequest?.projectId ??
+                    state.sealedRequest?.contextSnapshot?.projectId ??
+                    ""
+                  }
                 >
                   {autoPlanStatusLabel(state)}
                 </p>
@@ -376,7 +401,7 @@ export function DirectorPanel({
             </div>
             {diagnosticsCollapsed ? (
               <p className="director-diagnostics-compact" data-testid="director-diagnostics-compact">
-                {state.providerLabel} · {state.modeLabel} · {state.contextLabel}
+                {state.providerLabel} · {intentStatusLabel(state)} · {canonicalContextLabel(session)}
               </p>
             ) : null}
             {state.localUnavailable ? (

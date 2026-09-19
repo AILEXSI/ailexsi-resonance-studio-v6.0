@@ -98,14 +98,14 @@ input[type="range"] { accent-color: var(--accent-2); }
 .lower-stage {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: var(--stage-lower-min, 236px);
   min-width: 0;
   overflow: hidden;
 }
 .arrange-row {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(120px, var(--mixer-width, 228px));
-  min-height: 200px;
+  min-height: var(--arrange-min, 200px);
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
@@ -216,9 +216,9 @@ input[type="range"] { accent-color: var(--accent-2); }
     14px
     minmax(180px, var(--stage-inspector-col, 1fr));
   grid-template-rows:
-    minmax(120px, var(--stage-preview-row, 1fr))
+    minmax(var(--stage-preview-min, 120px), var(--stage-preview-row, 1fr))
     18px
-    minmax(200px, var(--stage-arrange-row, 1fr));
+    minmax(var(--stage-lower-min, 236px), var(--stage-arrange-row, 1fr));
   grid-template-areas:
     "preview hsplit inspector"
     "vsplit  vsplit  vsplit"
@@ -247,7 +247,7 @@ input[type="range"] { accent-color: var(--accent-2); }
 .workspace.stage-grid > .lower-stage {
   grid-area: lower;
   min-width: 0;
-  min-height: 0;
+  min-height: var(--stage-lower-min, 236px);
   overflow: hidden;
 }
 .workspace.stage-grid.director-focus > .workspace-inspector {
@@ -260,7 +260,11 @@ input[type="range"] { accent-color: var(--accent-2); }
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  max-height: 100%;
   overflow: hidden;
+}
+.workspace-preview {
+  min-height: var(--stage-preview-min, 120px);
 }
 .workspace-preview .preview-wrap {
   flex: 1 1 auto;
@@ -705,11 +709,13 @@ input[type="range"] { accent-color: var(--accent-2); }
   flex-direction: column;
   gap: 6px;
   flex: 0 0 auto;
+  flex-shrink: 0;
   position: sticky;
   bottom: 0;
   z-index: 1;
   background: var(--panel);
   padding-top: 2px;
+  min-height: 0;
 }
 .director-compose-label {
   font-size: 10px;
@@ -1253,7 +1259,7 @@ body.media-asset-dragging .project-overlay-drawer {
   outline-offset: 1px;
 }
 
-.transport { border-top: 1px solid var(--line); gap: 0; }
+.transport { border-top: 1px solid var(--line); gap: 0; flex: 0 0 auto; }
 .transport-group {
   display: inline-flex;
   align-items: center;
