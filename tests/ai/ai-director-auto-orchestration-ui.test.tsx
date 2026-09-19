@@ -17,8 +17,12 @@ import {
   COMPOSER_MAX_PX,
   COMPOSER_MIN_PX,
   DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
   DIRECTOR_FOCUS_KEY,
+  DIRECTOR_PRESENTATION_KEY,
   DIRECTOR_SPLIT_RATIO_KEY,
+  DIRECTOR_WORK_SPLIT_KEY,
   INSPECTOR_COLLAPSED_KEY,
   INSPECTOR_SECTION_COLLAPSED_KEY,
 } from "../../src/core/layout-prefs";
@@ -34,6 +38,10 @@ const PREF_KEYS = [
   DIRECTOR_SPLIT_RATIO_KEY,
   DIRECTOR_FOCUS_KEY,
   DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_PRESENTATION_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
+  DIRECTOR_WORK_SPLIT_KEY,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
   AI_PREFS_KEY,
 ];
 
@@ -223,7 +231,9 @@ describe("AI Director auto-orchestration UI", () => {
   it("AUTO chrome shows plan status; Advanced is MANUAL defaults only", async () => {
     const session = fixture();
     await mountPanel(createDirectorHostState(), session);
-    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO");
+    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO ●");
+    expect(host!.querySelector('[data-testid="director-permission-status"]')?.textContent).toMatch(/Permission:/);
+    expect(host!.querySelector('[data-testid="director-context-auto"]')?.textContent).toBe("Context automatic");
     expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("—");
     await act(async () => {
       (host!.querySelector('[data-testid="director-advanced-toggle"]') as HTMLButtonElement).click();

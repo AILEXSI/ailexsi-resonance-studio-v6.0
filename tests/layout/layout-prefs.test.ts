@@ -17,10 +17,13 @@ import {
   INSPECTOR_MIN_PX,
   INSPECTOR_SECTION_COLLAPSED_KEY,
   INSPECTOR_SECTION_MIN_PX,
+  MIXER_AUTO_COMPACT_ARRANGE_PX,
   MIXER_COLLAPSED_KEY,
   MIXER_EXPANDED_PX,
   MIXER_MAX_PX,
   MIXER_MIN_PX,
+  mixerChromeOf,
+  shouldAutoCompactMixer,
   MIXER_WIDTH_KEY,
   NORMAL_SPLIT_RATIO_KEY,
   TIMELINE_FOCUS_KEY,
@@ -46,16 +49,36 @@ import {
   LANE_LABEL_PX_KEY,
   applyDirectorFocusToggle,
   applyDirectorSplitPointer,
+  applyDirectorWorkSplitPointer,
+  applyFocusHSplitPointer,
   clampComposerHeightPx,
   clampDirectorSplitRatio,
+  clampDirectorWorkSplitRatio,
+  clampFocusHSplitRatio,
   clampHSplitRatio,
+  DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
+  DEFAULT_DIRECTOR_FOCUS_RATIO,
+  DEFAULT_DIRECTOR_WORK_SPLIT,
+  DIRECTOR_CONVERSATION_MIN_PX,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
+  DIRECTOR_FOCUS_RATIO_MAX,
+  DIRECTOR_FOCUS_RATIO_MIN,
+  DIRECTOR_PRESENTATION_KEY,
+  DIRECTOR_RESULT_MIN_PX,
+  DIRECTOR_WORK_SPLIT_KEY,
+  directorPresentationOf,
   clampLaneHeightPx,
   clampMixerWidth,
   clampLaneLabelPx,
   clampSplitRatio,
   loadDirectorComposerHeight,
+  loadDirectorDiagnosticsCollapsed,
   loadDirectorFocus,
+  loadDirectorFocusHSplitRatio,
+  loadDirectorPresentation,
   loadDirectorSplitRatio,
+  loadDirectorWorkSplitRatio,
   loadHSplitRatio,
   loadInspectorSectionCollapsed,
   laneHeaderPacksInline,
@@ -75,8 +98,12 @@ import {
   saveCollapsedGroupIds,
   saveOpenVolumeLaneIds,
   saveDirectorComposerHeight,
+  saveDirectorDiagnosticsCollapsed,
   saveDirectorFocus,
+  saveDirectorFocusHSplitRatio,
+  saveDirectorPresentation,
   saveDirectorSplitRatio,
+  saveDirectorWorkSplitRatio,
   saveHSplitRatio,
   saveInspectorCollapsed,
   saveInspectorSectionCollapsed,
@@ -237,6 +264,18 @@ describe("layout prefs", () => {
     expect(loadMixerWidth(memoryStorage({ [MIXER_WIDTH_KEY]: "nope" }))).toBe(MIXER_EXPANDED_PX);
   });
 
+  it("auto-compacts mixer when Arrange is too narrow; unknown width stays expanded", () => {
+    expect(MIXER_AUTO_COMPACT_ARRANGE_PX).toBe(TIMELINE_MIN_PX + MIXER_MIN_PX);
+    expect(shouldAutoCompactMixer(0)).toBe(false);
+    expect(shouldAutoCompactMixer(Number.NaN)).toBe(false);
+    expect(shouldAutoCompactMixer(MIXER_AUTO_COMPACT_ARRANGE_PX - 1)).toBe(true);
+    expect(shouldAutoCompactMixer(MIXER_AUTO_COMPACT_ARRANGE_PX)).toBe(false);
+    expect(shouldAutoCompactMixer(1920)).toBe(false);
+    expect(mixerChromeOf({ collapsed: false, autoCompact: false })).toBe("expanded");
+    expect(mixerChromeOf({ collapsed: true, autoCompact: false })).toBe("compact");
+    expect(mixerChromeOf({ collapsed: false, autoCompact: true })).toBe("compact");
+  });
+
   it("persists chapter-group collapse ids in layout prefs", () => {
     const store = memoryStorage();
     expect(loadCollapsedGroupIds(store)).toEqual([]);
@@ -378,5 +417,88 @@ describe("layout prefs", () => {
     expect(leave.focused).toBe(false);
     expect(leave.inspectorSectionCollapsed).toBe(false);
     expect(leave.splitRatio).toBe(0.41);
+  });
+
+  it("Director Focus uses a 35–45% working width and restores docked width", () => {
+    const available = 1920;
+    expect(DIRECTOR_FOCUS_RATIO_MIN).toBe(0.35);
+    expect(DIRECTOR_FOCUS_RATIO_MAX).toBe(0.45);
+    expect(DEFAULT_DIRECTOR_FOCUS_RATIO).toBeCloseTo(0.4, 5);
+    expect((1 - clampFocusHSplitRatio(1, available)) / 1).toBeCloseTo(DIRECTOR_FOCUS_RATIO_MIN, 5);
+    expect((1 - clampFocusHSplitRatio(0, available))).toBeCloseTo(DIRECTOR_FOCUS_RATIO_MAX, 5);
+    const mid = applyFocusHSplitPointer({
+      clientX: available * 0.6,
+      workspaceLeft: 0,
+      workspaceWidth: available + 14,
+    });
+    expect(mid.inspectorPx / available).toBeGreaterThanOrEqual(DIRECTOR_FOCUS_RATIO_MIN - 0.001);
+    expect(mid.inspectorPx / available).toBeLessThanOrEqual(DIRECTOR_FOCUS_RATIO_MAX + 0.001);
+
+    const enter = applyDirectorFocusToggle({
+      currentlyFocused: false,
+      inspectorSectionCollapsed: false,
+      currentSplitRatio: 0.28,
+      storedNormalSplit: 0.28,
+      storedSectionCollapsed: false,
+      currentHSplit: 0.74,
+      storedDockedHSplit: 0.74,
+      storedFocusHSplit: DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
+      availablePx: available,
+    });
+    expect(enter.focused).toBe(true);
+    expect(enter.dockedHSplit).toBeCloseTo(0.74, 5);
+    expect(1 - enter.hSplitRatio).toBeGreaterThanOrEqual(DIRECTOR_FOCUS_RATIO_MIN - 0.001);
+    expect(1 - enter.hSplitRatio).toBeLessThanOrEqual(DIRECTOR_FOCUS_RATIO_MAX + 0.001);
+
+    const leave = applyDirectorFocusToggle({
+      currentlyFocused: true,
+      inspectorSectionCollapsed: true,
+      currentSplitRatio: 0.28,
+      storedNormalSplit: 0.28,
+      storedSectionCollapsed: false,
+      currentHSplit: enter.hSplitRatio,
+      storedDockedHSplit: 0.74,
+      storedFocusHSplit: enter.hSplitRatio,
+      availablePx: available,
+    });
+    expect(leave.focused).toBe(false);
+    expect(leave.hSplitRatio).toBeCloseTo(0.74, 5);
+    expect(leave.focusHSplit).toBeCloseTo(enter.hSplitRatio, 5);
+  });
+
+  it("persists Director presentation, focus width, work split, and diagnostics locally", () => {
+    const store = memoryStorage();
+    expect(directorPresentationOf({ inspectorCollapsed: true, directorEnabled: true, directorFocus: false })).toBe(
+      "collapsed",
+    );
+    expect(directorPresentationOf({ inspectorCollapsed: false, directorEnabled: true, directorFocus: false })).toBe(
+      "docked",
+    );
+    expect(directorPresentationOf({ inspectorCollapsed: false, directorEnabled: true, directorFocus: true })).toBe(
+      "focus",
+    );
+    expect(directorPresentationOf({ inspectorCollapsed: false, directorEnabled: false, directorFocus: true })).toBe(
+      "collapsed",
+    );
+    saveDirectorPresentation(store, "focus");
+    expect(store.map.get(DIRECTOR_PRESENTATION_KEY)).toBe("focus");
+    expect(loadDirectorPresentation(store)).toBe("focus");
+    saveDirectorFocusHSplitRatio(store, DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+    expect(store.map.get(DIRECTOR_FOCUS_H_SPLIT_KEY)).toBe(String(DEFAULT_DIRECTOR_FOCUS_H_SPLIT));
+    expect(loadDirectorFocusHSplitRatio(store)).toBeCloseTo(DEFAULT_DIRECTOR_FOCUS_H_SPLIT, 5);
+    expect(loadDirectorWorkSplitRatio(store)).toBe(DEFAULT_DIRECTOR_WORK_SPLIT);
+    saveDirectorWorkSplitRatio(store, 0.72);
+    expect(store.map.get(DIRECTOR_WORK_SPLIT_KEY)).toBe("0.72");
+    expect(loadDirectorWorkSplitRatio(store)).toBeCloseTo(0.72, 5);
+    expect(loadDirectorDiagnosticsCollapsed(store)).toBe(true);
+    saveDirectorDiagnosticsCollapsed(store, false);
+    expect(store.map.get(DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY)).toBe("0");
+    expect(loadDirectorDiagnosticsCollapsed(store)).toBe(false);
+    const work = applyDirectorWorkSplitPointer({ clientY: 10, workTop: 0, workHeight: 248 });
+    expect(work.conversationPx).toBeGreaterThanOrEqual(DIRECTOR_CONVERSATION_MIN_PX);
+    expect(work.resultPx).toBeGreaterThanOrEqual(DIRECTOR_RESULT_MIN_PX);
+    const available = 248;
+    expect(clampDirectorWorkSplitRatio(0, available) * available).toBeCloseTo(DIRECTOR_CONVERSATION_MIN_PX, 5);
+    expect((1 - clampDirectorWorkSplitRatio(1, available)) * available).toBeCloseTo(DIRECTOR_RESULT_MIN_PX, 5);
   });
 });

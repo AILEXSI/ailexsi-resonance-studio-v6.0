@@ -34,10 +34,45 @@ export function normalizeDirectorPrompt(text: string): string {
     .trim();
 }
 
-/** Golden "markierten" and human "den Clip" — not a regex maze. */
-function isMoveClipTwoSecondsRight(n: string): boolean {
-  const namesTheClip = n.includes("verschiebe den markierten clip") || n.includes("verschiebe den clip");
-  return namesTheClip && n.includes("zwei sekunden") && n.includes("rechts");
+/** Named selected item: markiert / clip / file (studio slang). */
+function namesSelectedItem(n: string): boolean {
+  return n.includes("markiert") || n.includes("clip") || n.includes("file");
+}
+
+function hasTwoSeconds(n: string): boolean {
+  return n.includes("zwei sekunden") || n.includes("2 sekunden") || n.includes("2sec") || n.includes("2 sec");
+}
+
+function hasThreeSeconds(n: string): boolean {
+  return n.includes("drei sekunden") || n.includes("3 sekunden") || n.includes("3sec") || n.includes("3 sec");
+}
+
+function hasLeftDirection(n: string): boolean {
+  return n.includes("links") || n.includes(" left");
+}
+
+function hasRightDirection(n: string): boolean {
+  return n.includes("rechts") || n.includes(" right");
+}
+
+/**
+ * Known move family. Golden +2s, human +2s / +3s, and exact left −2s.
+ * Phrase checks, not a regex maze. Does not invent other tools.
+ */
+export function parseMoveClipPrompt(text: string): { deltaMs: number } | null {
+  const n = normalizeDirectorPrompt(text);
+  if (!n.includes("verschiebe") || !namesSelectedItem(n)) return null;
+  const left = hasLeftDirection(n);
+  const right = hasRightDirection(n);
+  if (left === right) return null;
+  const magnitude = hasThreeSeconds(n) ? 3000 : hasTwoSeconds(n) ? 2000 : null;
+  if (magnitude == null) return null;
+  return { deltaMs: left ? -magnitude : magnitude };
+}
+
+/** Alias kept for existing golden / mock call sites. */
+export function parseMoveRightPrompt(text: string): { deltaMs: number } | null {
+  return parseMoveClipPrompt(text);
 }
 
 /**
@@ -63,8 +98,15 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
   if (n === "was kannst du" || n === "what can you do") {
     return { kind: "ASK_CAPABILITY", confidence: "known", reason: "capability question" };
   }
-  if (isMoveClipTwoSecondsRight(n)) {
-    return { kind: "MOVE_CLIP", confidence: "known", reason: "move selected clip +2s" };
+  const move = parseMoveClipPrompt(text);
+  if (move) {
+    const seconds = Math.abs(move.deltaMs) / 1000;
+    const dir = move.deltaMs < 0 ? "left" : "right";
+    return {
+      kind: "MOVE_CLIP",
+      confidence: "known",
+      reason: `move selected clip ${move.deltaMs > 0 ? "+" : ""}${seconds}s ${dir}`,
+    };
   }
   return { kind: "UNCERTAIN", confidence: "uncertain", reason: "no known route" };
 }

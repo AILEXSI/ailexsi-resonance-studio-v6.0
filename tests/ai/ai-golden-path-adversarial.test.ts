@@ -197,7 +197,6 @@ describe("AI Director golden-path adversarial", () => {
       { message: "x", toolRequest: { name: "timeline.explode", arguments: { deltaMs: 2000 } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: "2000" } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: 0 } } },
-      { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: -2000 } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: 2000.4 } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: Number.POSITIVE_INFINITY } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: 99_000_000_000 } } },

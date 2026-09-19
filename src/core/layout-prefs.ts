@@ -67,6 +67,24 @@ export const DIRECTOR_SPLIT_RATIO_KEY = "resonance-studio-v6-0-director-split";
 export const DIRECTOR_NORMAL_SPLIT_KEY = "resonance-studio-v6-0-director-normal-split";
 export const DIRECTOR_FOCUS_KEY = "resonance-studio-v6-0-director-focus";
 export const DIRECTOR_COMPOSER_HEIGHT_KEY = "resonance-studio-v6-0-director-composer-height";
+/** collapsed | docked | focus — local chrome only, not Project. */
+export const DIRECTOR_PRESENTATION_KEY = "resonance-studio-v6-0-director-presentation";
+/** Preview fraction while Director Focus owns the right column (~35–45% Director). */
+export const DIRECTOR_FOCUS_H_SPLIT_KEY = "resonance-studio-v6-0-director-focus-h-split";
+/** Conversation fraction of the Director work split (conversation vs result). */
+export const DIRECTOR_WORK_SPLIT_KEY = "resonance-studio-v6-0-director-work-split";
+export const DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY = "resonance-studio-v6-0-director-diagnostics-collapsed";
+
+export type DirectorPresentation = "collapsed" | "docked" | "focus";
+/** Director column fraction of the preview workspace while Focused. */
+export const DIRECTOR_FOCUS_RATIO_MIN = 0.35;
+export const DIRECTOR_FOCUS_RATIO_MAX = 0.45;
+export const DEFAULT_DIRECTOR_FOCUS_RATIO = 0.4;
+export const DEFAULT_DIRECTOR_FOCUS_H_SPLIT = 1 - DEFAULT_DIRECTOR_FOCUS_RATIO;
+export const DIRECTOR_CONVERSATION_MIN_PX = 96;
+export const DIRECTOR_RESULT_MIN_PX = 72;
+export const DEFAULT_DIRECTOR_WORK_SPLIT = 0.68;
+export const DIRECTOR_WORK_SPLITTER_PX = 8;
 export const MIXER_EXPANDED_PX = 228;
 export const MIXER_COLLAPSED_PX = 56;
 /** Expanded mixer: MST + ≥1 channel peek + chrome. Never 0. */
@@ -78,6 +96,11 @@ export const MIXER_MIN_PX = 120;
 export const MIXER_MAX_PX = 8192;
 /** Thin usable timeline (lane labels + a clip sliver). Divider can reach Follow. */
 export const TIMELINE_MIN_PX = 160;
+/**
+ * Arrange narrower than timeline min + expanded mixer min → compact [timeline][MST].
+ * Runtime only — does not persist as mixerCollapsed. Channels restore when space returns.
+ */
+export const MIXER_AUTO_COMPACT_ARRANGE_PX = TIMELINE_MIN_PX + MIXER_MIN_PX;
 export const MIXER_SPLITTER_PX = 8;
 /** Closed inspector: reopen strip only. Same workspace language as MIXER_COLLAPSED_PX. */
 export const INSPECTOR_COLLAPSED_PX = 32;
@@ -233,6 +256,22 @@ export function mixerWidthMax(arrangeWidthPx?: number): number {
 export function clampMixerWidth(px: number, arrangeWidthPx?: number): number {
   if (!Number.isFinite(px)) return MIXER_EXPANDED_PX;
   return Math.round(Math.min(mixerWidthMax(arrangeWidthPx), Math.max(MIXER_MIN_PX, px)));
+}
+
+/**
+ * Progressive mixer collapse when Arrange is too narrow for channels.
+ * Unknown/zero width stays expanded so jsdom and first paint do not hide V1–A2.
+ * User mixerCollapsed is a separate persisted pref.
+ */
+export function shouldAutoCompactMixer(arrangeWidthPx: number): boolean {
+  if (!Number.isFinite(arrangeWidthPx) || arrangeWidthPx <= 0) return false;
+  return arrangeWidthPx < MIXER_AUTO_COMPACT_ARRANGE_PX;
+}
+
+export type MixerChrome = "compact" | "expanded";
+
+export function mixerChromeOf(opts: { collapsed: boolean; autoCompact: boolean }): MixerChrome {
+  return opts.collapsed || opts.autoCompact ? "compact" : "expanded";
 }
 
 /** Left-edge divider: drag left → wider mixer; drag right → narrower. */
@@ -589,13 +628,32 @@ export function applyDirectorFocusToggle(opts: {
   currentSplitRatio: number;
   storedNormalSplit: number;
   storedSectionCollapsed: boolean;
+  currentHSplit?: number;
+  storedDockedHSplit?: number;
+  storedFocusHSplit?: number;
+  availablePx?: number;
 }): {
   focused: boolean;
   inspectorSectionCollapsed: boolean;
   splitRatio: number;
   normalSplit: number;
   restoreSectionCollapsed: boolean;
+  hSplitRatio: number;
+  dockedHSplit: number;
+  focusHSplit: number;
 } {
+  const available =
+    opts.availablePx != null && Number.isFinite(opts.availablePx) && opts.availablePx > 0
+      ? opts.availablePx
+      : PREVIEW_H_MIN_PX + INSPECTOR_MIN_PX + 800;
+  const dockedHSplit = clampHSplitRatio(
+    opts.storedDockedHSplit ?? opts.currentHSplit ?? DEFAULT_H_SPLIT_RATIO,
+    available,
+  );
+  const storedFocus = clampFocusHSplitRatio(
+    opts.storedFocusHSplit ?? DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
+    available,
+  );
   if (!opts.currentlyFocused) {
     const normalSplit = Number.isFinite(opts.currentSplitRatio)
       ? opts.currentSplitRatio
@@ -606,17 +664,24 @@ export function applyDirectorFocusToggle(opts: {
       splitRatio: normalSplit,
       normalSplit,
       restoreSectionCollapsed: opts.inspectorSectionCollapsed,
+      hSplitRatio: storedFocus,
+      dockedHSplit: clampHSplitRatio(opts.currentHSplit ?? dockedHSplit, available),
+      focusHSplit: storedFocus,
     };
   }
   const restoredSplit = Number.isFinite(opts.storedNormalSplit)
     ? opts.storedNormalSplit
     : DEFAULT_DIRECTOR_SPLIT_RATIO;
+  const liveFocus = clampFocusHSplitRatio(opts.currentHSplit ?? storedFocus, available);
   return {
     focused: false,
     inspectorSectionCollapsed: opts.storedSectionCollapsed,
     splitRatio: restoredSplit,
     normalSplit: restoredSplit,
     restoreSectionCollapsed: opts.storedSectionCollapsed,
+    hSplitRatio: clampHSplitRatio(opts.storedDockedHSplit ?? dockedHSplit, available),
+    dockedHSplit: clampHSplitRatio(opts.storedDockedHSplit ?? dockedHSplit, available),
+    focusHSplit: liveFocus,
   };
 }
 
@@ -638,6 +703,154 @@ export function loadDirectorComposerHeight(storage?: StorageLike | null): number
 export function saveDirectorComposerHeight(storage: StorageLike | null | undefined, px: number): void {
   try {
     storage?.setItem(DIRECTOR_COMPOSER_HEIGHT_KEY, String(clampComposerHeightPx(px)));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function directorPresentationOf(opts: {
+  inspectorCollapsed: boolean;
+  directorEnabled: boolean;
+  directorFocus: boolean;
+}): DirectorPresentation {
+  if (!opts.directorEnabled || opts.inspectorCollapsed) return "collapsed";
+  if (opts.directorFocus) return "focus";
+  return "docked";
+}
+
+export function loadDirectorPresentation(storage?: StorageLike | null): DirectorPresentation {
+  try {
+    const raw = storage?.getItem(DIRECTOR_PRESENTATION_KEY);
+    if (raw === "collapsed" || raw === "docked" || raw === "focus") return raw;
+    return "collapsed";
+  } catch {
+    return "collapsed";
+  }
+}
+
+export function saveDirectorPresentation(
+  storage: StorageLike | null | undefined,
+  presentation: DirectorPresentation,
+): void {
+  try {
+    storage?.setItem(DIRECTOR_PRESENTATION_KEY, presentation);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Preview fraction so the Director column stays ~35–45% of the workspace. */
+export function clampFocusHSplitRatio(ratio: number, availablePx: number): number {
+  const fallback = DEFAULT_DIRECTOR_FOCUS_H_SPLIT;
+  if (!Number.isFinite(ratio)) return fallback;
+  if (!Number.isFinite(availablePx) || availablePx <= 0) {
+    return Math.min(1 - DIRECTOR_FOCUS_RATIO_MIN, Math.max(1 - DIRECTOR_FOCUS_RATIO_MAX, ratio));
+  }
+  const minPreview = Math.max(PREVIEW_H_MIN_PX / availablePx, 1 - DIRECTOR_FOCUS_RATIO_MAX);
+  const maxPreview = Math.min(1 - INSPECTOR_MIN_PX / availablePx, 1 - DIRECTOR_FOCUS_RATIO_MIN);
+  if (minPreview >= maxPreview) {
+    return clampHSplitRatio(ratio, availablePx);
+  }
+  return Math.min(maxPreview, Math.max(minPreview, ratio));
+}
+
+export function applyFocusHSplitPointer(opts: {
+  clientX: number;
+  workspaceLeft: number;
+  workspaceWidth: number;
+  splitterPx?: number;
+}): { ratio: number; previewPx: number; inspectorPx: number } {
+  const splitter = opts.splitterPx ?? H_SPLITTER_PX;
+  const available = Math.max(1, opts.workspaceWidth - splitter);
+  const ratio = clampFocusHSplitRatio((opts.clientX - opts.workspaceLeft) / available, available);
+  const previewPx = Math.round(ratio * available);
+  return { ratio, previewPx, inspectorPx: available - previewPx };
+}
+
+export function loadDirectorFocusHSplitRatio(storage?: StorageLike | null): number {
+  try {
+    const raw = storage?.getItem(DIRECTOR_FOCUS_H_SPLIT_KEY);
+    if (raw == null) return DEFAULT_DIRECTOR_FOCUS_H_SPLIT;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return DEFAULT_DIRECTOR_FOCUS_H_SPLIT;
+    return clampFocusHSplitRatio(n, PREVIEW_H_MIN_PX + INSPECTOR_MIN_PX + 800);
+  } catch {
+    return DEFAULT_DIRECTOR_FOCUS_H_SPLIT;
+  }
+}
+
+export function saveDirectorFocusHSplitRatio(storage: StorageLike | null | undefined, ratio: number): void {
+  try {
+    if (!Number.isFinite(ratio)) return;
+    storage?.setItem(DIRECTOR_FOCUS_H_SPLIT_KEY, String(ratio));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clampDirectorWorkSplitRatio(ratio: number, availablePx: number): number {
+  if (!Number.isFinite(ratio)) return DEFAULT_DIRECTOR_WORK_SPLIT;
+  if (!Number.isFinite(availablePx) || availablePx <= 0) {
+    return Math.min(0.85, Math.max(0.4, ratio));
+  }
+  const minR = DIRECTOR_CONVERSATION_MIN_PX / availablePx;
+  const maxR = 1 - DIRECTOR_RESULT_MIN_PX / availablePx;
+  if (minR >= maxR) {
+    return DIRECTOR_CONVERSATION_MIN_PX / (DIRECTOR_CONVERSATION_MIN_PX + DIRECTOR_RESULT_MIN_PX);
+  }
+  return Math.min(maxR, Math.max(minR, ratio));
+}
+
+export function applyDirectorWorkSplitPointer(opts: {
+  clientY: number;
+  workTop: number;
+  workHeight: number;
+  splitterPx?: number;
+}): { ratio: number; conversationPx: number; resultPx: number } {
+  const splitter = opts.splitterPx ?? DIRECTOR_WORK_SPLITTER_PX;
+  const available = Math.max(1, opts.workHeight - splitter);
+  const ratio = clampDirectorWorkSplitRatio((opts.clientY - opts.workTop) / available, available);
+  const conversationPx = Math.round(ratio * available);
+  return { ratio, conversationPx, resultPx: available - conversationPx };
+}
+
+export function loadDirectorWorkSplitRatio(storage?: StorageLike | null): number {
+  try {
+    const raw = storage?.getItem(DIRECTOR_WORK_SPLIT_KEY);
+    if (raw == null) return DEFAULT_DIRECTOR_WORK_SPLIT;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return DEFAULT_DIRECTOR_WORK_SPLIT;
+    return clampDirectorWorkSplitRatio(n, DIRECTOR_CONVERSATION_MIN_PX + DIRECTOR_RESULT_MIN_PX + 240);
+  } catch {
+    return DEFAULT_DIRECTOR_WORK_SPLIT;
+  }
+}
+
+export function saveDirectorWorkSplitRatio(storage: StorageLike | null | undefined, ratio: number): void {
+  try {
+    if (!Number.isFinite(ratio)) return;
+    storage?.setItem(DIRECTOR_WORK_SPLIT_KEY, String(ratio));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function loadDirectorDiagnosticsCollapsed(storage?: StorageLike | null): boolean {
+  try {
+    const raw = storage?.getItem(DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY);
+    if (raw == null) return true;
+    return raw === "1";
+  } catch {
+    return true;
+  }
+}
+
+export function saveDirectorDiagnosticsCollapsed(
+  storage: StorageLike | null | undefined,
+  collapsed: boolean,
+): void {
+  try {
+    storage?.setItem(DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY, collapsed ? "1" : "0");
   } catch {
     /* quota / private mode */
   }
