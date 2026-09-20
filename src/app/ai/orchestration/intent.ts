@@ -6,9 +6,11 @@
 export const DIRECTOR_INTENT_KINDS = [
   "ASK_SELECTION",
   "READ_CLIP",
+  "READ_PROJECT",
   "MOVE_CLIP",
   "DRAFT_CUT",
   "ASK_CAPABILITY",
+  "CHAT",
   "UNSUPPORTED",
   "UNCERTAIN",
 ] as const;
@@ -34,19 +36,31 @@ export function normalizeDirectorPrompt(text: string): string {
     .trim();
 }
 
-/** Named selected item: marked / markiert / clip / file / selected. */
+/**
+ * Named selected item. video / file / event / scene wording is the same CLIP target.
+ * No separate tools for those nouns.
+ */
 function namesSelectedItem(n: string): boolean {
   return (
     n.includes("markiert") ||
     n.includes("marked") ||
+    n.includes("ausgewahl") ||
+    n.includes("selected") ||
     n.includes("clip") ||
     n.includes("file") ||
-    n.includes("selected")
+    n.includes("video") ||
+    n.includes("event") ||
+    n.includes("scene")
   );
 }
 
 function hasMoveVerb(n: string): boolean {
-  return n.includes("verschiebe") || n.startsWith("move ") || n.includes(" move ");
+  return (
+    n.includes("verschieb") ||
+    n.includes("schieb") ||
+    n.startsWith("move ") ||
+    n.includes(" move ")
+  );
 }
 
 function hasLeftDirection(n: string): boolean {
@@ -105,16 +119,44 @@ export function parseMoveRightPrompt(text: string): { deltaMs: number } | null {
   return parseMoveClipPrompt(text);
 }
 
+function isGreeting(n: string): boolean {
+  return n === "hallo" || n === "hello" || n === "hi" || n === "hey";
+}
+
+function isDurationQuestion(n: string): boolean {
+  const asksLength =
+    n.includes("wie lang") ||
+    n.includes("how long") ||
+    n.includes("dauer") ||
+    n.includes("duration");
+  return asksLength && namesSelectedItem(n);
+}
+
+function isProjectTracksQuestion(n: string): boolean {
+  const asksTracks = n.includes("spuren") || n.includes("tracks") || n.includes("which track");
+  const namesProject = n.includes("projekt") || n.includes("project");
+  return asksTracks && namesProject;
+}
+
 /**
  * Known routes only. Uncertain → less authority (never silent EDIT).
- * Phrase checks, not a regex maze.
+ * Phrase checks, not a regex maze. NL variants converge to one CLIP tool.
  */
 export function classifyDirectorIntent(text: string): DirectorIntent {
   const n = normalizeDirectorPrompt(text);
   if (!n) return { kind: "UNCERTAIN", confidence: "uncertain", reason: "empty" };
+  if (isGreeting(n)) {
+    return { kind: "CHAT", confidence: "known", reason: "greeting — no mutation" };
+  }
 
   if (n === "what is selected" || n === "was ist ausgewahlt" || n === "was ist markiert") {
     return { kind: "ASK_SELECTION", confidence: "known", reason: "selection question" };
+  }
+  if (isDurationQuestion(n)) {
+    return { kind: "READ_CLIP", confidence: "known", reason: "selected clip duration" };
+  }
+  if (isProjectTracksQuestion(n)) {
+    return { kind: "READ_PROJECT", confidence: "known", reason: "project tracks" };
   }
   if (n.includes("analysiere den markierten clip") || n.includes("analyze the selected clip")) {
     return { kind: "READ_CLIP", confidence: "known", reason: "analyze selected clip" };

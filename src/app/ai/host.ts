@@ -36,7 +36,6 @@ import {
   hasInOutRange,
   projectRevisionOf,
   selectionOf,
-  type CanonicalClipSelection,
   type Session,
 } from "../session";
 import { DIRECTOR_MODES, GRANTS, grantExceeds, type DirectorMode, type Grant } from "./permissions/policy";
@@ -60,10 +59,14 @@ import {
   pickAutoModel,
   planDirectorTurn,
   resolveAutoRuntime,
+  resolveToolSelection,
   sealDirectorPlan,
+  toolRequirementOf,
   writeDiscoveryCache,
   type DirectorPlan,
+  type DirectorRuntimeMode,
 } from "./orchestration";
+import { toolRequiresSingleClip } from "./tools/requirements";
 
 export type DirectorConnectionStatus =
   | "offline"
@@ -109,6 +112,12 @@ export interface SealedDirectorRequest {
   readonly contextSnapshot: AIContextSnapshot | null;
   readonly projectId: string | null;
   readonly projectRevision: number | null;
+  /** Tool metadata requirement. Not a grant. */
+  readonly requiredPermission: Grant;
+  /** Session / Allow-once grant at seal time. Never silently elevated. */
+  readonly authorizedGrant: Grant;
+  readonly effectiveProviderId: ProviderId;
+  readonly effectiveModel: string;
 }
 
 /** Compact boundary trace. No Project dump. No secrets. */
@@ -167,6 +176,8 @@ export interface DirectorHostState {
   heldUserText: string | null;
   localUnavailable: boolean;
   lastNoTool: DirectorNoToolResult | null;
+  /** User-facing Director runtime. AUTO is normal. MANUAL is Advanced/diagnostics. */
+  runtimeMode: DirectorRuntimeMode;
 }
 
 export function createDirectorHostState(): DirectorHostState {
@@ -199,6 +210,7 @@ export function createDirectorHostState(): DirectorHostState {
     heldUserText: null,
     localUnavailable: false,
     lastNoTool: null,
+    runtimeMode: "AUTO",
   };
 }
 
@@ -221,34 +233,40 @@ export function sealDirectorRequest(
   plan: DirectorPlan,
   session: Session | undefined,
   userText: string,
+  opts?: {
+    authorizedGrant?: Grant;
+    effectiveProviderId?: ProviderId;
+    effectiveModel?: string;
+  },
 ): SealedDirectorRequest {
   const sealed = sealDirectorPlan(plan);
-  const canonical = session ? canonicalClipSelection(session) : emptyCanonical();
+  const requirement = toolRequirementOf(sealed.toolName);
+  const resolved = resolveToolSelection(session, requirement);
   const wantsSelection =
     sealed.contextLevel === "SELECTION" || sealed.intent.kind === "MOVE_CLIP";
-  const clipId = wantsSelection || canonical.usableMoveTarget ? canonical.usableMoveTarget : null;
+  const clipId = resolved.clipId;
   const snapshotLevel =
-    wantsSelection && canonical.clipIds.length === 1 ? "SELECTION" : sealed.contextLevel;
+    wantsSelection && resolved.clipIds.length === 1 ? "SELECTION" : sealed.contextLevel;
   const contextSnapshot = session
     ? captureContextSnapshot(session, {
         level: snapshotLevel,
         outboundClass: "SEND_STRUCTURE",
-        clipIds: snapshotLevel === "SELECTION" ? [...canonical.clipIds] : undefined,
+        clipIds: snapshotLevel === "SELECTION" ? [...resolved.clipIds] : undefined,
       })
     : null;
   return Object.freeze({
     plan: sealed,
     clipId,
-    canonicalClipIds: Object.freeze([...canonical.clipIds]),
+    canonicalClipIds: Object.freeze([...resolved.clipIds]),
     userText,
     contextSnapshot,
     projectId: session?.project.id ?? null,
     projectRevision: session ? projectRevisionOf(session) : null,
+    requiredPermission: sealed.requiredPermission,
+    authorizedGrant: opts?.authorizedGrant ?? "READ",
+    effectiveProviderId: opts?.effectiveProviderId ?? "mock",
+    effectiveModel: opts?.effectiveModel ?? "",
   });
-}
-
-function emptyCanonical(): CanonicalClipSelection {
-  return { clipIds: [], primaryId: null, usableMoveTarget: null };
 }
 
 export function requestContextTrace(state: DirectorHostState): DirectorRequestContextTrace {
@@ -286,7 +304,7 @@ function selectionRequiredMessage(opts: { ambiguous?: boolean } = {}): string {
   if (opts.ambiguous) {
     return "AMBIGUOUS_SELECTION. A single selected clip is required. Click one clip on the timeline. In/Out range is not a clip selection. No project changes were made.";
   }
-  return "SELECTION REQUIRED. No clip selected. Click a clip on the timeline to select it. In/Out range is not a clip selection. A single selected clip is required. No project changes were made.";
+  return "SELECTION REQUIRED. No clip is selected. Click a clip on the timeline to select it. In/Out range is not a clip selection. A single selected clip is required. No project changes were made.";
 }
 
 export function intentStatusLabel(state: DirectorHostState): string {
@@ -914,6 +932,7 @@ export async function submitDirectorProviderTurn(
             intent: { kind: "UNCERTAIN", confidence: "uncertain", reason: "manual-settings" },
             mode: state.mode,
             requiredGrant: state.grant,
+            requiredPermission: state.grant,
             contextLevel: state.contextLevel,
             capability: "chat",
             toolName: null,
@@ -1019,7 +1038,11 @@ export function applyOrchestrationPlan(
   session?: Session,
   userText = "",
 ): DirectorHostState {
-  const sealedRequest = sealDirectorRequest(plan, session, userText);
+  const sealedRequest = sealDirectorRequest(plan, session, userText, {
+    authorizedGrant: effectiveGrant(state),
+    effectiveProviderId: state.providerId,
+    effectiveModel: state.localConfig.model,
+  });
   return {
     ...state,
     lastPlan: sealedRequest.plan,
@@ -1058,9 +1081,29 @@ export function cancelDirectorAuth(state: DirectorHostState): DirectorHostState 
   };
 }
 
+export function autoProviderLabel(state: DirectorHostState): string {
+  const id = state.sealedRequest?.effectiveProviderId ?? state.providerId;
+  return id === "openai-compatible" ? "local-openai-compatible" : "mock";
+}
+
+export function autoModelLabel(state: DirectorHostState): string {
+  const model = state.sealedRequest?.effectiveModel || state.localConfig.model;
+  return model.trim() || "—";
+}
+
+/** Compact EFFECTIVE request config. Manual ASK / READ / NONE are not this line. */
 export function autoPlanStatusLabel(state: DirectorHostState): string {
   const plan = state.sealedRequest?.plan ?? state.lastPlan;
-  return plan ? directorPlanStatus(plan) : "—";
+  if (!plan) return "AUTO · —";
+  return [
+    "AUTO",
+    `Intent ${plan.intent.kind}`,
+    `Tool ${plan.toolName ?? "none"}`,
+    `Context ${plan.contextLevel}`,
+    `Permission ${plan.requiredPermission}`,
+    `Provider ${autoProviderLabel(state)}`,
+    `Model ${autoModelLabel(state)}`,
+  ].join(" · ");
 }
 
 /** Compact Normal chrome. Session EDIT is runtime only — never Project. */
@@ -1121,7 +1164,10 @@ function runReadPlan(
   userText: string,
   session: Session | undefined,
 ): DirectorHostState {
-  const prepared = attachSubmitSnapshot(applyOrchestrationPlan(state, plan, session, userText), session);
+  const prepared = attachSubmitSnapshot(
+    state.sealedRequest ? state : applyOrchestrationPlan(state, plan, session, userText),
+    session,
+  );
   const grant = effectiveGrant(prepared);
   if (!session) {
     return appendTurn(prepared, userText, "Denied: no project session is available. No project changes were made.");
@@ -1130,10 +1176,15 @@ function runReadPlan(
     const result = invokeTool("timeline.get_selection", {}, { session, grant });
     return appendTurn(prepared, userText, formatToolPayload(result));
   }
-  const selected = selectionOf(session);
-  const clipId = selected.length === 1 ? selected[0] : undefined;
+  if (plan.toolName === "project.describe" || plan.toolName === "timeline.describe") {
+    const result = invokeTool(plan.toolName, {}, { session, grant });
+    return appendTurn(prepared, userText, formatToolPayload(result));
+  }
+  const clipId =
+    prepared.sealedRequest?.clipId ??
+    (selectionOf(session).length === 1 ? selectionOf(session)[0] : undefined);
   if (!clipId) {
-    return appendTurn(prepared, userText, "No clip selected. No project changes were made.");
+    return appendTurn(prepared, userText, selectionRequiredMessage());
   }
   const clipResult = invokeTool("timeline.get_clip", { clipId }, { session, grant });
   const analysis = invokeTool("audio.get_analysis", { clipId }, { session, grant });
@@ -1156,34 +1207,8 @@ export async function submitDirectorAutoTurn(
   const text = userText.trim();
   if (!text) return state;
   const plan = planDirectorTurn(text);
-  const sealedRequest = sealDirectorRequest(plan, session, text);
-  if (plan.intent.kind === "MOVE_CLIP") {
-    const canonical = session ? canonicalClipSelection(session) : emptyCanonical();
-    if (canonical.clipIds.length !== 1) {
-      const prepared = applyOrchestrationPlan(state, plan, session, text);
-      return appendTurn(
-        prepared,
-        text,
-        selectionRequiredMessage({ ambiguous: canonical.clipIds.length > 1 }),
-      );
-    }
-  }
-  const current = effectiveGrant(state);
-  if (grantExceeds(plan.requiredGrant, current)) {
-    return {
-      ...state,
-      lastPlan: sealedRequest.plan,
-      sealedRequest,
-      heldUserText: text,
-      pendingAuth: {
-        requiredGrant: plan.requiredGrant,
-        currentGrant: state.grant,
-        reason: plan.intent.reason,
-        userText: text,
-      },
-    };
-  }
-
+  const requirement = toolRequirementOf(plan.toolName);
+  const selection = resolveToolSelection(session, requirement);
   const resolved = resolveAutoRuntime({
     surface: state.surface,
     providerId: state.providerId,
@@ -1191,7 +1216,44 @@ export async function submitDirectorAutoTurn(
     discoveredModels: state.discoveredModels,
     probePhase: state.connectionProbe.phase,
   });
-  if (resolved.unavailable && !opts?.providerInjected) {
+  const model = pickAutoModel(resolved.model, state.discoveredModels) ?? resolved.model;
+  const sealedRequest = sealDirectorRequest(plan, session, text, {
+    authorizedGrant: effectiveGrant(state),
+    effectiveProviderId: resolved.providerId,
+    effectiveModel: model,
+  });
+  if (toolRequiresSingleClip(requirement) && selection.error) {
+    const prepared = applyOrchestrationPlan(state, plan, session, text);
+    return appendTurn(
+      {
+        ...prepared,
+        sealedRequest: {
+          ...sealedRequest,
+          effectiveProviderId: resolved.providerId,
+          effectiveModel: model,
+        },
+      },
+      text,
+      selectionRequiredMessage({ ambiguous: selection.error === "AMBIGUOUS_SELECTION" }),
+    );
+  }
+  const current = effectiveGrant(state);
+  if (grantExceeds(plan.requiredPermission, current)) {
+    return {
+      ...state,
+      lastPlan: sealedRequest.plan,
+      sealedRequest,
+      heldUserText: text,
+      pendingAuth: {
+        requiredGrant: plan.requiredPermission,
+        currentGrant: state.grant,
+        reason: plan.intent.reason,
+        userText: text,
+      },
+    };
+  }
+
+  if (plan.providerAction === "chat" && resolved.unavailable && !opts?.providerInjected) {
     return {
       ...state,
       lastPlan: sealedRequest.plan,
@@ -1203,15 +1265,18 @@ export async function submitDirectorAutoTurn(
   }
 
   let next = applyOrchestrationPlan(state, plan, session, text);
-  if (!opts?.providerInjected && resolved.providerId === "openai-compatible") {
-    const model = pickAutoModel(resolved.model, next.discoveredModels) ?? resolved.model;
-    if (model && model !== next.localConfig.model) {
-      next = applyLocalConfig(next, { model });
-    }
-    if (next.providerId !== "openai-compatible") {
-      next = applyProviderId(next, "openai-compatible");
-    }
-  }
+  next = {
+    ...next,
+    sealedRequest: next.sealedRequest
+      ? Object.freeze({
+          ...next.sealedRequest,
+          requiredPermission: plan.requiredPermission,
+          authorizedGrant: current,
+          effectiveProviderId: resolved.providerId,
+          effectiveModel: model,
+        })
+      : next.sealedRequest,
+  };
 
   if (plan.intent.kind === "UNSUPPORTED") {
     const lastNoTool: DirectorNoToolResult = {
@@ -1224,6 +1289,9 @@ export async function submitDirectorAutoTurn(
   if (plan.intent.kind === "ASK_CAPABILITY") {
     return appendTurn(next, text, capabilityReply());
   }
+  if (plan.intent.kind === "CHAT") {
+    return appendTurn(next, text, "Hallo. Director is ready. No project changes were made.");
+  }
   if (plan.intent.kind === "DRAFT_CUT") {
     return appendTurn(
       next,
@@ -1232,10 +1300,17 @@ export async function submitDirectorAutoTurn(
     );
   }
   if (plan.providerAction === "read-tool") {
-    return runReadPlan(state, plan, text, session);
+    return runReadPlan(next, plan, text, session);
   }
 
-  const provider = opts?.providerInjected ? runtime.provider : providerForHost(next);
+  const provider = opts?.providerInjected
+    ? runtime.provider
+    : resolved.providerId === "openai-compatible"
+      ? createOpenAICompatibleProvider({
+          ...next.localConfig,
+          model: model || next.localConfig.model,
+        })
+      : providerForHost(next);
   return submitDirectorProviderTurn(
     next,
     text,
@@ -1260,6 +1335,8 @@ export {
   planDirectorTurn,
   pickAutoModel,
   resolveAutoRuntime,
+  resolveToolSelection,
   sealDirectorPlan,
+  toolRequirementOf,
 };
 

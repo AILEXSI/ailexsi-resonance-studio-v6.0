@@ -33,6 +33,22 @@ export const HUMAN_ENGLISH_CLIP_FIVE_SECOND_PROMPT = "move clip 5 seconds to the
 /** German +5s sibling of the English EXE phrasing. */
 export const AUTO_FIVE_SECOND_PROMPT = "Verschiebe den markierten Clip 5 Sekunden nach rechts.";
 
+/** Canonical CLIP tool — video wording, not a separate video tool. */
+export const AUTO_GERMAN_VIDEO_PROMPT = "Verschiebe das ausgewählte Video 3 Sekunden nach rechts.";
+
+/** Informal German schieb — same timeline.move_clip +3000. */
+export const AUTO_GERMAN_SCHIEB_PROMPT = "Schieb den markierten Clip drei Sekunden nach rechts.";
+
+export const AUTO_ENGLISH_SELECTED_PROMPT = "Move the selected clip 3 seconds right.";
+
+export const AUTO_ENGLISH_VIDEO_PROMPT = "Move marked video 3 sec to the right.";
+
+export const AUTO_DURATION_PROMPT = "Wie lang ist der markierte Clip?";
+
+export const AUTO_TRACKS_PROMPT = "Welche Spuren hat das Projekt?";
+
+export const AUTO_HELLO_PROMPT = "Hallo";
+
 export { parseMoveClipPrompt, parseMoveRightPrompt } from "../orchestration/intent";
 
 export function formatMoveDeltaMs(deltaMs: number): string {

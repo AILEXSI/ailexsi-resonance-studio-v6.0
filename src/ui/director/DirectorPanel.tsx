@@ -351,9 +351,24 @@ export function DirectorPanel({
                 <p
                   className="director-plan-status"
                   data-testid="director-plan-status"
+                  data-runtime-mode={state.runtimeMode}
                   data-plan-mode={state.sealedRequest?.plan.mode ?? state.lastPlan?.mode ?? ""}
                   data-plan-context={state.sealedRequest?.plan.contextLevel ?? state.lastPlan?.contextLevel ?? ""}
                   data-plan-grant={state.sealedRequest?.plan.requiredGrant ?? state.lastPlan?.requiredGrant ?? ""}
+                  data-required-permission={
+                    state.sealedRequest?.requiredPermission ??
+                    state.sealedRequest?.plan.requiredPermission ??
+                    ""
+                  }
+                  data-authorized-grant={state.sealedRequest?.authorizedGrant ?? state.grant}
+                  data-effective-provider={
+                    state.sealedRequest?.effectiveProviderId === "openai-compatible"
+                      ? "local-openai-compatible"
+                      : state.sealedRequest
+                        ? "mock"
+                        : ""
+                  }
+                  data-effective-model={state.sealedRequest?.effectiveModel ?? ""}
                   data-request-clip-id={state.sealedRequest?.clipId ?? ""}
                   data-request-selected={
                     state.sealedRequest?.canonicalClipIds.join(",") ??
