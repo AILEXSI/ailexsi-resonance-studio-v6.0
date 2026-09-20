@@ -100,9 +100,5 @@ export const UNSEALED_PREPARED_MOVE_MESSAGE =
 export function looksLikePreparedMoveClaim(text: string): boolean {
   const n = text.trim().toLowerCase();
   if (!n) return false;
-  return (
-    n.includes("prepared move") ||
-    n.includes("preview timeline.move_clip") ||
-    /^preview[…. ]/.test(n)
-  );
+  return n.startsWith("prepared move") || n.startsWith("preview");
 }
