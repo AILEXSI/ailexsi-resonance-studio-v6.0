@@ -180,6 +180,7 @@ describe("AI Director auto-orchestration UI", () => {
     const session = fixture();
     const state: DirectorHostState = {
       ...createDirectorHostState(),
+      grant: "EDIT",
       providerId: "openai-compatible",
       localConfig: { baseUrl: "http://127.0.0.1:11434/v1", model: "local-a" },
       connectionProbe: { phase: "failed", label: "down" },
@@ -190,7 +191,7 @@ describe("AI Director auto-orchestration UI", () => {
     await act(async () => {
       root!.render(<DirectorPanel initialState={state} session={session} />);
     });
-    await send("What is selected?");
+    await send(GOLDEN_MOVE_PROMPT);
     expect(host!.querySelector('[data-testid="director-local-unavailable"]')?.textContent).toMatch(
       /LOCAL AI UNAVAILABLE/,
     );
