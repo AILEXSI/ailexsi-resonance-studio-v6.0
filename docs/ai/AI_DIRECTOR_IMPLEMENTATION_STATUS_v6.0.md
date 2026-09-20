@@ -1088,6 +1088,26 @@ Tests are not a substitute for this EXE proof.
 - `tests/ai/ai-inspect-range.test.ts` — P1a A–H: hash 12/12, zero Project/History/revision mutation, DTO isolation, fail-closed filters, leak scan, audit, golden move +2000 12/12 + prepared-move seal, intent routing, default range, AUTO `invokeTrustedRead`.
 - `tests/ai/ai-inspect-range-presentation.test.ts` — P1b A–G: explicit / playhead / selection / empty NL, hallucination FAIL CLOSED, READ→WRITE reject, provider-fail fallback, grounded DE, deterministic fallback.
 
+### Final closeout gates (this run, after docs stamp)
+
+| Command | Result |
+| --- | --- |
+| Focused AI (inspect + presentation + golden + prepared-move + tools) | **59 passed** |
+| `npx vitest run tests/ai` | **295 passed** (27 files) |
+| `npx vitest run` | **1712 passed / 6 failed / 1718** (191 files passed / 2 failed / 193) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx tsc --noEmit` | PASS |
+| `npx vite build` | PASS (vite 7.3.6, 203 modules) |
+| Golden move +2000 12/12 | PASS |
+| Inspect deterministic hash 12/12 | PASS |
+| Prepared-move seal | PASS |
+| READ Project mutation | **NO** |
+| READ History mutation | **NO** |
+| New regressions | none |
+| Frame Engine / exporter | `git diff 7479fcf -- src/core/frame-engine src/core/exporter` empty |
+| Schema | **5** |
+| AI-8 / P2 | not started |
+| PR #2 | not merged to `main` |
+
 ### Out of scope (unchanged)
 
 PCM, `audio.get_analysis` envelope, transcript, STT, memory, self-eval, vision, frames, new WRITE, AI-8, auto Apply, Project fields, schema bump, Frame Engine / exporter.
