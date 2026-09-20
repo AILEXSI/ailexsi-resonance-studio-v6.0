@@ -1,10 +1,12 @@
 # AILEXSI Resonance Studio V6.0 — AI Director Implementation Status
 
 **Document:** `docs/ai/AI_DIRECTOR_IMPLEMENTATION_STATUS_v6.0.md`  
-**Branch:** `ai/ai-director-foundation-v6`  
+**Branch:** `ai/ai-director-foundation-v6` (PR #18 merge target — **not** `main`)  
 **Base:** `7479fcf0fce2f4f0b81e6ec141f855c47cb613ff` (AI-0 merged on `main`)  
 **HEAD (AI-7 code):** `3e4def1958584a7c153ffc70ef8cb5f6978ecb31`  
 **Reviewed HEAD (this run start):** `d97b10e1a7d650d7c37a989d6184cb6a428c9e57`  
+**P1 HUMAN-PROVEN tip:** `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb`  
+**Windows EXE SHA256:** `7ED12D0FE97E791CEA577096E6A7E3E5CD1013055BFAB363769023E309FF0A13`  
 **Map:** [`AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md`](./AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md) (AI-0 evidence; proposals are not shipped facts)
 
 This file records **what this implementation run actually shipped**, per completed gate. It does not rewrite AI-0 evidence as history.
@@ -17,14 +19,16 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-7 GATE PASS** |
+| Highest gate | **PERCEPTION P1 HUMAN-PROVEN** (P1a `timeline.inspect_range` + P1b human-readable READ). AI-7 WRITE gate remains the only mutating tool. |
 | Schema | **5** (unchanged; `projectRevision` is Session-runtime only) |
 | Mutation path | `timeline.move_clip` → `applyCommand({ type: "moveClips", clipIds, deltaMs })` → `applyMoveClips` → `moveClip` / `moveClipsByDelta` → `withHistory` |
+| READ path | `USER → AUTO → PERCEPTION / TRUSTED READ → structured evidence → human-readable response` |
+| WRITE path | `USER → AUTO → provider → structured toolRequest → Transaction Preview → Human Apply → EditorCommand → HistoryStack` |
 | Second engine | none (`AIProject` / `AICommandBus` / parallel undo absent) |
 | Direct AI project mutation | none (no `session.project.clips[...]` writes in AI modules) |
 | RAF provider traffic | none (playhead cache is local only) |
 | Secrets in Project / Git | none (API key never persisted; prefs store URL/model only) |
-| Stop | No second mutating tool. Do not merge this PR from this run. |
+| Stop | No P2 / PCM / audio perception / STT / memory / self-eval / AI-8 / new WRITE. Do **not** merge foundation to `main`. |
 
 ### Sequential phase commits
 
@@ -37,6 +41,8 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 | AI-5 | `f7db829b89115b66dd0946552031c9a8a74a6ebe` | `feat(ai): add read-only tool registry` |
 | AI-6 | `e9365a94c4d42cce3a5b38976f7202e6c0491e80` | `feat(ai): add permissions and transaction foundation` |
 | AI-7 | `3e4def1958584a7c153ffc70ef8cb5f6978ecb31` | `feat(ai): add transactional move-clip tool` |
+| P1a | `fb6b43f94ff117a1506553cdc243ec7f846ee55d` | `feat(ai): add timeline.inspect_range READ perception tool` |
+| P1b | `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb` | `feat(ai): present inspect READ as grounded human-readable answers` |
 
 ### Focused AI tests (56 / 56)
 
@@ -1008,4 +1014,85 @@ No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. D
 | New regressions | none |
 | AI-8 | not started |
 | PR #2 | not merged |
+
+---
+
+## PERCEPTION P1 — HUMAN-PROVEN
+
+**Branch:** `cursor/perception-p1a-inspect-range-2dcb` (PR **#18** → `ai/ai-director-foundation-v6` only)  
+**Human-proven tip:** `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb`  
+**Windows EXE SHA256:** `7ED12D0FE97E791CEA577096E6A7E3E5CD1013055BFAB363769023E309FF0A13`  
+**P1a:** `fb6b43f94ff117a1506553cdc243ec7f846ee55d` — `timeline.inspect_range`  
+**P1b:** `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb` — human-readable READ presentation  
+**Status:** **HUMAN-PROVEN**  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Perception READ only. Compose existing Project / Session facts. Present them as grounded Director answers. Do not start P2, PCM binding, audio perception, STT, memory, self-evaluation, AI-8, or a new WRITE tool.
+
+### Architecture (do not blur)
+
+```
+READ:  USER → AUTO → PERCEPTION / TRUSTED READ → structured evidence → human-readable response
+WRITE: USER → AUTO → provider → structured toolRequest → Transaction Preview → Human Apply → EditorCommand → HistoryStack
+```
+
+- Schema **5**. `EditorCommand` is the only canonical WRITE. `HistoryStack` is the only canonical undo.
+- No second mutation engine. No direct AI `Project` mutation. Frame Engine / exporter untouched.
+- Local AI remains first-class. Fail closed.
+- READ tool result = factual evidence. Provider text = untrusted presentation.
+- READ cannot escalate to WRITE. Formatting never mutates Project / History / schema.
+
+### P1a — `timeline.inspect_range`
+
+Resonance-owned READ tool. Invoked through `invokeTrustedRead` (grant → handler → revision stamp → audit). Zero mutation.
+
+| Surface | Behavior |
+| --- | --- |
+| Explicit range | Prompt times (`von/zwischen/from/between` seconds or timecode) become `{ fromMs, toMs }`. Unclear ranges fail closed. |
+| Selected-clip range | No explicit times + selected clip(s) → union of selected clip spans. |
+| Playhead fallback | No selection → playhead **±8s** (`INSPECT_PLAYHEAD_WINDOW_MS = 8000`), clamped to `[0, projectDuration]`. |
+| Project span | Last resort when a duration exists; empty project → `INVALID_ARGS`. |
+| DTO facts | clips / tracks / markers / gaps / overlaps; `projectRevision`; schemaVersion 5; selection; playhead; In/Out; loop. |
+| Deterministic hash | FNV-1a over canonical JSON (no `Date.now` / random / UI-only fields). 12/12 identical. |
+| Isolation | Returned DTO is not a live `Project` view. Mutating the DTO does not write Session. |
+| Secrets | No `sourcePath` / `objectUrl` / PCM / spectrum / keys. |
+| Metadata | `mutation: false`, `requiredPermission: READ`, `requiredContext: PROJECT`. |
+
+### P1b — human-readable READ
+
+Successful inspect no longer dumps raw `{"ok":true,"data":{...}}` as the assistant message.
+
+| Surface | Behavior |
+| --- | --- |
+| Structured evidence | `lastReadResult` + audit keep the trusted DTO / `projectRevision` / hash. |
+| Conversation | Language-matched Director answer (DE when the prompt is clearly German; else EN). Exact wording is not contracted; facts must come from evidence. |
+| Provider | Untrusted presentation. Grounded fail-closed against the DTO. Hallucinated markers/clips/media meaning → deterministic fallback. |
+| WRITE during READ | `toolRequest` / Prepared-move claim rejected. Zero transaction / Project / History mutation. |
+| Provider failure | After a successful inspect, evidence is retained; conversation uses the small deterministic fallback. |
+| Raw JSON | Retained internally only. Conversation must not dump `ok` / `data` / `projectRevision` / `hash`. |
+
+### Human evidence (operator EXE)
+
+| Gate | Result |
+| --- | --- |
+| Explicit range | **PASS** |
+| Playhead | **PASS** |
+| Selected clip | **PASS** |
+| READ after WRITE | **PASS** — inspect sees the current canonical revision / state |
+| Existing `timeline.move_clip` +4000 | **PASS** (Preview / Apply / Undo unchanged) |
+| HUMAN-PROVEN | **YES** |
+
+Tests are not a substitute for this EXE proof.
+
+### Automated tests (P1)
+
+- `tests/ai/ai-inspect-range.test.ts` — P1a A–H: hash 12/12, zero Project/History/revision mutation, DTO isolation, fail-closed filters, leak scan, audit, golden move +2000 12/12 + prepared-move seal, intent routing, default range, AUTO `invokeTrustedRead`.
+- `tests/ai/ai-inspect-range-presentation.test.ts` — P1b A–G: explicit / playhead / selection / empty NL, hallucination FAIL CLOSED, READ→WRITE reject, provider-fail fallback, grounded DE, deterministic fallback.
+
+### Out of scope (unchanged)
+
+PCM, `audio.get_analysis` envelope, transcript, STT, memory, self-eval, vision, frames, new WRITE, AI-8, auto Apply, Project fields, schema bump, Frame Engine / exporter.
+
+### Stop
+
+P1 is closed. Do **not** start P2. Do **not** merge `ai/ai-director-foundation-v6` into `main` from this run.
 
