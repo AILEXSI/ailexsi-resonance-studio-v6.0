@@ -1,10 +1,12 @@
 # AILEXSI Resonance Studio V6.0 — AI Director Implementation Status
 
 **Document:** `docs/ai/AI_DIRECTOR_IMPLEMENTATION_STATUS_v6.0.md`  
-**Branch:** `ai/ai-director-foundation-v6`  
+**Branch:** `ai/ai-director-foundation-v6` (PR #18 merge target — **not** `main`)  
 **Base:** `7479fcf0fce2f4f0b81e6ec141f855c47cb613ff` (AI-0 merged on `main`)  
 **HEAD (AI-7 code):** `3e4def1958584a7c153ffc70ef8cb5f6978ecb31`  
 **Reviewed HEAD (this run start):** `d97b10e1a7d650d7c37a989d6184cb6a428c9e57`  
+**P1 HUMAN-PROVEN tip:** `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb`  
+**Windows EXE SHA256:** `7ED12D0FE97E791CEA577096E6A7E3E5CD1013055BFAB363769023E309FF0A13`  
 **Map:** [`AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md`](./AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md) (AI-0 evidence; proposals are not shipped facts)
 
 This file records **what this implementation run actually shipped**, per completed gate. It does not rewrite AI-0 evidence as history.
@@ -17,14 +19,16 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 
 | Field | Value |
 | --- | --- |
-| Highest gate | **AI-7 GATE PASS** |
+| Highest gate | **PERCEPTION P1 HUMAN-PROVEN** (P1a `timeline.inspect_range` + P1b human-readable READ). AI-7 WRITE gate remains the only mutating tool. |
 | Schema | **5** (unchanged; `projectRevision` is Session-runtime only) |
 | Mutation path | `timeline.move_clip` → `applyCommand({ type: "moveClips", clipIds, deltaMs })` → `applyMoveClips` → `moveClip` / `moveClipsByDelta` → `withHistory` |
+| READ path | `USER → AUTO → PERCEPTION / TRUSTED READ → structured evidence → human-readable response` |
+| WRITE path | `USER → AUTO → provider → structured toolRequest → Transaction Preview → Human Apply → EditorCommand → HistoryStack` |
 | Second engine | none (`AIProject` / `AICommandBus` / parallel undo absent) |
 | Direct AI project mutation | none (no `session.project.clips[...]` writes in AI modules) |
 | RAF provider traffic | none (playhead cache is local only) |
 | Secrets in Project / Git | none (API key never persisted; prefs store URL/model only) |
-| Stop | No second mutating tool. Do not merge this PR from this run. |
+| Stop | No P2 / PCM / audio perception / STT / memory / self-eval / AI-8 / new WRITE. Do **not** merge foundation to `main`. |
 
 ### Sequential phase commits
 
@@ -37,6 +41,8 @@ Labels: **SHIPPED** = present on this branch after a passing gate. **PROPOSAL** 
 | AI-5 | `f7db829b89115b66dd0946552031c9a8a74a6ebe` | `feat(ai): add read-only tool registry` |
 | AI-6 | `e9365a94c4d42cce3a5b38976f7202e6c0491e80` | `feat(ai): add permissions and transaction foundation` |
 | AI-7 | `3e4def1958584a7c153ffc70ef8cb5f6978ecb31` | `feat(ai): add transactional move-clip tool` |
+| P1a | `fb6b43f94ff117a1506553cdc243ec7f846ee55d` | `feat(ai): add timeline.inspect_range READ perception tool` |
+| P1b | `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb` | `feat(ai): present inspect READ as grounded human-readable answers` |
 
 ### Focused AI tests (56 / 56)
 
@@ -846,3 +852,267 @@ Prior A–N suite kept; assertions that expected Auto-by-dropdown were retargete
 ### Stop
 
 No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
+
+---
+
+## DIRECTOR WORKSPACE PRESENTATION (UI SPACE PASS)
+
+**Branch:** `cursor/director-workspace-presentation-a23a`  
+**Start HEAD:** `f5c4ab492ce01bdfe409d3ed37fbf53e714d6456` (`ai/ai-director-foundation-v6` Foundation)  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Give Director a real working surface without permanently widening the docked Inspector. Schema stays **5**. No AI-8. No protocol / provider / tool / transaction redesign.
+
+### Presentation states
+
+| State | Behavior |
+| --- | --- |
+| COLLAPSED | Existing 32px right-rail. Preview / Arrange / Mixer keep the workspace. |
+| DOCKED | Current right-side Inspector+Director column. Horizontally resizable. Min 180 / max 720. Docked width persists (`preview-h-split`). |
+| FOCUS | Existing Focus button. Director becomes a non-modal working panel at **35–45%** of the preview workspace (default 40%). Preview / Arrange / Mixer / timeline stay visible. Docked width is restored on exit. |
+
+Focus does **not** reuse the 720px dock cap. Dragging in Focus persists `director-focus-h-split` only.
+
+### Director interior
+
+| Item | Behavior |
+| --- | --- |
+| Diagnostics | Provider / mode / context start compact and collapsible. Advanced still expands the full form. |
+| Conversation | Dedicated pane with its own scroll. Long assistant text wraps and scrolls here. |
+| Result | Transaction / Preview / Applied / Rejected / conflict live in a separate pane. Long details cannot steal the conversation. Splitter when a txn/conflict is present. |
+| Composer | Stays pinned at the bottom. Enter = newline, Ctrl+Enter = Send. |
+| Undo / Redo | Always in the result pane. Same Session history path. |
+
+### Prefs (local UI only — not Project / schema)
+
+`director-presentation`, `director-focus-h-split`, `director-work-split`, `director-diagnostics-collapsed`, plus existing `director-focus`, `preview-h-split`, `director-split`, `director-composer-height`, `inspector-collapsed`, `inspector-section-collapsed`.
+
+### Hard laws kept
+
+Schema **5**. No provider / tool / transaction / command / history / Frame Engine / exporter change. Mutation path unchanged. No second engine.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| `npx vitest run tests/ai/ai-*.test.ts*` | **196 passed** (185 prior + 11 presentation) |
+| `npx vitest run` | **1590 passed / 6 failed / 1596** (179 files passed / 2 failed / 181) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| `git diff 7479fcf -- src/core/frame-engine src/core/exporter` | empty |
+| Windows package | **NOT AVAILABLE** on this Linux VM |
+| New regressions | none |
+
+### Stop
+
+No AI-8. Do **not** merge this PR to `main`. Do **not** merge PR #2 to `main`. Do **not** merge automatically to `ai/ai-director-foundation-v6`.
+
+---
+
+## HUMAN UX + AUTO ORCHESTRATION HARDENING
+
+**Branch:** `cursor/human-ux-auto-orch-dc1c`  
+**HEAD BEFORE:** `3af280fe23273095dc8522033dd18487c2caae0b`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Flexible Director workspace + zero-config AUTO. Schema stays **5**. No AI-8.
+
+### Part A — workspace
+
+- Focus = max sidebar height (Inspector section collapses). Reversible. Restores prior width/split. Does **not** force a full-viewport Director column over Arrange/Mixer.
+- User grows Director toward the bottom with the existing Preview/Arrange splitter.
+- Mixer is progressive: user compact or auto-compact when Arrange is narrower than `TIMELINE_MIN_PX + MIXER_MIN_PX`. Compact = `[timeline][MST]`. Expanded = `[timeline][V1 V2 A1 A2 MST]`. Auto-compact is runtime-only and does not persist as `mixerCollapsed`.
+
+### Part B — AUTO
+
+- Normal chrome: `AUTO ●`, model status, permission status, Context automatic.
+- `timeline.move_clip` accepts exact non-zero integer deltas (including −2000). Zero / fractional / NaN still fail closed.
+- Known prompts: +3000 right, −2000 left. No invented tools.
+- MOVE with no/ambiguous selection fail-closed before the EDIT gate.
+- Session EDIT is runtime only; hydrate/restart returns READ. Provider prefs may persist.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + layout | **249 passed** |
+| `npx vitest run` | **1625 passed / 6 failed / 1631** (182 files passed / 2 failed / 184) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT; PREVIOUS EXE BACKUP: NOT APPLICABLE |
+| New regressions | none |
+
+---
+
+## HUMAN RETEST FAILURE REPAIR — CANONICAL SELECTION + EXTREME RESIZE
+
+**Branch:** `cursor/human-retest-selection-resize-3eb7`  
+**HEAD BEFORE:** `373e5b43ec42112752baf9a54102685db5d7721a`  
+**HEAD AFTER:** `7fe34f65339520d72bae9c46c76a9f7dd9e70987`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Fix only the two human-retest defects. Schema stays **5**. No AI-8.
+
+### Selection
+
+- **Root cause:** `contextLevel=SELECTION` was plan/dropdown language. Execution/validation did not consume canonical `selectionOf` / `selectClips`. UI SELECTION could coexist with an empty sealed clip list, then `draftFromToolRequest` denied on plan NONE.
+- **Canonical source:** Session `selectedClipIds` / `selectedClipId` via `selectionOf` + `canonicalClipSelection` (existing clips only). Not a second store.
+- **Divergence:** `sealDirectorRequest` / `draftFromToolRequest` treated plan/dropdown SELECTION as proof of a clip. Dropdown SELECTION + empty timeline now `SELECTION_REQUIRED`. One unlocked selected clip seals that exact stable ID.
+
+### Extreme resize
+
+- **Root cause:** Preview/Arrange clamp treated the third grid row as Arrange-only (`ARRANGE_MIN_PX=200`) while that row also contains Transport, so max Preview clipped Arrange. Persisted extremes were not re-normalized against a live measured stage.
+- **Repair:** `LOWER_STAGE_MIN_PX = TRANSPORT_MIN_PX + ARRANGE_MIN_PX`. Window resize reclamps when the stage is actually measured. Invalid persisted ratios normalize. Splitter system kept.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AI + layout | **297 passed** |
+| `npx vitest run` | **1640 passed / 6 failed / 1646** (184 files passed / 2 failed / 186) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT |
+| New regressions | none |
+| AI-8 | not started |
+| PR #2 | not merged |
+
+---
+
+## HUMAN RETEST FAILURE #2 — AUTO GATE / ENGLISH 5s / IN-OUT / OMITTED CLIPID
+
+**Branch:** `cursor/human-retest-auto-gate-31a2`  
+**HEAD BEFORE:** `15846df71953ded06137f18fcff289aa809d512b`  
+**HEAD AFTER:** `7aeb08992312ec7c91904d62aa4a5fcd4c800ac7`  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open and unmerged.  
+**Intent:** Repair only the human-proven AUTO / selection / layout failures. Schema stays **5**. No AI-8. No new tools.
+
+### Root causes
+
+- **F1 AUTO Grant/Mode:** English `move marked 5sec to right` / `move clip 5 seconds to the right` classified UNCERTAIN. AUTO stayed ASK/READ/NONE, the local provider still returned `timeline.move_clip`, and `explainToolDenial` told the human to set Advanced Mode AGENT + Grant EDIT.
+- **F2 Context NONE:** Screenshot chrome was correct for canonical Session selection — the light-blue V1 region was IN/OUT (01:29.88–02:19.91), not `selectClips`. AUTO must fail closed and must not invent a target from range.
+- **F3 omitted clipId:** Provider args were `{ deltaMs: 5000 }` only. Binding from request-scoped `canonicalClipSelection` already existed; it was unreachable because F1 never planned SELECTION/EDIT.
+- **F4 layout:** Short measured stages skipped Preview/Arrange reclamp (`stageAvail >= PREVIEW_MIN + LOWER_STAGE_MIN`), so Preview-max could still starve Arrange. Composer min-height was 0.
+
+### Repair
+
+- Intent accepts English + German move marked/clip N sec left/right (`verschiebe…`). AUTO derives AGENT / SELECTION / EDIT.
+- READ + move intent → Allow once / Allow for session / Cancel. Denial text no longer instructs Advanced dropdowns. Session EDIT stays runtime-only.
+- SELECTION_REQUIRED explains: click a clip; In/Out is not a clip selection. Chrome: `Context NONE · no clip — In/Out is not a selection` when a range exists and `selectedClipIds` is empty.
+- Provider-omitted `clipId` binds the sealed canonical id when exactly one unlocked clip is selected via `selectClips` / `selectionOf`.
+- Measured stages always reclamp, including short windows. Director composer `min-height: 56px`.
+
+### Gates (this run)
+
+| Command | Result |
+| --- | --- |
+| `npx tsc --noEmit` | PASS |
+| Focused AUTO + golden + layout | PASS |
+| `npx vitest run` | **1648 passed / 6 failed / 1654** (185 files passed / 2 failed / 187) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx vite build` | PASS (vite 7.3.6, 193 modules) |
+| Golden AUTO +3000 12/12 | PASS |
+| Windows package | **NOT AVAILABLE** on this Linux VM — WINDOWS EXE: NOT BUILT |
+| New regressions | none |
+| AI-8 | not started |
+| PR #2 | not merged |
+
+---
+
+## PERCEPTION P1 — HUMAN-PROVEN
+
+**Branch:** `cursor/perception-p1a-inspect-range-2dcb` (PR **#18** → `ai/ai-director-foundation-v6` only)  
+**Human-proven tip:** `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb`  
+**Windows EXE SHA256:** `7ED12D0FE97E791CEA577096E6A7E3E5CD1013055BFAB363769023E309FF0A13`  
+**P1a:** `fb6b43f94ff117a1506553cdc243ec7f846ee55d` — `timeline.inspect_range`  
+**P1b:** `4bcf1beb4afad764a1374596e0bb58ae0d47dcdb` — human-readable READ presentation  
+**Status:** **HUMAN-PROVEN**  
+**Target:** `ai/ai-director-foundation-v6` — **not** `main`. PR #2 stays open draft → `main`.  
+**Intent:** Perception READ only. Compose existing Project / Session facts. Present them as grounded Director answers. Do not start P2, PCM binding, audio perception, STT, memory, self-evaluation, AI-8, or a new WRITE tool.
+
+### Architecture (do not blur)
+
+```
+READ:  USER → AUTO → PERCEPTION / TRUSTED READ → structured evidence → human-readable response
+WRITE: USER → AUTO → provider → structured toolRequest → Transaction Preview → Human Apply → EditorCommand → HistoryStack
+```
+
+- Schema **5**. `EditorCommand` is the only canonical WRITE. `HistoryStack` is the only canonical undo.
+- No second mutation engine. No direct AI `Project` mutation. Frame Engine / exporter untouched.
+- Local AI remains first-class. Fail closed.
+- READ tool result = factual evidence. Provider text = untrusted presentation.
+- READ cannot escalate to WRITE. Formatting never mutates Project / History / schema.
+
+### P1a — `timeline.inspect_range`
+
+Resonance-owned READ tool. Invoked through `invokeTrustedRead` (grant → handler → revision stamp → audit). Zero mutation.
+
+| Surface | Behavior |
+| --- | --- |
+| Explicit range | Prompt times (`von/zwischen/from/between` seconds or timecode) become `{ fromMs, toMs }`. Unclear ranges fail closed. |
+| Selected-clip range | No explicit times + selected clip(s) → union of selected clip spans. |
+| Playhead fallback | No selection → playhead **±8s** (`INSPECT_PLAYHEAD_WINDOW_MS = 8000`), clamped to `[0, projectDuration]`. |
+| Project span | Last resort when a duration exists; empty project → `INVALID_ARGS`. |
+| DTO facts | clips / tracks / markers / gaps / overlaps; `projectRevision`; schemaVersion 5; selection; playhead; In/Out; loop. |
+| Deterministic hash | FNV-1a over canonical JSON (no `Date.now` / random / UI-only fields). 12/12 identical. |
+| Isolation | Returned DTO is not a live `Project` view. Mutating the DTO does not write Session. |
+| Secrets | No `sourcePath` / `objectUrl` / PCM / spectrum / keys. |
+| Metadata | `mutation: false`, `requiredPermission: READ`, `requiredContext: PROJECT`. |
+
+### P1b — human-readable READ
+
+Successful inspect no longer dumps raw `{"ok":true,"data":{...}}` as the assistant message.
+
+| Surface | Behavior |
+| --- | --- |
+| Structured evidence | `lastReadResult` + audit keep the trusted DTO / `projectRevision` / hash. |
+| Conversation | Language-matched Director answer (DE when the prompt is clearly German; else EN). Exact wording is not contracted; facts must come from evidence. |
+| Provider | Untrusted presentation. Grounded fail-closed against the DTO. Hallucinated markers/clips/media meaning → deterministic fallback. |
+| WRITE during READ | `toolRequest` / Prepared-move claim rejected. Zero transaction / Project / History mutation. |
+| Provider failure | After a successful inspect, evidence is retained; conversation uses the small deterministic fallback. |
+| Raw JSON | Retained internally only. Conversation must not dump `ok` / `data` / `projectRevision` / `hash`. |
+
+### Human evidence (operator EXE)
+
+| Gate | Result |
+| --- | --- |
+| Explicit range | **PASS** |
+| Playhead | **PASS** |
+| Selected clip | **PASS** |
+| READ after WRITE | **PASS** — inspect sees the current canonical revision / state |
+| Existing `timeline.move_clip` +4000 | **PASS** (Preview / Apply / Undo unchanged) |
+| HUMAN-PROVEN | **YES** |
+
+Tests are not a substitute for this EXE proof.
+
+### Automated tests (P1)
+
+- `tests/ai/ai-inspect-range.test.ts` — P1a A–H: hash 12/12, zero Project/History/revision mutation, DTO isolation, fail-closed filters, leak scan, audit, golden move +2000 12/12 + prepared-move seal, intent routing, default range, AUTO `invokeTrustedRead`.
+- `tests/ai/ai-inspect-range-presentation.test.ts` — P1b A–G: explicit / playhead / selection / empty NL, hallucination FAIL CLOSED, READ→WRITE reject, provider-fail fallback, grounded DE, deterministic fallback.
+
+### Final closeout gates (this run, after docs stamp)
+
+| Command | Result |
+| --- | --- |
+| Focused AI (inspect + presentation + golden + prepared-move + tools) | **59 passed** |
+| `npx vitest run tests/ai` | **295 passed** (27 files) |
+| `npx vitest run` | **1712 passed / 6 failed / 1718** (191 files passed / 2 failed / 193) — inherited AFE-15×2 + STRESS-03×4 only |
+| `npx tsc --noEmit` | PASS |
+| `npx vite build` | PASS (vite 7.3.6, 203 modules) |
+| Golden move +2000 12/12 | PASS |
+| Inspect deterministic hash 12/12 | PASS |
+| Prepared-move seal | PASS |
+| READ Project mutation | **NO** |
+| READ History mutation | **NO** |
+| New regressions | none |
+| Frame Engine / exporter | `git diff 7479fcf -- src/core/frame-engine src/core/exporter` empty |
+| Schema | **5** |
+| AI-8 / P2 | not started |
+| PR #2 | not merged to `main` |
+
+### Out of scope (unchanged)
+
+PCM, `audio.get_analysis` envelope, transcript, STT, memory, self-eval, vision, frames, new WRITE, AI-8, auto Apply, Project fields, schema bump, Frame Engine / exporter.
+
+### Stop
+
+P1 is closed. Do **not** start P2. Do **not** merge `ai/ai-director-foundation-v6` into `main` from this run.
+

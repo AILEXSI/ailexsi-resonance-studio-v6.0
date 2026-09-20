@@ -2,7 +2,10 @@ export type ToolGrant = "READ" | "DRAFT" | "EDIT";
 
 export interface JsonSchema {
   type: "object";
-  properties: Record<string, { type?: string; description?: string; enum?: string[] }>;
+  properties: Record<
+    string,
+    { type?: string; description?: string; enum?: string[]; items?: { type: string } }
+  >;
   required?: string[];
   additionalProperties?: boolean;
 }

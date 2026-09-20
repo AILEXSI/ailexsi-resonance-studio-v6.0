@@ -262,13 +262,13 @@ describe("AI Director auto-orchestration A–N", () => {
       model: "",
     });
     const session = fixture();
-    const start = applyLocalConfig(applyProviderId(host(), "openai-compatible"), {
+    const start = applyLocalConfig(applyProviderId(host({ grant: "EDIT" }), "openai-compatible"), {
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "local-a",
     });
     const next = await submitDirectorAutoTurn(
       start,
-      "What is selected?",
+      GOLDEN_MOVE_PROMPT,
       { provider: createMockProvider({ failWith: "PROVIDER_UNAVAILABLE" }), orchestrator: createOrchestrator() },
       undefined,
       session,

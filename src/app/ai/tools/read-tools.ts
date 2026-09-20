@@ -13,6 +13,7 @@ import { createOfflineFeatureExtractor, type MixPcm } from "../../../core/visual
 import { selectionOf, type Session } from "../../session";
 import type { JsonSchema, ToolDefinition, ToolError, ToolResult } from "./types";
 import { isLikelyDisplayName, validateArgs } from "./validate";
+import { INSPECT_RANGE_TOOL, inspectTimelineRange } from "./inspect-range";
 
 export interface ToolRuntime {
   session: Session;
@@ -74,6 +75,18 @@ export const READ_TOOLS: ToolDefinition[] = [
       trackId: { type: "string" },
       timeMs: { type: "number" },
     }, ["trackId"]),
+  },
+  {
+    name: INSPECT_RANGE_TOOL,
+    description:
+      "Compact deterministic timeline facts for a range. Existing Project/Session fields only. No media.",
+    grant: "READ",
+    inputSchema: object({
+      fromMs: { type: "number", description: "Inclusive start (ms)" },
+      toMs: { type: "number", description: "Exclusive end (ms)" },
+      trackIds: { type: "array", description: "Optional track id filter", items: { type: "string" } },
+      maxClips: { type: "number", description: "Fail closed when the range has more clips" },
+    }),
   },
 ];
 
@@ -202,6 +215,13 @@ export function invokeReadTool(name: string, args: unknown, runtime: ToolRuntime
         },
       };
     }
+    case INSPECT_RANGE_TOOL:
+      return inspectTimelineRange(session, {
+        fromMs: typeof rec.fromMs === "number" ? rec.fromMs : undefined,
+        toMs: typeof rec.toMs === "number" ? rec.toMs : undefined,
+        trackIds: Array.isArray(rec.trackIds) ? (rec.trackIds as string[]) : undefined,
+        maxClips: typeof rec.maxClips === "number" ? rec.maxClips : undefined,
+      });
     case "automation.read": {
       const trackId = String(rec.trackId);
       if (trackId === "VIS" || trackId === "master") {

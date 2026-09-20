@@ -1,10 +1,15 @@
 /**
  * DirectorPlan. How to invoke the existing pipeline.
+ * Tool requirement metadata is the source of truth for grant / context.
  * No Project mutation. No tool execution. No second command engine.
  */
 import type { ContextLevel } from "../context/types";
 import type { DirectorMode, Grant } from "../permissions/policy";
+import { toolRequirementOf } from "../tools/requirements";
 import { classifyDirectorIntent, type DirectorIntent } from "./intent";
+
+export const DIRECTOR_RUNTIME_MODES = ["AUTO", "MANUAL"] as const;
+export type DirectorRuntimeMode = (typeof DIRECTOR_RUNTIME_MODES)[number];
 
 export const DIRECTOR_CAPABILITIES = [
   "chat",
@@ -12,6 +17,9 @@ export const DIRECTOR_CAPABILITIES = [
   "timeline.get_clip",
   "audio.get_analysis",
   "timeline.move_clip",
+  "project.describe",
+  "timeline.describe",
+  "timeline.inspect_range",
   "none",
 ] as const;
 
@@ -19,8 +27,12 @@ export type DirectorCapability = (typeof DIRECTOR_CAPABILITIES)[number];
 
 export interface DirectorPlan {
   intent: DirectorIntent;
+  /** Execution mode for the existing permission pipeline. Not the Advanced dropdown. */
   mode: DirectorMode;
+  /** Same value as requiredPermission. Kept for existing AUTO tests. */
   requiredGrant: Grant;
+  /** Tool metadata required permission. AUTO may derive this. AUTO must not grant it. */
+  requiredPermission: Grant;
   contextLevel: ContextLevel;
   capability: DirectorCapability;
   toolName: string | null;
@@ -31,18 +43,51 @@ export interface DirectorPlan {
 export function sealDirectorPlan(plan: DirectorPlan): DirectorPlan {
   return Object.freeze({
     ...plan,
-    intent: Object.freeze({ ...plan.intent }),
+    intent: Object.freeze({
+      ...plan.intent,
+      inspectArgs: plan.intent.inspectArgs
+        ? Object.freeze({ ...plan.intent.inspectArgs })
+        : plan.intent.inspectArgs,
+    }),
   });
 }
 
-/** Compact AUTO status. Not the Advanced dropdown values. */
+/** Compact plan triple. Effective AUTO chrome uses effectiveRequestStatus. */
 export function directorPlanStatus(plan: DirectorPlan): string {
-  return `${plan.mode} · ${plan.contextLevel} · ${plan.requiredGrant}`;
+  return `${plan.mode} · ${plan.contextLevel} · ${plan.requiredPermission}`;
+}
+
+function planFromTool(
+  intent: DirectorIntent,
+  toolName: string | null,
+  mode: DirectorMode,
+  providerAction: DirectorPlan["providerAction"],
+  fallbackContext: ContextLevel = "NONE",
+): DirectorPlan {
+  const requirement = toolRequirementOf(toolName);
+  const requiredPermission = requirement?.requiredPermission ?? "READ";
+  return {
+    intent,
+    mode,
+    requiredGrant: requiredPermission,
+    requiredPermission,
+    contextLevel: requirement?.requiredContext ?? fallbackContext,
+    capability: (toolName && DIRECTOR_CAPABILITIES.includes(toolName as DirectorCapability)
+      ? toolName
+      : toolName
+        ? "none"
+        : providerAction === "chat"
+          ? "chat"
+          : "none") as DirectorCapability,
+    toolName,
+    providerAction,
+  };
 }
 
 /**
- * Minimum necessary context. Selected/markierter clip → SELECTION.
- * General / capability / unsupported → NONE. Never PROJECT.
+ * Request-scoped plan. Manual ASK / READ / NONE never write this.
+ * Selected/markierter clip → SELECTION via tool metadata.
+ * Project-track questions → PROJECT. Greeting / capability / unsupported → NONE.
  */
 export function planDirectorTurn(text: string): DirectorPlan {
   const intent = classifyDirectorIntent(text);
@@ -52,74 +97,24 @@ export function planDirectorTurn(text: string): DirectorPlan {
 function planForIntent(intent: DirectorIntent): DirectorPlan {
   switch (intent.kind) {
     case "ASK_SELECTION":
-      return {
-        intent,
-        mode: "ASK",
-        requiredGrant: "READ",
-        contextLevel: "SELECTION",
-        capability: "timeline.get_selection",
-        toolName: "timeline.get_selection",
-        providerAction: "read-tool",
-      };
+      return planFromTool(intent, "timeline.get_selection", "ASK", "read-tool");
     case "READ_CLIP":
-      return {
-        intent,
-        mode: "ASK",
-        requiredGrant: "READ",
-        contextLevel: "SELECTION",
-        capability: "timeline.get_clip",
-        toolName: "timeline.get_clip",
-        providerAction: "read-tool",
-      };
+      return planFromTool(intent, "timeline.get_clip", "ASK", "read-tool");
+    case "READ_PROJECT":
+      return planFromTool(intent, "project.describe", "ASK", "read-tool");
+    case "INSPECT_RANGE":
+      return planFromTool(intent, "timeline.inspect_range", "ASK", "read-tool");
     case "MOVE_CLIP":
-      return {
-        intent,
-        mode: "AGENT",
-        requiredGrant: "EDIT",
-        contextLevel: "SELECTION",
-        capability: "timeline.move_clip",
-        toolName: "timeline.move_clip",
-        providerAction: "chat",
-      };
+      return planFromTool(intent, "timeline.move_clip", "AGENT", "chat");
     case "DRAFT_CUT":
-      return {
-        intent,
-        mode: "DRAFT",
-        requiredGrant: "READ",
-        contextLevel: "NONE",
-        capability: "none",
-        toolName: null,
-        providerAction: "none",
-      };
+      return planFromTool(intent, null, "DRAFT", "none");
     case "ASK_CAPABILITY":
-      return {
-        intent,
-        mode: "ASK",
-        requiredGrant: "READ",
-        contextLevel: "NONE",
-        capability: "none",
-        toolName: null,
-        providerAction: "none",
-      };
+      return planFromTool(intent, null, "ASK", "none");
+    case "CHAT":
+      return planFromTool(intent, null, "ASK", "none");
     case "UNSUPPORTED":
-      return {
-        intent,
-        mode: "ASK",
-        requiredGrant: "READ",
-        contextLevel: "NONE",
-        capability: "none",
-        toolName: null,
-        providerAction: "none",
-      };
+      return planFromTool(intent, null, "ASK", "none");
     case "UNCERTAIN":
-      return {
-        intent,
-        mode: "ASK",
-        requiredGrant: "READ",
-        contextLevel: "NONE",
-        capability: "chat",
-        toolName: null,
-        providerAction: "chat",
-      };
+      return planFromTool(intent, null, "ASK", "chat", "NONE");
   }
 }

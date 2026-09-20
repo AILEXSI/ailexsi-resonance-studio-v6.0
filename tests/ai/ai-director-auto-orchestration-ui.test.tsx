@@ -17,8 +17,12 @@ import {
   COMPOSER_MAX_PX,
   COMPOSER_MIN_PX,
   DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
   DIRECTOR_FOCUS_KEY,
+  DIRECTOR_PRESENTATION_KEY,
   DIRECTOR_SPLIT_RATIO_KEY,
+  DIRECTOR_WORK_SPLIT_KEY,
   INSPECTOR_COLLAPSED_KEY,
   INSPECTOR_SECTION_COLLAPSED_KEY,
 } from "../../src/core/layout-prefs";
@@ -34,6 +38,10 @@ const PREF_KEYS = [
   DIRECTOR_SPLIT_RATIO_KEY,
   DIRECTOR_FOCUS_KEY,
   DIRECTOR_COMPOSER_HEIGHT_KEY,
+  DIRECTOR_PRESENTATION_KEY,
+  DIRECTOR_FOCUS_H_SPLIT_KEY,
+  DIRECTOR_WORK_SPLIT_KEY,
+  DIRECTOR_DIAGNOSTICS_COLLAPSED_KEY,
   AI_PREFS_KEY,
 ];
 
@@ -172,6 +180,7 @@ describe("AI Director auto-orchestration UI", () => {
     const session = fixture();
     const state: DirectorHostState = {
       ...createDirectorHostState(),
+      grant: "EDIT",
       providerId: "openai-compatible",
       localConfig: { baseUrl: "http://127.0.0.1:11434/v1", model: "local-a" },
       connectionProbe: { phase: "failed", label: "down" },
@@ -182,7 +191,7 @@ describe("AI Director auto-orchestration UI", () => {
     await act(async () => {
       root!.render(<DirectorPanel initialState={state} session={session} />);
     });
-    await send("What is selected?");
+    await send(GOLDEN_MOVE_PROMPT);
     expect(host!.querySelector('[data-testid="director-local-unavailable"]')?.textContent).toMatch(
       /LOCAL AI UNAVAILABLE/,
     );
@@ -223,8 +232,13 @@ describe("AI Director auto-orchestration UI", () => {
   it("AUTO chrome shows plan status; Advanced is MANUAL defaults only", async () => {
     const session = fixture();
     await mountPanel(createDirectorHostState(), session);
-    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO");
-    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("—");
+    expect(host!.querySelector('[data-testid="director-orch-kind"]')?.textContent).toBe("AUTO ●");
+    expect(host!.querySelector('[data-testid="director-permission-status"]')?.textContent).toMatch(/Permission:/);
+    expect(host!.querySelector('[data-testid="director-context-auto"]')?.textContent).toBe(
+      "Context SELECTION · 1 clip",
+    );
+    expect(host!.querySelector('[data-testid="director-intent-status"]')?.textContent).toBe("Intent —");
+    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("AUTO · —");
     await act(async () => {
       (host!.querySelector('[data-testid="director-advanced-toggle"]') as HTMLButtonElement).click();
     });
@@ -252,7 +266,13 @@ describe("AI Director auto-orchestration UI", () => {
     await send(HUMAN_MOVE_PROMPT);
     expect(host!.textContent).not.toMatch(/Context SELECTION is required/);
     expect(host!.querySelector('[data-testid="director-auth"]')).toBeTruthy();
-    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("AGENT · SELECTION · EDIT");
+    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toMatch(
+      /AUTO · Intent MOVE_CLIP · Tool timeline\.move_clip · Context SELECTION · Permission EDIT/,
+    );
+    const planStatus = host!.querySelector('[data-testid="director-plan-status"]') as HTMLElement;
+    expect(planStatus.getAttribute("data-required-permission")).toBe("EDIT");
+    expect(planStatus.getAttribute("data-authorized-grant")).toBe("DRAFT");
+    expect(planStatus.getAttribute("data-runtime-mode")).toBe("AUTO");
     expect((host!.querySelector('[data-testid="director-mode-select"]') as HTMLSelectElement).value).toBe("ASK");
     expect((host!.querySelector('[data-testid="director-grant-select"]') as HTMLSelectElement).value).toBe("DRAFT");
     expect((host!.querySelector('[data-testid="director-context-level"]') as HTMLSelectElement).value).toBe("NONE");

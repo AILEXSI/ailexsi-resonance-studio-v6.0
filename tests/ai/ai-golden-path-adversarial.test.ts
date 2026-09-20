@@ -197,7 +197,6 @@ describe("AI Director golden-path adversarial", () => {
       { message: "x", toolRequest: { name: "timeline.explode", arguments: { deltaMs: 2000 } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: "2000" } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: 0 } } },
-      { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: -2000 } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: 2000.4 } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: Number.POSITIVE_INFINITY } } },
       { message: "x", toolRequest: { name: "timeline.move_clip", arguments: { deltaMs: 99_000_000_000 } } },
@@ -246,13 +245,22 @@ describe("AI Director golden-path adversarial", () => {
       goldenHost({ mode: "ASK", modeLabel: "Mode: ASK" }),
     );
     expect(ask.transaction).toBeNull();
+    const noneEmpty = { ...session, selectedClipId: null, selectedClipIds: [] };
     const none = await submitWith(
-      session,
+      noneEmpty,
       createMockProvider(),
       GOLDEN_MOVE_PROMPT,
       goldenHost({ contextLevel: "NONE" }),
     );
     expect(none.transaction).toBeNull();
+    const noneWithSel = await submitWith(
+      session,
+      createMockProvider(),
+      GOLDEN_MOVE_PROMPT,
+      goldenHost({ contextLevel: "NONE" }),
+    );
+    expect(noneWithSel.transaction?.status).toBe("draft");
+    expect(noneWithSel.transaction?.preview.clipId).toBe(CLIP_ID);
 
     const draftOnly = await submitWith(
       session,

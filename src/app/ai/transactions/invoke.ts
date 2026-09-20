@@ -13,13 +13,22 @@ export function invokeTrustedRead(
   args: unknown,
   opts: { session: Session; grant: unknown; mode: DirectorMode },
 ): ToolResult & { projectRevision: number } {
+  const projectId = opts.session.project.id;
+  const projectRevision = projectRevisionOf(opts.session);
   if (!isGrant(opts.grant) || !canRead(opts.grant as Grant)) {
-    recordAudit({ action: "tool", toolName: name, result: "denied", detail: "GRANT_DENIED" });
+    recordAudit({
+      action: "tool",
+      toolName: name,
+      result: "denied",
+      detail: "GRANT_DENIED",
+      projectId,
+      projectRevision,
+    });
     return {
       ok: false,
       code: "GRANT_DENIED",
       message: "READ grant required",
-      projectRevision: projectRevisionOf(opts.session),
+      projectRevision,
     };
   }
   const result = invokeTool(name, args, { session: opts.session, grant: opts.grant as Grant });
@@ -28,6 +37,8 @@ export function invokeTrustedRead(
     toolName: name,
     result: result.ok ? "ok" : "error",
     detail: result.ok ? undefined : result.code,
+    projectId,
+    projectRevision,
   });
-  return { ...result, projectRevision: projectRevisionOf(opts.session) };
+  return { ...result, projectRevision };
 }

@@ -42,6 +42,12 @@ import {
 import { createPlaybackTap, type PlaybackTap } from "../../core/visualz/playback-tap";
 import { decodeAudio, isPlayableSource } from "../../core/exporter/media";
 import { loadStill, paintStill } from "../../core/still";
+import {
+  applyPreviewCanvasBackingStore,
+  measurePreviewBox,
+  remasurePreviewSurfaces,
+  subscribePreviewRemeasure,
+} from "./preview-surface";
 
 interface Props {
   project: Project;
@@ -78,6 +84,11 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
   const v2Ref = useRef<HTMLAudioElement>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const stillImageRef = useRef<HTMLImageElement | null>(null);
+  const stillAlphaRef = useRef(1);
+  const vizPaintRef = useRef<((dt: number) => void) | null>(null);
+  const remasureRef = useRef(() => {});
   const lastPlayheadRef = useRef(project.playheadMs);
   const tapRef = useRef<PlaybackTap | null>(null);
   const mixPcmRef = useRef<MixPcm | null>(null);
@@ -141,32 +152,45 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     if (!playing && !video.paused) video.pause();
   }, [project.playheadMs, playing, videoClip, videoAsset?.objectUrl, isStill]);
 
+  const paintStillNow = () => {
+    const canvas = stillRef.current;
+    const img = stillImageRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    paintStill(ctx, canvas, img, stillAlphaRef.current);
+  };
+
+  remasureRef.current = () => {
+    remasurePreviewSurfaces({
+      stage: stageRef.current,
+      still: stillRef.current,
+      video: videoRef.current,
+      visualizer: canvasRef.current,
+    });
+    paintStillNow();
+    vizPaintRef.current?.(0);
+  };
+
   useEffect(() => {
-    if (!isStill || !videoClip || !videoAsset?.objectUrl) return;
+    if (!isStill || !videoClip || !videoAsset?.objectUrl) {
+      stillImageRef.current = null;
+      return;
+    }
     const canvas = stillRef.current;
     if (!canvas) return;
     let cancelled = false;
     const alpha =
       layerA * videoAlphaAtClipTime(videoClip, project.playheadMs - videoClip.startMs);
+    stillAlphaRef.current = alpha;
     void (async () => {
       try {
         const img = await loadStill(videoAsset.objectUrl!);
         if (cancelled) return;
-        const parent = canvas.parentElement;
-        const cssW = parent?.clientWidth || canvas.clientWidth || 640;
-        const cssH = parent?.clientHeight || canvas.clientHeight || 360;
-        const dpr = window.devicePixelRatio || 1;
-        const w = Math.max(1, Math.floor(cssW * dpr));
-        const h = Math.max(1, Math.floor(cssH * dpr));
-        if (canvas.width !== w || canvas.height !== h) {
-          canvas.width = w;
-          canvas.height = h;
-        }
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        paintStill(ctx, canvas, img, alpha);
+        stillImageRef.current = img;
+        remasureRef.current();
       } catch {
         /* missing still */
       }
@@ -175,6 +199,14 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
       cancelled = true;
     };
   }, [isStill, videoClip, videoAsset?.objectUrl, project.playheadMs, layerA]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    // Layout-only. Play / playhead must not be the remasure trigger —
+    // maximize and splitter have to settle through subscribePreviewRemeasure.
+    return subscribePreviewRemeasure(stage, () => remasureRef.current());
+  }, [isStill, showViz, videoAsset?.objectUrl, videoClip?.id]);
 
   useEffect(() => {
     const bind = (el: HTMLAudioElement | null, trackId: TrackId) => {
@@ -329,16 +361,8 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     if (!ctx) return;
 
     const paint = (dt: number) => {
-      const parent = canvas.parentElement;
-      const cssW = parent?.clientWidth || canvas.clientWidth || 640;
-      const cssH = parent?.clientHeight || canvas.clientHeight || 360;
-      const dpr = window.devicePixelRatio || 1;
-      const w = Math.max(1, Math.floor(cssW * dpr));
-      const h = Math.max(1, Math.floor(cssH * dpr));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-      }
+      const box = measurePreviewBox(canvas.parentElement ?? stageRef.current);
+      if (box) applyPreviewCanvasBackingStore(canvas, box);
       const durationMs = Math.max(projectDurationMs(project), 10_000);
       let live = null as ReturnType<PlaybackTap["sample"]> | null;
       try {
@@ -361,14 +385,13 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
       renderVisualizerScene(ctx, canvas.width, canvas.height, sceneId, features, dt);
     };
 
+    vizPaintRef.current = paint;
     const dt = Math.max(0, (project.playheadMs - lastPlayheadRef.current) / 1000);
     lastPlayheadRef.current = project.playheadMs;
     paint(dt);
-
-    const target = canvas.parentElement ?? canvas;
-    const ro = new ResizeObserver(() => paint(0));
-    ro.observe(target);
-    return () => ro.disconnect();
+    return () => {
+      if (vizPaintRef.current === paint) vizPaintRef.current = null;
+    };
   }, [showViz, project, mixReady, analysisClip, audioLoaded, hasClipAtPlayhead]);
 
   const activeLabel = formatResolvedSource(picture);
@@ -379,7 +402,7 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
         <span>Preview</span>
         <span>{playing ? "Live" : "Paused"}</span>
       </div>
-      <div className="preview-stage">
+      <div className="preview-stage" ref={stageRef} data-testid="preview-stage">
         {videoAsset?.objectUrl && videoClip ? (
           <>
             {isStill ? (
