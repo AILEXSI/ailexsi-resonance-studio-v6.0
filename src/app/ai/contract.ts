@@ -89,3 +89,20 @@ export function validateDirectorResponseShape(value: unknown): DirectorStructure
 export function isKnownMutatingTool(name: string): boolean {
   return name === DIRECTOR_MUTATING_TOOL;
 }
+
+/**
+ * Contract success language. A "Prepared move" / "Preview…" claim is not
+ * successful preparation unless a sealed Transaction PREVIEW exists.
+ */
+export const UNSEALED_PREPARED_MOVE_MESSAGE =
+  "No sealed Transaction PREVIEW. Provider prose is not a draft. No Apply/Reject. No project changes were made.";
+
+export function looksLikePreparedMoveClaim(text: string): boolean {
+  const n = text.trim().toLowerCase();
+  if (!n) return false;
+  return (
+    n.includes("prepared move") ||
+    n.includes("preview timeline.move_clip") ||
+    /^preview[…. ]/.test(n)
+  );
+}

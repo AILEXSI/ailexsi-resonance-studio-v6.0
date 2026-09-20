@@ -50,12 +50,15 @@ import {
   DIRECTOR_MUTATING_TOOL,
   DIRECTOR_RESPONSE_CONTRACT_PROMPT,
   isKnownMutatingTool,
+  looksLikePreparedMoveClaim,
   parseDirectorResponse,
+  UNSEALED_PREPARED_MOVE_MESSAGE,
   type DirectorToolRequest,
 } from "./contract";
 import {
   clearDiscoveryCache,
   directorPlanStatus,
+  parseMoveClipPrompt,
   pickAutoModel,
   planDirectorTurn,
   resolveAutoRuntime,
@@ -815,6 +818,49 @@ function applyAssistantStatus(state: DirectorHostState, previous: DirectorHostSt
   };
 }
 
+/**
+ * AUTO already classified MOVE_CLIP + exact delta before the provider reply.
+ * qwen often emits contract "Prepared move…" prose and omits toolRequest.
+ * Synthesize the sealed plan's tool request — never invent a different tool.
+ */
+function toolRequestFromSealedMovePlan(
+  state: DirectorHostState,
+  userText: string,
+): DirectorToolRequest | null {
+  const sealed = state.sealedRequest;
+  if (!sealed) return null;
+  if (sealed.plan.intent.reason === "manual-settings") return null;
+  if (sealed.plan.intent.kind !== "MOVE_CLIP") return null;
+  if (sealed.plan.toolName !== DIRECTOR_MUTATING_TOOL) return null;
+  const move = parseMoveClipPrompt(sealed.userText || userText);
+  if (!move) return null;
+  return {
+    name: DIRECTOR_MUTATING_TOOL,
+    arguments: sealed.clipId
+      ? { clipId: sealed.clipId, deltaMs: move.deltaMs }
+      : { deltaMs: move.deltaMs },
+  };
+}
+
+function rejectUnsealedPreparedMoveClaim(state: DirectorHostState): DirectorHostState {
+  if (state.transaction?.status === "draft") return state;
+  const claimed = state.conversation.messages.some(
+    (message) => message.role === "assistant" && looksLikePreparedMoveClaim(message.text),
+  );
+  if (!claimed) return state;
+  return {
+    ...state,
+    conversation: {
+      ...state.conversation,
+      messages: state.conversation.messages.map((message) =>
+        message.role === "assistant" && looksLikePreparedMoveClaim(message.text)
+          ? { ...message, text: UNSEALED_PREPARED_MOVE_MESSAGE }
+          : message,
+      ),
+    },
+  };
+}
+
 function draftFromToolRequest(
   state: DirectorHostState,
   session: Session,
@@ -1006,19 +1052,20 @@ export async function submitDirectorProviderTurn(
     },
     state,
   );
-  if (!parsed.toolRequest) return next;
+  const toolRequest = parsed.toolRequest ?? toolRequestFromSealedMovePlan(next, text);
+  if (!toolRequest) return rejectUnsealedPreparedMoveClaim(next);
   if (!session) {
-    return {
+    return rejectUnsealedPreparedMoveClaim({
       ...next,
       conversation: appendDirectorMessage(
         next.conversation,
         "assistant",
         "Denied: no project session is available. No project changes were made.",
       ),
-    };
+    });
   }
-  next = draftFromToolRequest(next, session, parsed.toolRequest);
-  return next;
+  next = draftFromToolRequest(next, session, toolRequest);
+  return rejectUnsealedPreparedMoveClaim(next);
 }
 
 export function applyDirectorSurface(
