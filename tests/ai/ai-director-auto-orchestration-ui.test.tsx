@@ -237,7 +237,7 @@ describe("AI Director auto-orchestration UI", () => {
       "Context SELECTION · 1 clip",
     );
     expect(host!.querySelector('[data-testid="director-intent-status"]')?.textContent).toBe("Intent —");
-    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("—");
+    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("AUTO · —");
     await act(async () => {
       (host!.querySelector('[data-testid="director-advanced-toggle"]') as HTMLButtonElement).click();
     });
@@ -265,7 +265,13 @@ describe("AI Director auto-orchestration UI", () => {
     await send(HUMAN_MOVE_PROMPT);
     expect(host!.textContent).not.toMatch(/Context SELECTION is required/);
     expect(host!.querySelector('[data-testid="director-auth"]')).toBeTruthy();
-    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toBe("AGENT · SELECTION · EDIT");
+    expect(host!.querySelector('[data-testid="director-plan-status"]')?.textContent).toMatch(
+      /AUTO · Intent MOVE_CLIP · Tool timeline\.move_clip · Context SELECTION · Permission EDIT/,
+    );
+    const planStatus = host!.querySelector('[data-testid="director-plan-status"]') as HTMLElement;
+    expect(planStatus.getAttribute("data-required-permission")).toBe("EDIT");
+    expect(planStatus.getAttribute("data-authorized-grant")).toBe("DRAFT");
+    expect(planStatus.getAttribute("data-runtime-mode")).toBe("AUTO");
     expect((host!.querySelector('[data-testid="director-mode-select"]') as HTMLSelectElement).value).toBe("ASK");
     expect((host!.querySelector('[data-testid="director-grant-select"]') as HTMLSelectElement).value).toBe("DRAFT");
     expect((host!.querySelector('[data-testid="director-context-level"]') as HTMLSelectElement).value).toBe("NONE");
