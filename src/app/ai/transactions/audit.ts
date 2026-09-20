@@ -7,6 +7,8 @@ export interface AuditEntry {
   toolName?: string;
   result: "ok" | "denied" | "error";
   detail?: string;
+  projectId?: string;
+  projectRevision?: number;
 }
 
 const entries: AuditEntry[] = [];

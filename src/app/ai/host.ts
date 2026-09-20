@@ -46,6 +46,8 @@ import {
 } from "./transactions/transaction";
 import { draftMoveClip, type MoveClipArgs } from "./tools/move-clip";
 import { invokeTool, listTools } from "./tools/registry";
+import { invokeTrustedRead } from "./transactions/invoke";
+import { INSPECT_RANGE_TOOL } from "./tools/inspect-range";
 import {
   DIRECTOR_MUTATING_TOOL,
   DIRECTOR_RESPONSE_CONTRACT_PROMPT,
@@ -1221,6 +1223,14 @@ function runReadPlan(
   }
   if (plan.toolName === "timeline.get_selection") {
     const result = invokeTool("timeline.get_selection", {}, { session, grant });
+    return appendTurn(prepared, userText, formatToolPayload(result));
+  }
+  if (plan.toolName === INSPECT_RANGE_TOOL) {
+    const result = invokeTrustedRead(INSPECT_RANGE_TOOL, plan.intent.inspectArgs ?? {}, {
+      session,
+      grant,
+      mode: plan.mode,
+    });
     return appendTurn(prepared, userText, formatToolPayload(result));
   }
   if (plan.toolName === "project.describe" || plan.toolName === "timeline.describe") {

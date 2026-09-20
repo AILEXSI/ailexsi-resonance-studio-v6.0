@@ -3,10 +3,13 @@
  * never executes tools, never asks the LLM for permissions.
  */
 
+import { parseInspectRangePrompt, type InspectRangeArgs } from "../tools/inspect-range";
+
 export const DIRECTOR_INTENT_KINDS = [
   "ASK_SELECTION",
   "READ_CLIP",
   "READ_PROJECT",
+  "INSPECT_RANGE",
   "MOVE_CLIP",
   "DRAFT_CUT",
   "ASK_CAPABILITY",
@@ -21,6 +24,8 @@ export interface DirectorIntent {
   kind: DirectorIntentKind;
   confidence: "known" | "uncertain";
   reason: string;
+  /** Explicit inspect_range args. Omitted → tool default range. */
+  inspectArgs?: InspectRangeArgs;
 }
 
 export function normalizeDirectorPrompt(text: string): string {
@@ -178,6 +183,18 @@ export function classifyDirectorIntent(text: string): DirectorIntent {
       kind: "MOVE_CLIP",
       confidence: "known",
       reason: `move selected clip ${move.deltaMs > 0 ? "+" : ""}${seconds}s ${dir}`,
+    };
+  }
+  const inspect = parseInspectRangePrompt(text);
+  if (inspect) {
+    const hasExplicit = inspect.fromMs != null && inspect.toMs != null;
+    return {
+      kind: "INSPECT_RANGE",
+      confidence: "known",
+      reason: hasExplicit
+        ? `inspect range ${inspect.fromMs}-${inspect.toMs}`
+        : "inspect default range",
+      inspectArgs: inspect,
     };
   }
   return { kind: "UNCERTAIN", confidence: "uncertain", reason: "no known route" };

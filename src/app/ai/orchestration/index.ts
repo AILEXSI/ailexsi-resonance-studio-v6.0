@@ -7,6 +7,7 @@ export {
   type DirectorIntent,
   type DirectorIntentKind,
 } from "./intent";
+export { parseInspectRangePrompt } from "../tools/inspect-range";
 export {
   planDirectorTurn,
   sealDirectorPlan,

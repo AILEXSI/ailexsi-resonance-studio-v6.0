@@ -37,6 +37,21 @@ export function validateArgs(schema: JsonSchema, args: unknown): ToolError | nul
         return { ok: false, code: "INVALID_ARGS", message: `${key} must be a finite number` };
       }
     }
+    if (spec.type === "array") {
+      if (!Array.isArray(rec[key])) {
+        return { ok: false, code: "INVALID_ARGS", message: `${key} must be an array` };
+      }
+      const itemType = spec.items?.type;
+      if (itemType === "string" && rec[key].some((v) => typeof v !== "string")) {
+        return { ok: false, code: "INVALID_ARGS", message: `${key} must be a string array` };
+      }
+      if (
+        itemType === "number" &&
+        rec[key].some((v) => typeof v !== "number" || !Number.isFinite(v))
+      ) {
+        return { ok: false, code: "INVALID_ARGS", message: `${key} must be a number array` };
+      }
+    }
     if (spec.enum && !spec.enum.includes(String(rec[key]))) {
       return { ok: false, code: "INVALID_ARGS", message: `${key} is not an allowed value` };
     }

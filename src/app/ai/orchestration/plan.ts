@@ -19,6 +19,7 @@ export const DIRECTOR_CAPABILITIES = [
   "timeline.move_clip",
   "project.describe",
   "timeline.describe",
+  "timeline.inspect_range",
   "none",
 ] as const;
 
@@ -42,7 +43,12 @@ export interface DirectorPlan {
 export function sealDirectorPlan(plan: DirectorPlan): DirectorPlan {
   return Object.freeze({
     ...plan,
-    intent: Object.freeze({ ...plan.intent }),
+    intent: Object.freeze({
+      ...plan.intent,
+      inspectArgs: plan.intent.inspectArgs
+        ? Object.freeze({ ...plan.intent.inspectArgs })
+        : plan.intent.inspectArgs,
+    }),
   });
 }
 
@@ -96,6 +102,8 @@ function planForIntent(intent: DirectorIntent): DirectorPlan {
       return planFromTool(intent, "timeline.get_clip", "ASK", "read-tool");
     case "READ_PROJECT":
       return planFromTool(intent, "project.describe", "ASK", "read-tool");
+    case "INSPECT_RANGE":
+      return planFromTool(intent, "timeline.inspect_range", "ASK", "read-tool");
     case "MOVE_CLIP":
       return planFromTool(intent, "timeline.move_clip", "AGENT", "chat");
     case "DRAFT_CUT":

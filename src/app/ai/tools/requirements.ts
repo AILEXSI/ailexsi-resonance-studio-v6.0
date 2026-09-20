@@ -76,6 +76,14 @@ export const TOOL_REQUIREMENTS: readonly ToolRequirement[] = [
     targetType: "none",
     supportsMultipleTargets: false,
   },
+  {
+    name: "timeline.inspect_range",
+    mutation: false,
+    requiredPermission: "READ",
+    requiredContext: "PROJECT",
+    targetType: "project",
+    supportsMultipleTargets: false,
+  },
 ];
 
 export function toolRequirementOf(name: string | null | undefined): ToolRequirement | null {
