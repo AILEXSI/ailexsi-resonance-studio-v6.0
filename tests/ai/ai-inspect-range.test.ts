@@ -361,8 +361,16 @@ describe("P1a timeline.inspect_range", () => {
     expect(next.lastPlan?.toolName).toBe(INSPECT_RANGE_TOOL);
     const text = next.conversation.messages.at(-1)?.text ?? "";
     expect(text).toMatch(/clip_A/);
-    expect(text).toMatch(/mk_drop/);
-    expect(text).toMatch(/"projectRevision":42/);
+    expect(text).toMatch(/mk_drop|DROP/);
+    expect(text).not.toMatch(/\{\s*"ok"\s*:\s*true/);
+    expect(text).not.toContain('"projectRevision":42');
+    expect(next.lastReadResult?.result.ok).toBe(true);
+    if (next.lastReadResult?.result.ok) {
+      expect(next.lastReadResult.result.data).toMatchObject({
+        projectRevision: 42,
+        hash: expect.stringMatching(/^[0-9a-f]{8}$/),
+      });
+    }
     expect(text).not.toMatch(LEAK_RE);
     expect(session.project).toBe(before);
     expect(session.history.past.length).toBe(0);

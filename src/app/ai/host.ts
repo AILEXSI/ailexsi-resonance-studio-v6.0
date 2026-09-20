@@ -47,7 +47,12 @@ import {
 import { draftMoveClip, type MoveClipArgs } from "./tools/move-clip";
 import { invokeTool, listTools } from "./tools/registry";
 import { invokeTrustedRead } from "./transactions/invoke";
-import { INSPECT_RANGE_TOOL } from "./tools/inspect-range";
+import { INSPECT_RANGE_TOOL, type InspectRangeDto } from "./tools/inspect-range";
+import {
+  formatInspectFailure,
+  presentInspectRead,
+  type DirectorReadEvidence,
+} from "./read-presentation";
 import {
   DIRECTOR_MUTATING_TOOL,
   DIRECTOR_RESPONSE_CONTRACT_PROMPT,
@@ -181,6 +186,8 @@ export interface DirectorHostState {
   heldUserText: string | null;
   localUnavailable: boolean;
   lastNoTool: DirectorNoToolResult | null;
+  /** Trusted READ evidence. Runtime only — not conversation text, not Project. */
+  lastReadResult: DirectorReadEvidence | null;
   /** User-facing Director runtime. AUTO is normal. MANUAL is Advanced/diagnostics. */
   runtimeMode: DirectorRuntimeMode;
 }
@@ -215,6 +222,7 @@ export function createDirectorHostState(): DirectorHostState {
     heldUserText: null,
     localUnavailable: false,
     lastNoTool: null,
+    lastReadResult: null,
     runtimeMode: "AUTO",
   };
 }
@@ -1207,12 +1215,17 @@ function appendTurn(
   };
 }
 
-function runReadPlan(
+async function runReadPlan(
   state: DirectorHostState,
   plan: DirectorPlan,
   userText: string,
   session: Session | undefined,
-): DirectorHostState {
+  presentation?: {
+    provider: AIProvider;
+    orchestrator: Orchestrator;
+    signal?: AbortSignal;
+  },
+): Promise<DirectorHostState> {
   const prepared = attachSubmitSnapshot(
     state.sealedRequest ? state : applyOrchestrationPlan(state, plan, session, userText),
     session,
@@ -1231,7 +1244,32 @@ function runReadPlan(
       grant,
       mode: plan.mode,
     });
-    return appendTurn(prepared, userText, formatToolPayload(result));
+    const evidenceBase = { toolName: INSPECT_RANGE_TOOL, result };
+    if (!result.ok) {
+      const lastReadResult: DirectorReadEvidence = {
+        ...evidenceBase,
+        presentation: { source: "inspect-error", reason: result.code },
+      };
+      return appendTurn(prepared, userText, formatInspectFailure(result, userText), {
+        lastReadResult,
+        transaction: null,
+      });
+    }
+    const presented = await presentInspectRead({
+      dto: result.data as InspectRangeDto,
+      userText,
+      provider: presentation?.provider,
+      orchestrator: presentation?.orchestrator,
+      signal: presentation?.signal,
+    });
+    const lastReadResult: DirectorReadEvidence = {
+      ...evidenceBase,
+      presentation: { source: presented.source, reason: presented.reason },
+    };
+    return appendTurn(prepared, userText, presented.text, {
+      lastReadResult,
+      transaction: null,
+    });
   }
   if (plan.toolName === "project.describe" || plan.toolName === "timeline.describe") {
     const result = invokeTool(plan.toolName, {}, { session, grant });
@@ -1357,7 +1395,25 @@ export async function submitDirectorAutoTurn(
     );
   }
   if (plan.providerAction === "read-tool") {
-    return runReadPlan(next, plan, text, session);
+    const presentationProvider = opts?.providerInjected
+      ? runtime.provider
+      : resolved.unavailable
+        ? undefined
+        : resolved.providerId === "openai-compatible"
+          ? createOpenAICompatibleProvider({
+              ...next.localConfig,
+              model: model || next.localConfig.model,
+            })
+          : runtime.provider;
+    return runReadPlan(
+      next,
+      plan,
+      text,
+      session,
+      presentationProvider
+        ? { provider: presentationProvider, orchestrator: runtime.orchestrator, signal }
+        : undefined,
+    );
   }
 
   const provider = opts?.providerInjected
@@ -1385,6 +1441,8 @@ export async function retryDirectorLocalHealth(state: DirectorHostState): Promis
   const testing = beginDirectorConnectionTest({ ...state, localUnavailable: false });
   return finishDirectorConnectionTest(testing);
 }
+
+export type { DirectorReadEvidence } from "./read-presentation";
 
 export {
   clearDiscoveryCache,
