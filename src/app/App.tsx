@@ -64,6 +64,8 @@ import { wavExportPickerOptions } from "../core/project-file";
 import { MediaBrowser } from "../ui/media-browser/MediaBrowser";
 import { Preview } from "../ui/preview/Preview";
 import { Inspector } from "../ui/inspector/Inspector";
+import { DirectorPanel } from "../ui/director/DirectorPanel";
+import { isDirectorEnabled, persistDirectorEnabled } from "./ai/flag";
 import { Transport } from "../ui/transport/Transport";
 import { Timeline } from "../ui/timeline/Timeline";
 import { Mixer, type MixPeaks } from "../ui/mixer/Mixer";
@@ -126,20 +128,39 @@ import {
 import { relinkSelectionForAsset, relinkSelectionOf } from "../core/relink";
 import { Cutter } from "../ui/cutter/Cutter";
 import {
-  ARRANGE_MIN_PX,
+  DEFAULT_DIRECTOR_SPLIT_RATIO,
+  DEFAULT_H_SPLIT_RATIO,
+  DIRECTOR_SPLITTER_PX,
   H_SPLITTER_PX,
   INSPECTOR_COLLAPSED_PX,
+  INSPECTOR_MAX_PX,
   INSPECTOR_MIN_PX,
   PREVIEW_H_MIN_PX,
-  PREVIEW_MIN_PX,
   SPLITTER_PX,
+  applyDirectorFocusToggle,
+  applyDirectorSplitPointer,
+  applyFocusHSplitPointer,
   applyHSplitPointer,
   applyMixerWidthPointer,
   applySplitPointer,
   applyTimelineFocusToggle,
   browserLayoutStorage,
+  clampDirectorSplitRatio,
+  clampFocusHSplitRatio,
   clampHSplitRatio,
+  clampSplitRatio,
+  isMeasuredStageHeight,
+  legalSplitMins,
+  normalizePersistedSplitRatio,
+  TRANSPORT_MIN_PX,
+  directorPresentationOf,
+  DEFAULT_DIRECTOR_FOCUS_H_SPLIT,
   loadCollapsedGroupIds,
+  loadDirectorFocus,
+  loadDirectorFocusHSplitRatio,
+  loadDirectorNormalSplitRatio,
+  loadDirectorSplitRatio,
+  loadInspectorSectionCollapsed,
   loadOpenVolumeLaneIds,
   loadHSplitRatio,
   loadInspectorCollapsed,
@@ -152,8 +173,14 @@ import {
   loadTimelineFocus,
   saveCollapsedGroupIds,
   saveOpenVolumeLaneIds,
+  saveDirectorFocus,
+  saveDirectorFocusHSplitRatio,
+  saveDirectorNormalSplitRatio,
+  saveDirectorPresentation,
+  saveDirectorSplitRatio,
   saveHSplitRatio,
   saveInspectorCollapsed,
+  saveInspectorSectionCollapsed,
   saveLaneHeights,
   saveLaneLabelPx,
   saveMixerCollapsed,
@@ -161,6 +188,8 @@ import {
   saveNormalSplitRatio,
   saveSplitRatio,
   saveTimelineFocus,
+  shouldAutoCompactMixer,
+  mixerChromeOf,
   toggleCollapsedGroupId,
   toggleOpenVolumeLaneId,
   TIMELINE_MIN_PX,
@@ -192,7 +221,20 @@ export function App() {
   shortcutsOpenRef.current = shortcutsOpen;
   const layoutStore = browserLayoutStorage();
   const [mixerCollapsed, setMixerCollapsed] = useState(() => loadMixerCollapsed(layoutStore));
+  const [mixerAutoCompact, setMixerAutoCompact] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(() => loadInspectorCollapsed(layoutStore));
+  const [inspectorSectionCollapsed, setInspectorSectionCollapsed] = useState(() =>
+    loadInspectorSectionCollapsed(layoutStore),
+  );
+  const [directorEnabled, setDirectorEnabled] = useState(() => isDirectorEnabled());
+  const [directorFocus, setDirectorFocus] = useState(() => loadDirectorFocus(layoutStore));
+  const [directorSplitRatio, setDirectorSplitRatio] = useState(() => loadDirectorSplitRatio(layoutStore));
+  const [directorNormalSplit, setDirectorNormalSplit] = useState(() =>
+    loadDirectorNormalSplitRatio(layoutStore),
+  );
+  const [directorFocusRestoreCollapsed, setDirectorFocusRestoreCollapsed] = useState(() =>
+    loadInspectorSectionCollapsed(layoutStore),
+  );
   const [collapsedGroupIds, setCollapsedGroupIds] = useState(() => loadCollapsedGroupIds(layoutStore));
   const [openVolumeLaneIds, setOpenVolumeLaneIds] = useState(() => loadOpenVolumeLaneIds(layoutStore));
   const [mixerWidthPx, setMixerWidthPx] = useState(() => loadMixerWidth(layoutStore));
@@ -202,6 +244,7 @@ export function App() {
   const arrangeRowRef = useRef<HTMLDivElement>(null);
   const [timelineFocus, setTimelineFocus] = useState(() => loadTimelineFocus(layoutStore));
   const [normalSplitRatio, setNormalSplitRatio] = useState(() => loadNormalSplitRatio(layoutStore));
+  const [stageAvailPx, setStageAvailPx] = useState(0);
   const [splitRatio, setSplitRatio] = useState(() => {
     if (!loadTimelineFocus(layoutStore)) return loadSplitRatio(layoutStore);
     return applyTimelineFocusToggle({
@@ -212,13 +255,28 @@ export function App() {
   });
   const splitRatioRef = useRef(splitRatio);
   splitRatioRef.current = splitRatio;
+  const stageAvailPxRef = useRef(stageAvailPx);
+  stageAvailPxRef.current = stageAvailPx;
   const normalSplitRatioRef = useRef(normalSplitRatio);
   normalSplitRatioRef.current = normalSplitRatio;
   const timelineFocusRef = useRef(timelineFocus);
   timelineFocusRef.current = timelineFocus;
-  const [hSplitRatio, setHSplitRatio] = useState(() => loadHSplitRatio(layoutStore));
+  const [hSplitRatio, setHSplitRatio] = useState(() => {
+    if (loadDirectorFocus(layoutStore) && isDirectorEnabled()) {
+      return loadDirectorFocusHSplitRatio(layoutStore);
+    }
+    return loadHSplitRatio(layoutStore);
+  });
   const hSplitRatioRef = useRef(hSplitRatio);
   hSplitRatioRef.current = hSplitRatio;
+  const [directorFocusHSplit, setDirectorFocusHSplit] = useState(() =>
+    loadDirectorFocusHSplitRatio(layoutStore),
+  );
+  const directorFocusHSplitRef = useRef(directorFocusHSplit);
+  directorFocusHSplitRef.current = directorFocusHSplit;
+  const [directorDockedHSplit, setDirectorDockedHSplit] = useState(() => loadHSplitRatio(layoutStore));
+  const directorDockedHSplitRef = useRef(directorDockedHSplit);
+  directorDockedHSplitRef.current = directorDockedHSplit;
   const [laneLabelPx, setLaneLabelPx] = useState(() => loadLaneLabelPx(layoutStore));
   const [laneHeights, setLaneHeights] = useState<LaneHeights>(() => loadLaneHeights(layoutStore));
   const [screen, setScreen] = useState<ProductionScreen>("arrange");
@@ -227,6 +285,10 @@ export function App() {
   projectPanelOpenRef.current = projectPanelOpen;
   const stageRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const inspectorBodyRef = useRef<HTMLDivElement>(null);
+  const directorSplitRatioRef = useRef(directorSplitRatio);
+  directorSplitRatioRef.current = directorSplitRatio;
+  const directorSplitDragRef = useRef(false);
   const relinkInputRef = useRef<HTMLInputElement>(null);
   const splitDragRef = useRef(false);
   const hSplitDragRef = useRef(false);
@@ -845,6 +907,7 @@ export function App() {
     setSession((s) => ({
       ...s,
       history: { past: [...base.history.past, structuredClone(base.project)], future: [] },
+      projectRevision: (s.projectRevision ?? 0) + 1,
       status: selectionOf(s).length > 1 ? "Moved clips" : "Moved clip",
       error: null,
     }));
@@ -1171,11 +1234,144 @@ export function App() {
     });
   };
 
+  const persistPresentation = (next: {
+    inspectorCollapsed: boolean;
+    directorEnabled: boolean;
+    directorFocus: boolean;
+  }) => {
+    saveDirectorPresentation(layoutStore, directorPresentationOf(next));
+  };
+
   const toggleInspectorCollapsed = () => {
     setInspectorCollapsed((prev) => {
       const next = !prev;
       saveInspectorCollapsed(layoutStore, next);
+      persistPresentation({
+        inspectorCollapsed: next,
+        directorEnabled,
+        directorFocus,
+      });
       return next;
+    });
+  };
+
+  const closeDirector = () => {
+    setDirectorEnabled(false);
+    persistDirectorEnabled(false);
+    persistPresentation({
+      inspectorCollapsed,
+      directorEnabled: false,
+      directorFocus,
+    });
+  };
+
+  const openDirector = () => {
+    setDirectorEnabled(true);
+    persistDirectorEnabled(true);
+    if (inspectorCollapsed) {
+      setInspectorCollapsed(false);
+      saveInspectorCollapsed(layoutStore, false);
+    }
+    persistPresentation({
+      inspectorCollapsed: false,
+      directorEnabled: true,
+      directorFocus,
+    });
+    if (directorFocus) {
+      setHSplitRatio(directorFocusHSplitRef.current);
+    }
+  };
+
+  const toggleDirector = () => {
+    if (directorEnabled && !inspectorCollapsed) {
+      closeDirector();
+      return;
+    }
+    openDirector();
+  };
+
+  const hideInspectorSection = directorEnabled && (directorFocus || inspectorSectionCollapsed);
+
+  const workspaceAvailablePx = () => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return undefined;
+    const width = workspace.getBoundingClientRect().width;
+    if (!Number.isFinite(width) || width < PREVIEW_H_MIN_PX + INSPECTOR_MIN_PX) return undefined;
+    return Math.max(1, width - H_SPLITTER_PX);
+  };
+
+  const toggleInspectorSectionCollapsed = () => {
+    if (directorFocus) {
+      const available = workspaceAvailablePx();
+      const next = applyDirectorFocusToggle({
+        currentlyFocused: true,
+        inspectorSectionCollapsed,
+        currentSplitRatio: directorSplitRatioRef.current,
+        storedNormalSplit: directorNormalSplit,
+        storedSectionCollapsed: directorFocusRestoreCollapsed,
+        currentHSplit: hSplitRatioRef.current,
+        storedDockedHSplit: directorDockedHSplitRef.current,
+        storedFocusHSplit: directorFocusHSplitRef.current,
+        availablePx: available,
+      });
+      setDirectorFocus(false);
+      setInspectorSectionCollapsed(next.inspectorSectionCollapsed);
+      setDirectorSplitRatio(next.splitRatio);
+      setDirectorNormalSplit(next.normalSplit);
+      setHSplitRatio(next.hSplitRatio);
+      setDirectorDockedHSplit(next.dockedHSplit);
+      setDirectorFocusHSplit(next.focusHSplit);
+      saveDirectorFocus(layoutStore, false);
+      saveInspectorSectionCollapsed(layoutStore, next.inspectorSectionCollapsed);
+      saveDirectorSplitRatio(layoutStore, next.splitRatio);
+      saveDirectorNormalSplitRatio(layoutStore, next.normalSplit);
+      saveHSplitRatio(layoutStore, next.hSplitRatio);
+      saveDirectorFocusHSplitRatio(layoutStore, next.focusHSplit);
+      persistPresentation({
+        inspectorCollapsed,
+        directorEnabled,
+        directorFocus: false,
+      });
+      return;
+    }
+    setInspectorSectionCollapsed((prev) => {
+      const next = !prev;
+      saveInspectorSectionCollapsed(layoutStore, next);
+      return next;
+    });
+  };
+
+  const toggleDirectorFocus = () => {
+    const available = workspaceAvailablePx();
+    const next = applyDirectorFocusToggle({
+      currentlyFocused: directorFocus,
+      inspectorSectionCollapsed,
+      currentSplitRatio: directorSplitRatioRef.current,
+      storedNormalSplit: directorNormalSplit,
+      storedSectionCollapsed: directorFocusRestoreCollapsed,
+      currentHSplit: hSplitRatioRef.current,
+      storedDockedHSplit: directorDockedHSplitRef.current,
+      storedFocusHSplit: directorFocusHSplitRef.current,
+      availablePx: available,
+    });
+    setDirectorFocus(next.focused);
+    setInspectorSectionCollapsed(next.inspectorSectionCollapsed);
+    setDirectorSplitRatio(next.splitRatio);
+    setDirectorNormalSplit(next.normalSplit);
+    setDirectorFocusRestoreCollapsed(next.restoreSectionCollapsed);
+    setHSplitRatio(next.hSplitRatio);
+    setDirectorDockedHSplit(next.dockedHSplit);
+    setDirectorFocusHSplit(next.focusHSplit);
+    saveDirectorFocus(layoutStore, next.focused);
+    saveInspectorSectionCollapsed(layoutStore, next.inspectorSectionCollapsed);
+    saveDirectorSplitRatio(layoutStore, next.splitRatio);
+    saveDirectorNormalSplitRatio(layoutStore, next.normalSplit);
+    saveDirectorFocusHSplitRatio(layoutStore, next.focusHSplit);
+    if (!next.focused) saveHSplitRatio(layoutStore, next.hSplitRatio);
+    persistPresentation({
+      inspectorCollapsed,
+      directorEnabled,
+      directorFocus: next.focused,
     });
   };
 
@@ -1295,11 +1491,18 @@ export function App() {
     const workspace = workspaceRef.current;
     if (!workspace) return;
     const rect = workspace.getBoundingClientRect();
-    const next = applyHSplitPointer({
-      clientX,
-      workspaceLeft: rect.left,
-      workspaceWidth: rect.width,
-    });
+    const next =
+      directorFocus && directorEnabled
+        ? applyFocusHSplitPointer({
+            clientX,
+            workspaceLeft: rect.left,
+            workspaceWidth: rect.width,
+          })
+        : applyHSplitPointer({
+            clientX,
+            workspaceLeft: rect.left,
+            workspaceWidth: rect.width,
+          });
     setHSplitRatio(next.ratio);
   };
 
@@ -1317,24 +1520,115 @@ export function App() {
       window.removeEventListener("pointerup", up);
       if (!hSplitDragRef.current) return;
       hSplitDragRef.current = false;
-      saveHSplitRatio(layoutStore, hSplitRatioRef.current);
+      if (directorFocus && directorEnabled) {
+        setDirectorFocusHSplit(hSplitRatioRef.current);
+        saveDirectorFocusHSplitRatio(layoutStore, hSplitRatioRef.current);
+      } else {
+        setDirectorDockedHSplit(hSplitRatioRef.current);
+        saveHSplitRatio(layoutStore, hSplitRatioRef.current);
+      }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
 
+  const resetHSplit = () => {
+    if (directorFocus && directorEnabled) {
+      setHSplitRatio(DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+      setDirectorFocusHSplit(DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+      saveDirectorFocusHSplitRatio(layoutStore, DEFAULT_DIRECTOR_FOCUS_H_SPLIT);
+      return;
+    }
+    setHSplitRatio(DEFAULT_H_SPLIT_RATIO);
+    setDirectorDockedHSplit(DEFAULT_H_SPLIT_RATIO);
+    saveHSplitRatio(layoutStore, DEFAULT_H_SPLIT_RATIO);
+  };
+
+  const applyDirectorSplitFromEvent = (clientY: number) => {
+    const body = inspectorBodyRef.current;
+    if (!body) return;
+    const rect = body.getBoundingClientRect();
+    const next = applyDirectorSplitPointer({
+      clientY,
+      bodyTop: rect.top,
+      bodyHeight: rect.height,
+    });
+    setDirectorSplitRatio(next.ratio);
+  };
+
+  const onDirectorSplitPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    directorSplitDragRef.current = true;
+    applyDirectorSplitFromEvent(e.clientY);
+    const move = (ev: PointerEvent) => {
+      if (!directorSplitDragRef.current) return;
+      applyDirectorSplitFromEvent(ev.clientY);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!directorSplitDragRef.current) return;
+      directorSplitDragRef.current = false;
+      saveDirectorSplitRatio(layoutStore, directorSplitRatioRef.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const resetDirectorSplit = () => {
+    setDirectorSplitRatio(DEFAULT_DIRECTOR_SPLIT_RATIO);
+    saveDirectorSplitRatio(layoutStore, DEFAULT_DIRECTOR_SPLIT_RATIO);
+  };
+
   useEffect(() => {
-    const onResize = () => {
+    const normalizeLayout = () => {
+      const stage = stageRef.current;
+      if (stage) {
+        const rawHeight = stage.getBoundingClientRect().height;
+        if (isMeasuredStageHeight(rawHeight)) {
+          const stageAvail = Math.max(1, rawHeight - SPLITTER_PX);
+          if (stageAvail !== stageAvailPxRef.current) setStageAvailPx(stageAvail);
+          const stageNext = normalizePersistedSplitRatio(splitRatioRef.current, stageAvail);
+          if (stageNext !== splitRatioRef.current) setSplitRatio(stageNext);
+          if (!timelineFocusRef.current) {
+            const normalNext = clampSplitRatio(normalSplitRatioRef.current, stageAvail);
+            if (normalNext !== normalSplitRatioRef.current) setNormalSplitRatio(normalNext);
+          }
+        }
+      }
       if (inspectorCollapsed) return;
       const workspace = workspaceRef.current;
       if (!workspace) return;
       const available = workspace.getBoundingClientRect().width - H_SPLITTER_PX;
-      const next = clampHSplitRatio(hSplitRatioRef.current, available);
+      const next =
+        directorFocus && directorEnabled
+          ? clampFocusHSplitRatio(hSplitRatioRef.current, available)
+          : clampHSplitRatio(hSplitRatioRef.current, available);
       if (next !== hSplitRatioRef.current) setHSplitRatio(next);
+      const body = inspectorBodyRef.current;
+      if (body && directorEnabled && !hideInspectorSection) {
+        const splitAvail = body.getBoundingClientRect().height - DIRECTOR_SPLITTER_PX;
+        const splitNext = clampDirectorSplitRatio(directorSplitRatioRef.current, splitAvail);
+        if (splitNext !== directorSplitRatioRef.current) setDirectorSplitRatio(splitNext);
+      }
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [inspectorCollapsed]);
+    normalizeLayout();
+    window.addEventListener("resize", normalizeLayout);
+    return () => window.removeEventListener("resize", normalizeLayout);
+  }, [inspectorCollapsed, directorEnabled, directorFocus, hideInspectorSection]);
+
+  useEffect(() => {
+    const measureMixer = () => {
+      const row = arrangeRowRef.current;
+      const width = row?.getBoundingClientRect().width ?? 0;
+      setMixerAutoCompact(shouldAutoCompactMixer(width));
+    };
+    measureMixer();
+    window.addEventListener("resize", measureMixer);
+    return () => window.removeEventListener("resize", measureMixer);
+  }, [directorFocus, directorEnabled, inspectorCollapsed, hSplitRatio, mixerCollapsed, mixerWidthPx]);
 
   const applyMixerWidthFromEvent = (clientX: number) => {
     const row = arrangeRowRef.current;
@@ -1424,6 +1718,8 @@ export function App() {
         projectName={session.project.name}
         projectDirty={isProjectDirty(session)}
         onRenameProject={(name) => runCommand({ type: "renameProject", name })}
+        directorEnabled={directorEnabled}
+        onToggleDirector={toggleDirector}
       />
       <input
         type="file"
@@ -1494,24 +1790,38 @@ export function App() {
 
       <div className="stage" data-testid="stage" ref={stageRef}>
       <div
-        className={`workspace${inspectorCollapsed ? " inspector-collapsed" : ""}`}
+        className={`workspace stage-grid${inspectorCollapsed ? " inspector-collapsed" : ""}${
+          directorFocus && directorEnabled && !inspectorCollapsed ? " director-focus" : ""
+        }`}
         data-testid="preview-pane"
         data-preview-ratio={splitRatio}
         data-h-split-ratio={hSplitRatio}
         data-inspector-collapsed={inspectorCollapsed ? "true" : "false"}
+        data-director-focus={directorFocus && directorEnabled && !inspectorCollapsed ? "true" : "false"}
+        data-director-full-height="false"
+        data-director-presentation={directorPresentationOf({
+          inspectorCollapsed,
+          directorEnabled,
+          directorFocus,
+        })}
         data-timeline-focus={timelineFocus ? "true" : "false"}
         ref={workspaceRef}
-        style={{ flex: `${splitRatio} 1 ${PREVIEW_MIN_PX}px` }}
+        style={{
+          ["--stage-preview-row" as string]: `${splitRatio}fr`,
+          ["--stage-arrange-row" as string]: `${1 - splitRatio}fr`,
+          ["--stage-lower-min" as string]: `${legalSplitMins(stageAvailPx).lowerMin}px`,
+          ["--stage-preview-min" as string]: `${legalSplitMins(stageAvailPx).previewMin}px`,
+          ["--arrange-min" as string]: `${Math.max(96, legalSplitMins(stageAvailPx).lowerMin - TRANSPORT_MIN_PX)}px`,
+          ["--stage-preview-col" as string]: inspectorCollapsed ? "1fr" : `${hSplitRatio}fr`,
+          ["--stage-inspector-col" as string]: inspectorCollapsed
+            ? `${INSPECTOR_COLLAPSED_PX}px`
+            : `${1 - hSplitRatio}fr`,
+        }}
+        data-stage-avail={stageAvailPx}
+        data-preview-min={legalSplitMins(stageAvailPx).previewMin}
+        data-lower-min={legalSplitMins(stageAvailPx).lowerMin}
       >
-        <div
-          className="workspace-preview"
-          data-testid="workspace-preview"
-          style={
-            inspectorCollapsed
-              ? { flex: `1 1 ${PREVIEW_H_MIN_PX}px` }
-              : { flex: `${hSplitRatio} 1 ${PREVIEW_H_MIN_PX}px` }
-          }
-        >
+        <div className="workspace-preview" data-testid="workspace-preview">
           <Preview
             project={session.project}
             playing={session.playing}
@@ -1530,14 +1840,27 @@ export function App() {
             title="Preview / Inspector"
             style={{ cursor: "ew-resize" }}
             onPointerDown={onHSplitPointerDown}
+            onDoubleClick={resetHSplit}
           >
             <span className="layout-split-v-grip" data-testid="layout-split-h-grip" aria-hidden="true" />
           </div>
         )}
         <div
-          className={`workspace-inspector${inspectorCollapsed ? " collapsed" : ""}`}
+          className={`workspace-inspector${inspectorCollapsed ? " collapsed" : ""}${
+            directorEnabled && !inspectorCollapsed ? " director-open" : ""
+          }${hideInspectorSection && !inspectorCollapsed ? " inspector-section-collapsed" : ""}${
+            directorFocus && directorEnabled && !inspectorCollapsed ? " director-focus" : ""
+          }`}
           data-testid="workspace-inspector"
           data-collapsed={inspectorCollapsed ? "true" : "false"}
+          data-director-open={directorEnabled && !inspectorCollapsed ? "true" : "false"}
+          data-inspector-section-collapsed={hideInspectorSection ? "true" : "false"}
+          data-director-focus={directorFocus && directorEnabled && !inspectorCollapsed ? "true" : "false"}
+          data-director-presentation={directorPresentationOf({
+            inspectorCollapsed,
+            directorEnabled,
+            directorFocus,
+          })}
           style={
             inspectorCollapsed
               ? {
@@ -1546,7 +1869,15 @@ export function App() {
                   minWidth: INSPECTOR_COLLAPSED_PX,
                   maxWidth: INSPECTOR_COLLAPSED_PX,
                 }
-              : { flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px` }
+              : directorFocus && directorEnabled
+                ? {
+                    flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px`,
+                    maxWidth: "none",
+                  }
+                : {
+                    flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px`,
+                    maxWidth: INSPECTOR_MAX_PX,
+                  }
           }
         >
           <div className="inspector-chrome">
@@ -1556,7 +1887,7 @@ export function App() {
               data-testid="inspector-collapse"
               aria-expanded={!inspectorCollapsed}
               aria-controls="inspector-body"
-              title={inspectorCollapsed ? "Inspector ausklappen" : "Inspector einklappen"}
+              title={inspectorCollapsed ? "Expand Inspector panel" : "Collapse Inspector panel"}
               onClick={toggleInspectorCollapsed}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -1566,40 +1897,112 @@ export function App() {
                   <path d="M8 2 L3 6 L8 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
                 )}
               </svg>
-              {inspectorCollapsed ? <span className="inspector-reopen-label">INS</span> : null}
+              {inspectorCollapsed ? (
+                <span className="inspector-reopen-label">Expand INS</span>
+              ) : (
+                <span className="inspector-collapse-label">Collapse</span>
+              )}
             </button>
-            {inspectorCollapsed ? null : <span className="inspector-chrome-label">Ins</span>}
+            {inspectorCollapsed ? null : <span className="inspector-chrome-label">Inspector</span>}
+            {inspectorCollapsed || !directorEnabled ? null : (
+              <button
+                type="button"
+                className="inspector-section-collapse"
+                data-testid="inspector-section-collapse"
+                aria-expanded={!hideInspectorSection}
+                title={
+                  hideInspectorSection
+                    ? "Expand Inspector — Director keeps this sidebar"
+                    : "Collapse Inspector — Director uses this space"
+                }
+                onClick={toggleInspectorSectionCollapsed}
+              >
+                {hideInspectorSection ? "Expand Inspector" : "Collapse Inspector"}
+              </button>
+            )}
           </div>
           {inspectorCollapsed ? null : (
-            <div id="inspector-body" className="inspector-body">
-              <Inspector
-                project={session.project}
-                selectedClipId={session.selectedClipId}
-                selectedClipIds={session.selectedClipIds}
-                selectedMarkerId={session.selectedMarkerId}
-                selectedVis={session.selectedVis}
-                selectedVisEventId={session.selectedVisEventId}
-                onChange={(clipId, patch) => setSession(applyUpdateClip(session, clipId, patch))}
-                onSetEnabled={(enabled) => runCommand({ type: "setClipsEnabled", enabled })}
-                onSetLocked={(locked) => runCommand({ type: "setClipsLocked", locked })}
-                onFades={(clipId, fadeInMs, fadeOutMs) =>
-                  setSession(applyCommand(session, { type: "setClipFades", clipId, fadeInMs, fadeOutMs }))
-                }
-                onRate={(clipId, rate) =>
-                  setSession(applyCommand(session, { type: "setClipRate", clipId, rate }))
-                }
-                onUnlink={(clipId) => setSession(applyCommand(session, { type: "unlinkClips", clipId }))}
-                onRelink={() => void runRelink()}
-                onRenameMarker={(markerId, label) =>
-                  setSession(applyCommand(session, { type: "renameMarker", markerId, label }))
-                }
-                onTransition={(cmd) => setSession(applyCommand(session, cmd))}
-                onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
-              />
+            <div
+              id="inspector-body"
+              ref={inspectorBodyRef}
+              className={`inspector-body${directorEnabled ? " director-open" : ""}${
+                hideInspectorSection ? " inspector-section-collapsed" : ""
+              }${directorFocus ? " director-focus" : ""}`}
+              data-testid="inspector-body"
+              data-director-open={directorEnabled ? "true" : "false"}
+              data-inspector-section-collapsed={hideInspectorSection ? "true" : "false"}
+              data-director-focus={directorFocus ? "true" : "false"}
+              data-director-split-ratio={directorSplitRatio}
+              style={
+                directorEnabled && !hideInspectorSection
+                  ? {
+                      gridTemplateRows: `minmax(64px, ${directorSplitRatio}fr) ${DIRECTOR_SPLITTER_PX}px minmax(180px, ${1 - directorSplitRatio}fr)`,
+                    }
+                  : undefined
+              }
+            >
+              <div
+                className="inspector-section"
+                data-testid="inspector-section"
+                hidden={hideInspectorSection}
+              >
+                <Inspector
+                  project={session.project}
+                  selectedClipId={session.selectedClipId}
+                  selectedClipIds={session.selectedClipIds}
+                  selectedMarkerId={session.selectedMarkerId}
+                  selectedVis={session.selectedVis}
+                  selectedVisEventId={session.selectedVisEventId}
+                  onChange={(clipId, patch) => setSession(applyUpdateClip(session, clipId, patch))}
+                  onSetEnabled={(enabled) => runCommand({ type: "setClipsEnabled", enabled })}
+                  onSetLocked={(locked) => runCommand({ type: "setClipsLocked", locked })}
+                  onFades={(clipId, fadeInMs, fadeOutMs) =>
+                    setSession(applyCommand(session, { type: "setClipFades", clipId, fadeInMs, fadeOutMs }))
+                  }
+                  onRate={(clipId, rate) =>
+                    setSession(applyCommand(session, { type: "setClipRate", clipId, rate }))
+                  }
+                  onUnlink={(clipId) => setSession(applyCommand(session, { type: "unlinkClips", clipId }))}
+                  onRelink={() => void runRelink()}
+                  onRenameMarker={(markerId, label) =>
+                    setSession(applyCommand(session, { type: "renameMarker", markerId, label }))
+                  }
+                  onTransition={(cmd) => setSession(applyCommand(session, cmd))}
+                  onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
+                />
+              </div>
+              {directorEnabled && !hideInspectorSection ? (
+                <div
+                  className="director-split"
+                  data-testid="director-split"
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="Inspector and Director split"
+                  title="Inspector / Director"
+                  onPointerDown={onDirectorSplitPointerDown}
+                  onDoubleClick={resetDirectorSplit}
+                >
+                  <span className="director-split-grip" data-testid="director-split-grip" aria-hidden="true" />
+                </div>
+              ) : null}
+              {directorEnabled ? (
+                <div className="director-section" data-testid="director-section">
+                  <DirectorPanel
+                    session={session}
+                    onCanonicalCommit={(next) => setSession(next)}
+                    onRequestClose={closeDirector}
+                    focusMode={directorFocus}
+                    onToggleFocus={toggleDirectorFocus}
+                    canUndo={session.history.past.length > 0}
+                    canRedo={session.history.future.length > 0}
+                    onUndo={() => runCommand({ type: "undo" })}
+                    onRedo={() => runCommand({ type: "redo" })}
+                  />
+                </div>
+              ) : null}
             </div>
           )}
         </div>
-      </div>
 
       <div
         className="layout-split"
@@ -1628,11 +2031,7 @@ export function App() {
         </button>
       </div>
 
-      <div
-        className="lower-stage"
-        data-testid="lower-stage"
-        style={{ flex: `${1 - splitRatio} 1 ${ARRANGE_MIN_PX}px` }}
-      >
+      <div className="lower-stage" data-testid="lower-stage">
       <Transport
         project={session.project}
         playing={session.playing}
@@ -1667,14 +2066,18 @@ export function App() {
         />
       ) : null}
       <div
-        className={`arrange-row${mixerCollapsed ? " mixer-collapsed" : ""}`}
+        className={`arrange-row${mixerCollapsed ? " mixer-collapsed" : ""}${
+          mixerAutoCompact && !mixerCollapsed ? " mixer-master-only" : ""
+        }`}
         data-testid="arrange-row"
+        data-mixer-master-only={mixerAutoCompact && !mixerCollapsed ? "true" : "false"}
+        data-mixer-chrome={mixerChromeOf({ collapsed: mixerCollapsed, autoCompact: mixerAutoCompact })}
         data-mixer-width={mixerWidthPx}
         ref={arrangeRowRef}
         style={{
           overflow: "hidden",
           ["--mixer-width" as string]: `${mixerWidthPx}px`,
-          ...(mixerCollapsed
+          ...(mixerCollapsed || mixerAutoCompact
             ? {}
             : {
                 gridTemplateColumns: `minmax(${TIMELINE_MIN_PX}px, 1fr) ${mixerWidthPx}px`,
@@ -1818,6 +2221,7 @@ export function App() {
         selectedTrackIds={session.selectedTrackIds}
         peaks={mixPeaks}
         collapsed={mixerCollapsed}
+        masterOnly={mixerAutoCompact && !mixerCollapsed}
         onToggleCollapsed={toggleMixerCollapsed}
         onResizePointerDown={onMixerResizePointerDown}
         onSelectTrack={(id, opts) => setSession((s) => applySelectTracks(s, id, opts))}
@@ -1839,6 +2243,7 @@ export function App() {
           }, WRITE_POINTER_UP_MS);
         }}
       />
+      </div>
       </div>
       </div>
       </div>

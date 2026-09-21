@@ -13,6 +13,8 @@ interface Props {
   projectName?: string;
   onRenameProject?: (name: string) => void;
   projectDirty?: boolean;
+  directorEnabled?: boolean;
+  onToggleDirector?: () => void;
 }
 
 export function Toolbar({
@@ -26,6 +28,8 @@ export function Toolbar({
   projectName = "Untitled Resonance",
   onRenameProject,
   projectDirty = false,
+  directorEnabled = false,
+  onToggleDirector,
 }: Props) {
   return (
     <header className="toolbar" data-testid="toolbar">
@@ -53,6 +57,15 @@ export function Toolbar({
           Export
         </button>
         <ScreenNav screen={screen} onSelect={onSelectScreen ?? (() => {})} />
+        <button
+          type="button"
+          data-testid="toolbar-ai"
+          className={directorEnabled ? "active" : undefined}
+          aria-pressed={directorEnabled}
+          onClick={() => onToggleDirector?.()}
+        >
+          AI
+        </button>
         </div>
       </div>
       <div className="toolbar-brand">
