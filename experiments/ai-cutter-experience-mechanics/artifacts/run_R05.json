@@ -1,0 +1,347 @@
+{
+  "A0_decisions": [
+    {
+      "kind": "CUT",
+      "sourceInMs": 0,
+      "sourceOutMs": 800
+    },
+    {
+      "kind": "KEEP",
+      "sourceInMs": 800,
+      "sourceOutMs": 3200
+    },
+    {
+      "kind": "CUT",
+      "sourceInMs": 3200,
+      "sourceOutMs": 3800
+    },
+    {
+      "kind": "KEEP",
+      "sourceInMs": 3800,
+      "sourceOutMs": 6200
+    },
+    {
+      "kind": "CUT",
+      "sourceInMs": 6200,
+      "sourceOutMs": 6800
+    },
+    {
+      "kind": "KEEP",
+      "sourceInMs": 6800,
+      "sourceOutMs": 9200
+    },
+    {
+      "kind": "CUT",
+      "sourceInMs": 9200,
+      "sourceOutMs": 10000
+    }
+  ],
+  "A0_keeps": [
+    {
+      "assetId": "I05",
+      "order": 0,
+      "rate": 1,
+      "recordInMs": 0,
+      "sourceInMs": 800,
+      "sourceOutMs": 3200
+    },
+    {
+      "assetId": "I05",
+      "order": 1,
+      "rate": 1,
+      "recordInMs": 2400,
+      "sourceInMs": 3800,
+      "sourceOutMs": 6200
+    },
+    {
+      "assetId": "I05",
+      "order": 2,
+      "rate": 1,
+      "recordInMs": 4800,
+      "sourceInMs": 6800,
+      "sourceOutMs": 9200
+    }
+  ],
+  "A1_decisions": [
+    {
+      "kind": "CUT",
+      "sourceInMs": 0,
+      "sourceOutMs": 600
+    },
+    {
+      "kind": "KEEP",
+      "sourceInMs": 600,
+      "sourceOutMs": 3400
+    },
+    {
+      "kind": "CUT",
+      "sourceInMs": 3400,
+      "sourceOutMs": 3600
+    },
+    {
+      "kind": "KEEP",
+      "sourceInMs": 3600,
+      "sourceOutMs": 6400
+    },
+    {
+      "kind": "CUT",
+      "sourceInMs": 6400,
+      "sourceOutMs": 6600
+    },
+    {
+      "kind": "KEEP",
+      "sourceInMs": 6600,
+      "sourceOutMs": 9400
+    },
+    {
+      "kind": "CUT",
+      "sourceInMs": 9400,
+      "sourceOutMs": 10000
+    }
+  ],
+  "A1_keeps": [
+    {
+      "assetId": "I05",
+      "order": 0,
+      "rate": 1,
+      "recordInMs": 0,
+      "sourceInMs": 600,
+      "sourceOutMs": 3400
+    },
+    {
+      "assetId": "I05",
+      "order": 1,
+      "rate": 1,
+      "recordInMs": 2800,
+      "sourceInMs": 3600,
+      "sourceOutMs": 6400
+    },
+    {
+      "assetId": "I05",
+      "order": 2,
+      "rate": 1,
+      "recordInMs": 5600,
+      "sourceInMs": 6600,
+      "sourceOutMs": 9400
+    }
+  ],
+  "M": 400,
+  "agree": true,
+  "baseline_boundary_ms": "200",
+  "baseline_cost": "3",
+  "baseline_cost_fraction": "3/1",
+  "baseline_diff_records": [
+    {
+      "assetId": "I05",
+      "class": "retimed",
+      "human": {
+        "assetId": "I05",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 600,
+        "sourceOutMs": 3400
+      },
+      "policy": {
+        "assetId": "I05",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 800,
+        "sourceOutMs": 3200
+      }
+    },
+    {
+      "assetId": "I05",
+      "class": "retimed",
+      "human": {
+        "assetId": "I05",
+        "order": 1,
+        "recordInMs": 2800,
+        "sourceInMs": 3600,
+        "sourceOutMs": 6400
+      },
+      "policy": {
+        "assetId": "I05",
+        "order": 1,
+        "recordInMs": 2400,
+        "sourceInMs": 3800,
+        "sourceOutMs": 6200
+      }
+    },
+    {
+      "assetId": "I05",
+      "class": "retimed",
+      "human": {
+        "assetId": "I05",
+        "order": 2,
+        "recordInMs": 5600,
+        "sourceInMs": 6600,
+        "sourceOutMs": 9400
+      },
+      "policy": {
+        "assetId": "I05",
+        "order": 2,
+        "recordInMs": 4800,
+        "sourceInMs": 6800,
+        "sourceOutMs": 9200
+      }
+    }
+  ],
+  "baseline_duration_error": "0.12",
+  "baseline_op_count": 3,
+  "baseline_recut_rate": "0",
+  "baseline_unmatched_fraction": "0/1000",
+  "baseline_unmatched_ms": 0,
+  "command_count": "unknown",
+  "confidence": "1",
+  "counterexampleCount": 0,
+  "disagreement": false,
+  "excluded": false,
+  "inert": false,
+  "learned_boundary_ms": null,
+  "learned_cost": "0",
+  "learned_cost_fraction": "0/1",
+  "learned_diff_records": [
+    {
+      "assetId": "I05",
+      "class": "unchanged",
+      "human": {
+        "assetId": "I05",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 600,
+        "sourceOutMs": 3400
+      },
+      "policy": {
+        "assetId": "I05",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 600,
+        "sourceOutMs": 3400
+      }
+    },
+    {
+      "assetId": "I05",
+      "class": "unchanged",
+      "human": {
+        "assetId": "I05",
+        "order": 1,
+        "recordInMs": 2800,
+        "sourceInMs": 3600,
+        "sourceOutMs": 6400
+      },
+      "policy": {
+        "assetId": "I05",
+        "order": 1,
+        "recordInMs": 2800,
+        "sourceInMs": 3600,
+        "sourceOutMs": 6400
+      }
+    },
+    {
+      "assetId": "I05",
+      "class": "unchanged",
+      "human": {
+        "assetId": "I05",
+        "order": 2,
+        "recordInMs": 5600,
+        "sourceInMs": 6600,
+        "sourceOutMs": 9400
+      },
+      "policy": {
+        "assetId": "I05",
+        "order": 2,
+        "recordInMs": 5600,
+        "sourceInMs": 6600,
+        "sourceOutMs": 9400
+      }
+    }
+  ],
+  "learned_duration_error": "0",
+  "learned_op_count": 0,
+  "learned_recut_rate": "0",
+  "learned_unmatched_fraction": "0/1000",
+  "learned_unmatched_ms": 0,
+  "music_bed_sample_count": 0,
+  "non_margin_equals_p0": true,
+  "p0": {
+    "comparison": ">=",
+    "hop_ms": 10,
+    "margin_end_ms": 200,
+    "margin_start_ms": 200,
+    "min_clip_ms": 100,
+    "min_cut_ms": 200,
+    "order": [
+      "threshold",
+      "margin",
+      "min_durations"
+    ],
+    "policy_id": "ae-default-v0",
+    "threshold": "0.04"
+  },
+  "p1": {
+    "comparison": ">=",
+    "hop_ms": 10,
+    "margin_end_ms": 400,
+    "margin_start_ms": 400,
+    "min_clip_ms": 100,
+    "min_cut_ms": 200,
+    "order": [
+      "threshold",
+      "margin",
+      "min_durations"
+    ],
+    "policy_id": "interview-margin-v1",
+    "threshold": "0.04"
+  },
+  "policy_id": "interview-margin-v1",
+  "reduction": "1",
+  "reduction_fraction": "1/1",
+  "run_id": "R05",
+  "sample_count": 30,
+  "sample_distances_ms": [
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400
+  ],
+  "scope": "interview",
+  "seed": 20260921,
+  "session_ms": "unknown",
+  "statement": "margin.start.ms = 400; margin.end.ms = 400",
+  "status": "hypothesis",
+  "supportCount": 5,
+  "test_id": "I05",
+  "train_ids": [
+    "I01",
+    "I02",
+    "I03",
+    "I04",
+    "I06"
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "H_table_ms": [
+    {
+      "sourceInMs": 600,
+      "sourceOutMs": 3400
+    },
+    {
+      "sourceInMs": 3600,
+      "sourceOutMs": 6400
+    },
+    {
+      "sourceInMs": 6600,
+      "sourceOutMs": 9400
+    }
+  ],
+  "burst_table": {
+    "interview": [
+      {
+        "end_ms": 1000,
+        "peak": "0.00",
+        "start_ms": 0
+      },
+      {
+        "end_ms": 3000,
+        "peak": "0.50",
+        "start_ms": 1000
+      },
+      {
+        "end_ms": 4000,
+        "peak": "0.00",
+        "start_ms": 3000
+      },
+      {
+        "end_ms": 6000,
+        "peak": "0.50",
+        "start_ms": 4000
+      },
+      {
+        "end_ms": 7000,
+        "peak": "0.00",
+        "start_ms": 6000
+      },
+      {
+        "end_ms": 9000,
+        "peak": "0.50",
+        "start_ms": 7000
+      },
+      {
+        "end_ms": 10000,
+        "peak": "0.00",
+        "start_ms": 9000
+      }
+    ],
+    "music_bed": [
+      {
+        "end_ms": 1000,
+        "peak": "0.08",
+        "start_ms": 0
+      },
+      {
+        "end_ms": 3000,
+        "peak": "0.50",
+        "start_ms": 1000
+      },
+      {
+        "end_ms": 4000,
+        "peak": "0.08",
+        "start_ms": 3000
+      },
+      {
+        "end_ms": 6000,
+        "peak": "0.50",
+        "start_ms": 4000
+      },
+      {
+        "end_ms": 7000,
+        "peak": "0.08",
+        "start_ms": 6000
+      },
+      {
+        "end_ms": 9000,
+        "peak": "0.50",
+        "start_ms": 7000
+      },
+      {
+        "end_ms": 10000,
+        "peak": "0.08",
+        "start_ms": 9000
+      }
+    ]
+  },
+  "canonical_encoding": "utf-8 lines: v1, then per item id, count, then either two-decimal peaks or 'start end' ranges",
+  "channels": 1,
+  "file_duration_ms": 10000,
+  "hop_ms": 10,
+  "hop_samples": 480,
+  "ids": [
+    "I01",
+    "I02",
+    "I03",
+    "I04",
+    "I05",
+    "I06",
+    "M01",
+    "M02",
+    "M03",
+    "M04",
+    "M05",
+    "M06"
+  ],
+  "sample_rate_hz": 48000,
+  "seed": 20260921,
+  "seed_is_entropy_source": false,
+  "sha256_h_bytes": "269dd75a73bc4344385f281d75ed9c46097c4c899f8e90a9f378815c371e2202",
+  "sha256_hop_peak_bytes": "18ada5714ee24262f5e42736a7e42064033e4c8244c4dd82b98a4b265330665b",
+  "tags": {
+    "I01": "interview",
+    "I02": "interview",
+    "I03": "interview",
+    "I04": "interview",
+    "I05": "interview",
+    "I06": "interview",
+    "M01": "music_bed",
+    "M02": "music_bed",
+    "M03": "music_bed",
+    "M04": "music_bed",
+    "M05": "music_bed",
+    "M06": "music_bed"
+  }
+}
