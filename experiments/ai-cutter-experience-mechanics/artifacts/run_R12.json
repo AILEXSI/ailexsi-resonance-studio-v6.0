@@ -1,0 +1,250 @@
+{
+  "A0_decisions": [
+    {
+      "kind": "KEEP",
+      "sourceInMs": 0,
+      "sourceOutMs": 10000
+    }
+  ],
+  "A0_keeps": [
+    {
+      "assetId": "M06",
+      "order": 0,
+      "rate": 1,
+      "recordInMs": 0,
+      "sourceInMs": 0,
+      "sourceOutMs": 10000
+    }
+  ],
+  "A1_decisions": [
+    {
+      "kind": "KEEP",
+      "sourceInMs": 0,
+      "sourceOutMs": 10000
+    }
+  ],
+  "A1_keeps": [
+    {
+      "assetId": "M06",
+      "order": 0,
+      "rate": 1,
+      "recordInMs": 0,
+      "sourceInMs": 0,
+      "sourceOutMs": 10000
+    }
+  ],
+  "M": 400,
+  "agree": false,
+  "baseline_boundary_ms": null,
+  "baseline_cost": "22.4",
+  "baseline_cost_fraction": "112/5",
+  "baseline_diff_records": [
+    {
+      "assetId": "M06",
+      "class": "removed",
+      "human": null,
+      "policy": {
+        "assetId": "M06",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 0,
+        "sourceOutMs": 10000
+      }
+    },
+    {
+      "assetId": "M06",
+      "class": "added",
+      "human": {
+        "assetId": "M06",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 600,
+        "sourceOutMs": 3400
+      },
+      "policy": null
+    },
+    {
+      "assetId": "M06",
+      "class": "added",
+      "human": {
+        "assetId": "M06",
+        "order": 1,
+        "recordInMs": 2800,
+        "sourceInMs": 3600,
+        "sourceOutMs": 6400
+      },
+      "policy": null
+    },
+    {
+      "assetId": "M06",
+      "class": "added",
+      "human": {
+        "assetId": "M06",
+        "order": 2,
+        "recordInMs": 5600,
+        "sourceInMs": 6600,
+        "sourceOutMs": 9400
+      },
+      "policy": null
+    }
+  ],
+  "baseline_duration_error": "0.16",
+  "baseline_op_count": 4,
+  "baseline_recut_rate": "0",
+  "baseline_unmatched_fraction": "18400/1000",
+  "baseline_unmatched_ms": 18400,
+  "command_count": "unknown",
+  "confidence": "1",
+  "counterexampleCount": 0,
+  "disagreement": false,
+  "excluded": false,
+  "inert": false,
+  "learned_boundary_ms": null,
+  "learned_cost": "22.4",
+  "learned_cost_fraction": "112/5",
+  "learned_diff_records": [
+    {
+      "assetId": "M06",
+      "class": "removed",
+      "human": null,
+      "policy": {
+        "assetId": "M06",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 0,
+        "sourceOutMs": 10000
+      }
+    },
+    {
+      "assetId": "M06",
+      "class": "added",
+      "human": {
+        "assetId": "M06",
+        "order": 0,
+        "recordInMs": 0,
+        "sourceInMs": 600,
+        "sourceOutMs": 3400
+      },
+      "policy": null
+    },
+    {
+      "assetId": "M06",
+      "class": "added",
+      "human": {
+        "assetId": "M06",
+        "order": 1,
+        "recordInMs": 2800,
+        "sourceInMs": 3600,
+        "sourceOutMs": 6400
+      },
+      "policy": null
+    },
+    {
+      "assetId": "M06",
+      "class": "added",
+      "human": {
+        "assetId": "M06",
+        "order": 2,
+        "recordInMs": 5600,
+        "sourceInMs": 6600,
+        "sourceOutMs": 9400
+      },
+      "policy": null
+    }
+  ],
+  "learned_duration_error": "0.16",
+  "learned_op_count": 4,
+  "learned_recut_rate": "0",
+  "learned_unmatched_fraction": "18400/1000",
+  "learned_unmatched_ms": 18400,
+  "music_bed_sample_count": 0,
+  "non_margin_equals_p0": true,
+  "p0": {
+    "comparison": ">=",
+    "hop_ms": 10,
+    "margin_end_ms": 200,
+    "margin_start_ms": 200,
+    "min_clip_ms": 100,
+    "min_cut_ms": 200,
+    "order": [
+      "threshold",
+      "margin",
+      "min_durations"
+    ],
+    "policy_id": "ae-default-v0",
+    "threshold": "0.04"
+  },
+  "p1": {
+    "comparison": ">=",
+    "hop_ms": 10,
+    "margin_end_ms": 400,
+    "margin_start_ms": 400,
+    "min_clip_ms": 100,
+    "min_cut_ms": 200,
+    "order": [
+      "threshold",
+      "margin",
+      "min_durations"
+    ],
+    "policy_id": "interview-margin-v1",
+    "threshold": "0.04"
+  },
+  "policy_id": "interview-margin-v1",
+  "reduction": "0",
+  "reduction_fraction": "0/1",
+  "run_id": "R12",
+  "sample_count": 36,
+  "sample_distances_ms": [
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400,
+    400
+  ],
+  "scope": "interview",
+  "seed": 20260921,
+  "session_ms": "unknown",
+  "statement": "margin.start.ms = 400; margin.end.ms = 400",
+  "status": "hypothesis",
+  "supportCount": 6,
+  "test_id": "M06",
+  "train_ids": [
+    "I01",
+    "I02",
+    "I03",
+    "I04",
+    "I05",
+    "I06"
+  ]
+}
