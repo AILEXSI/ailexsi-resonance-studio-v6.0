@@ -11,6 +11,8 @@ export interface VisualEngine {
   start(): void;
   stop(): void;
   setFeatures(features: AudioFeatures): void;
+  /** Last vector passed to setFeatures. Scenes render this packet, not a second decay. */
+  getFeatures(): AudioFeatures;
   setScene(sceneId: string): void;
   setParams(params: Partial<SceneParams>): void;
   listScenes(): Array<{ id: string; name: string; description?: string }>;
@@ -146,6 +148,10 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
       if (features.onset || features.beatPulse > 0.5) {
         beatPulseDecay = Math.max(beatPulseDecay, features.beatPulse || 1);
       }
+    },
+
+    getFeatures() {
+      return lastFeatures;
     },
 
     setScene(sceneId: string) {
