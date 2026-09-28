@@ -32,6 +32,22 @@ interface RowPoint {
   scale: number;
 }
 
+/** Bass / spectrum / mid mass. Kick is not an input — a kick must not lift the field. */
+export function resonanceDunesMass(
+  features: Pick<AudioFeatures, "bass" | "mid" | "spectrum">,
+  u: number,
+  v: number,
+  intensity: number,
+  phase: number,
+): number {
+  const spec = logSpectrumSample(features.spectrum, u);
+  return (
+    features.bass * 0.55 * (1 - v * 0.35) +
+    spec * 0.45 * intensity +
+    Math.sin(u * Math.PI * 3 + phase * 0.35 + v * 2) * features.mid * 0.12
+  );
+}
+
 export const resonanceDunesScene: Scene = {
   id: "resonance-dunes",
   name: "Resonance Dunes",
@@ -119,11 +135,7 @@ export const resonanceDunesScene: Scene = {
     };
 
     const heightAt = (u: number, v: number, row: number): number => {
-      const spec = logSpectrumSample(features.spectrum, u);
-      let h =
-        features.bass * 0.55 * (1 - v * 0.35) +
-        spec * 0.45 * intensity +
-        Math.sin(u * Math.PI * 3 + phase * 0.35 + v * 2) * features.mid * 0.12;
+      let h = resonanceDunesMass(features, u, v, intensity, phase);
       const kickRing = Math.exp(-((v - kickFront) * (v - kickFront)) / 0.012) * kickAmp;
       h += kickRing * 0.25;
       if (v > 0.62 && snare > 0) {

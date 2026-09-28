@@ -1,6 +1,6 @@
 /**
  * Motion is gated by the song.
- * Silence → almost no phase advance.
+ * Silence (gate under 0.03) → no phase advance.
  * Energy / beat → motion.
  */
 
@@ -11,8 +11,8 @@ export function musicClock(
   speed: number
 ): number {
   const gate = Math.max(0, Math.min(1, energy * 1.35 + beatPulse * 0.45));
-  const live = gate < 0.03 ? 0.02 : gate;
-  return dt * speed * live;
+  if (gate < 0.03) return 0;
+  return dt * speed * gate;
 }
 
 /** Log-frequency sample of a linear FFT spectrum (more musical bar layout). */
