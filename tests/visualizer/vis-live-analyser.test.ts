@@ -8,7 +8,7 @@ import { musicClock } from "../../src/core/visualz/motion";
 import { resonanceDunesMass } from "../../src/core/visualz/scenes/resonance-dunes";
 import type { AudioFeatures } from "../../src/core/visualz/types";
 import { getRegisteredScene } from "../../src/core/visualz";
-import { renderVisualizerScene, visFeaturesForPreview } from "../../src/core/visualizer";
+import { featuresFromMix, renderVisualizerScene, visFeaturesForPreview } from "../../src/core/visualizer";
 import { createPixelCanvas } from "../helpers/pixel-canvas";
 
 const BINS = 256;
@@ -242,5 +242,106 @@ describe("resonance-dunes reads the live vector", () => {
     expect(preview.buildup).toBe(0.4);
     expect(preview.drop).toBe(0);
     expect(preview.bass).not.toBe(preview.kick);
+  });
+
+  it("quiet intro below the silence floor stays zero through preview setFeatures", () => {
+    const data = new Float32Array(44100);
+    for (let i = 0; i < data.length; i++) data[i] = Math.sin((i / 44100) * 80 * Math.PI * 2) * 0.6;
+    const mix = {
+      sampleRate: 44100,
+      length: data.length,
+      numberOfChannels: 1,
+      getChannelData: () => data,
+    };
+    const live: AudioFeatures = {
+      timeMs: 400,
+      rms: 0.01,
+      bass: 0.02,
+      mid: 0.4,
+      treble: 0.3,
+      spectrum: new Float32Array(128),
+      onset: true,
+      beatPulse: 1,
+      kick: 1,
+      snare: 0.4,
+      hat: 0.5,
+      vocal: 0.2,
+      buildup: 0.7,
+      drop: 1,
+      tempoBpm: 120,
+    };
+    const preview = visFeaturesForPreview({
+      timeMs: 400,
+      durationMs: 8000,
+      mix,
+      live,
+      audioLoaded: true,
+      hasClipAtPlayhead: true,
+    });
+    const engine = createVisualEngine({
+      canvas: {
+        width: 32,
+        height: 32,
+        getContext() {
+          return { fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {}, arc() {}, closePath() {} };
+        },
+      } as unknown as HTMLCanvasElement,
+      initialSceneId: "resonance-dunes",
+    });
+    engine.setFeatures(preview);
+    const vector = engine.getFeatures();
+    expect(vector.timeMs).toBe(400);
+    expect(vector.beatPulse).toBe(0);
+    expect(vector.kick).toBe(0);
+    expect(vector.snare).toBe(0);
+    expect(vector.hat).toBe(0);
+    expect(vector.vocal).toBe(0);
+    expect(vector.buildup).toBe(0);
+    expect(vector.drop).toBe(0);
+    expect(vector.onset).toBe(false);
+    expect(vector.rms).toBe(0);
+    expect(vector.bass).toBe(0);
+    expect(vector.tempoBpm).toBeNull();
+    expect(vector.spectrum.length).toBe(128);
+    expect(vector.spectrum.every((v) => v === 0)).toBe(true);
+    const energy = vector.rms * 0.4 + vector.bass * 0.4 + vector.mid * 0.2;
+    expect(musicClock(1 / 30, energy, vector.beatPulse, 0.85)).toBe(0);
+    expect(featuresFromMix(mix, 400).rms).toBeGreaterThan(0.1);
+    engine.destroy();
+  });
+
+  it("no live packet stays a zero vector across time, not a 120 BPM grid", () => {
+    for (let t = 0; t <= 8000; t += 250) {
+      const frame = visFeaturesForPreview({
+        timeMs: t,
+        durationMs: 8000,
+        audioLoaded: false,
+        hasClipAtPlayhead: false,
+      });
+      expect(frame.beatPulse).toBe(0);
+      expect(frame.kick).toBe(0);
+      expect(frame.onset).toBe(false);
+      expect(frame.rms).toBe(0);
+      expect(frame.bass).toBe(0);
+      expect(frame.tempoBpm).toBeNull();
+      expect(frame.timeMs).toBe(t);
+    }
+  });
+
+  it("bass-only live packet does not mint a kick on the preview path", () => {
+    const { last } = hold(bassSpectrum(200), audibleTime(), 24);
+    expect(last.bass).toBeGreaterThan(0.5);
+    expect(last.kick ?? 1).toBeLessThan(0.05);
+    const preview = visFeaturesForPreview({
+      timeMs: last.timeMs,
+      durationMs: 4000,
+      live: last,
+      audioLoaded: true,
+      hasClipAtPlayhead: true,
+    });
+    expect(preview.kick).toBe(0);
+    expect(preview.onset).toBe(false);
+    expect(preview.bass).toBeGreaterThan(0.16);
+    expect(preview.tempoBpm).toBeNull();
   });
 });

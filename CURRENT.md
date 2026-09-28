@@ -54,7 +54,7 @@ Evidence: **IMPLEMENTED** | **AUTOMATED-TESTED** | **HUMAN-PROVEN** | **PLANNED*
 
 ## VIS live analyser — resonance-dunes
 
-resonance-dunes is not testable without the live analyser feature vector. Fallbacks exist only for missing optional fields during bring-up. Not HUMAN-PROVEN. The look is not locked.
+resonance-dunes is not testable without the live analyser feature vector. Fallbacks exist only for missing optional fields during bring-up. Preview does not substitute mix-PCM or a 120 BPM grid when the live packet is missing or silent. Export still uses the offline analyser. Not HUMAN-PROVEN. The look is not locked.
 
 ## V5.6 — HUMAN-PROVEN 2026-09-18
 
