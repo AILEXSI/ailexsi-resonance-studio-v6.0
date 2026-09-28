@@ -40,6 +40,7 @@ import {
   type MixPcm,
 } from "../../core/visualizer";
 import { createPlaybackTap, type PlaybackTap } from "../../core/visualz/playback-tap";
+import { createVisualEngine, type VisualEngine } from "../../core/visualz";
 import { decodeAudio, isPlayableSource } from "../../core/exporter/media";
 import { loadStill, paintStill } from "../../core/still";
 
@@ -80,6 +81,7 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastPlayheadRef = useRef(project.playheadMs);
   const tapRef = useRef<PlaybackTap | null>(null);
+  const engineRef = useRef<VisualEngine | null>(null);
   const mixPcmRef = useRef<MixPcm | null>(null);
   const [mixReady, setMixReady] = useState(0);
 
@@ -322,6 +324,13 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
   }, [playing, onLevels]);
 
   useEffect(() => {
+    return () => {
+      engineRef.current?.destroy();
+      engineRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!showViz) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -358,7 +367,12 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
         hasClipAtPlayhead,
       });
       const sceneId = sceneAt(project, project.playheadMs) ?? project.visualizer.sceneId;
-      renderVisualizerScene(ctx, canvas.width, canvas.height, sceneId, features, dt);
+      if (!engineRef.current) {
+        engineRef.current = createVisualEngine({ canvas, initialSceneId: sceneId });
+      }
+      engineRef.current.setFeatures(features);
+      const vector = engineRef.current.getFeatures();
+      renderVisualizerScene(ctx, canvas.width, canvas.height, sceneId, vector, dt);
     };
 
     const dt = Math.max(0, (project.playheadMs - lastPlayheadRef.current) / 1000);

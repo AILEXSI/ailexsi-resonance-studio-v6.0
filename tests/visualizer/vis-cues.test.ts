@@ -39,14 +39,14 @@ describe("VIS cues", () => {
     expect(events[0]!.durationMs).toBe(2000);
     expect(events[0]!.sceneId).toBe(DEFAULT_VISUALIZER_SCENE_ID);
     expect(events[1]!.startMs).toBe(2000);
-    expect(events[1]!.sceneId).toBe("tunnel-spiral");
+    expect(events[1]!.sceneId).toBe("resonance-dunes");
     expect(next.project.visualizer.cues).toEqual([
       { startMs: 0, sceneId: DEFAULT_VISUALIZER_SCENE_ID },
-      { startMs: 2000, sceneId: "tunnel-spiral" },
+      { startMs: 2000, sceneId: "resonance-dunes" },
     ]);
     expect(sceneAt(next.project, 1999)).toBe(DEFAULT_VISUALIZER_SCENE_ID);
-    expect(sceneAt(next.project, 2000)).toBe("tunnel-spiral");
-    expect(sceneIdAt(next.project, 2000)).toBe("tunnel-spiral");
+    expect(sceneAt(next.project, 2000)).toBe("resonance-dunes");
+    expect(sceneIdAt(next.project, 2000)).toBe("resonance-dunes");
     expect(next.selectedVisEventId).toBe(events[1]!.id);
   });
 
@@ -72,14 +72,14 @@ describe("VIS cues", () => {
     const events = [...(job.visualizer.events ?? [])].sort((a, b) => a.startMs - b.startMs);
     expect(events.length).toBeGreaterThanOrEqual(2);
     expect(events[0]!.sceneId).toBe(DEFAULT_VISUALIZER_SCENE_ID);
-    expect(events.some((e) => e.startMs === 3000 && e.sceneId === "tunnel-spiral")).toBe(true);
+    expect(events.some((e) => e.startMs === 3000 && e.sceneId === "resonance-dunes")).toBe(true);
   });
 
   it("menu pick uses the cycle rematerialize path so the VIS track scene actually changes", () => {
     const project = createEmptyProject("Pick");
     project.playheadMs = 2000;
     const cycled = applyCycleVisualizerScene(sessionOf(project));
-    expect(sceneAt(cycled.project, 2000)).toBe("tunnel-spiral");
+    expect(sceneAt(cycled.project, 2000)).toBe("resonance-dunes");
     const deselected = applySelectVis(cycled);
     expect(deselected.selectedVisEventId).toBeNull();
     const picked = applyPickVisualizerScene(deselected, "lexi");

@@ -243,6 +243,7 @@ describe("Visualz scene registry", () => {
       "ember-rain",
       "particle-field",
       "resonance-wave",
+      "resonance-dunes",
       "tunnel-spiral",
       "lita-bloom",
       "void-lattice",
@@ -440,9 +441,15 @@ describe("visualizer timing from loaded audio (not 120 BPM metronome)", () => {
     const fastHits = onsetTimes(fast, 3000);
     expect(medianGap(fastHits)).toBeLessThan(medianGap(slowHits) - 150);
     expect(fastHits.length).toBeGreaterThan(slowHits.length);
-    expect(visFeaturesForPreview({ timeMs: 500, durationMs: 3000, mix: slow, audioLoaded: true }).energy).toBeLessThan(
-      0.35,
-    );
+    const previewAt500 = visFeaturesForPreview({
+      timeMs: 500,
+      durationMs: 3000,
+      mix: slow,
+      audioLoaded: true,
+    });
+    expect(previewAt500.beatPulse).toBe(0);
+    expect(previewAt500.tempoBpm).toBeNull();
+    expect(previewAt500.energy).toBe(0);
     expect(featuresAt(500, 3000).tempoBpm).toBe(120);
   });
 });
@@ -514,7 +521,7 @@ describe("VIS silence / gap at playhead (Visualz gate, no metronome)", () => {
     expect(gap.tempoBpm).toBeNull();
   });
 
-  it("tone present at playhead stays non-zero (audio-derived clock still holds)", () => {
+  it("preview without a live packet stays zero while mix PCM still carries the tone", () => {
     const buf = toneThenSilence(400, 400);
     const preview = visFeaturesForPreview({
       timeMs: 80,
@@ -523,20 +530,24 @@ describe("VIS silence / gap at playhead (Visualz gate, no metronome)", () => {
       audioLoaded: true,
       hasClipAtPlayhead: true,
     });
-    expect(preview.energy).toBeGreaterThan(0.15);
-    expect(preview.rms).toBeGreaterThan(0.15);
-    expect(preview.tempoBpm).not.toBe(120);
+    expect(preview.energy).toBe(0);
+    expect(preview.rms).toBe(0);
+    expect(preview.beatPulse).toBe(0);
+    expect(preview.tempoBpm).toBeNull();
+    expect(featuresFromMix(buf, 80).rms).toBeGreaterThan(0.15);
   });
 
-  it("empty project still uses the 120 BPM featuresAt fallback", () => {
+  it("empty project preview is a zero vector, not the 120 BPM grid", () => {
     const empty = visFeaturesForPreview({
       timeMs: 0,
       durationMs: 10_000,
       audioLoaded: false,
       hasClipAtPlayhead: false,
     });
-    expect(empty.tempoBpm).toBe(120);
-    expect(empty.energy).toBeCloseTo(1, 5);
+    expect(empty.tempoBpm).toBeNull();
+    expect(empty.beatPulse).toBe(0);
+    expect(empty.energy).toBe(0);
+    expect(featuresAt(0, 10_000).tempoBpm).toBe(120);
   });
 
   it("projectHasMixAudio is true in an A1 waveform gap so preview stays on the audio path", () => {

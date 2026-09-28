@@ -272,7 +272,7 @@ describe("VIS-RESPONSE-01 applyVisResponse", () => {
     }
   });
 
-  it("8 Preview and Export use the same transform", () => {
+  it("8 Export and mix PCM share one transform; preview without a live packet stays zero", () => {
     const buf = pcm(sineAt(80, 600, 0.4));
     const preview = visFeaturesForPreview({
       timeMs: 250,
@@ -283,10 +283,10 @@ describe("VIS-RESPONSE-01 applyVisResponse", () => {
     });
     const exported = visFeaturesForExport(250, 600, buf);
     const fromMix = featuresFromMix(pcm(sineAt(80, 600, 0.4)), 250);
-    expect(exported.rms).toBeCloseTo(preview.rms, 5);
-    expect(exported.bass).toBeCloseTo(preview.bass, 5);
-    expect(exported.energy).toBeCloseTo(preview.energy, 5);
-    expect(exported.beatPulse).toBeCloseTo(preview.beatPulse, 5);
+    expect(preview.rms).toBe(0);
+    expect(preview.beatPulse).toBe(0);
+    expect(preview.kick).toBe(0);
+    expect(preview.tempoBpm).toBeNull();
     expect(fromMix.rms).toBeCloseTo(exported.rms, 5);
     const raw = rawAt(buf, 250);
     const once = applyVisResponse(raw);

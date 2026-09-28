@@ -128,6 +128,15 @@ export const SCENE_CATALOG = [
     renderer: "resonance-wave",
   },
   {
+    id: "resonance-dunes",
+    displayName: "Resonance Dunes",
+    shortName: "Dunes",
+    suite: "CLASSIC",
+    family: "FORM",
+    description: "Generative golden particle landscape bound to spectrum and rhythm",
+    renderer: "resonance-dunes",
+  },
+  {
     id: "tunnel-spiral",
     displayName: "Tunnel Spiral",
     shortName: "Tunnel",
