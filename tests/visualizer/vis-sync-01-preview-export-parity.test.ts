@@ -307,8 +307,10 @@ describe("VIS-SYNC-01 shared engine", () => {
       hasClipAtPlayhead: true,
     });
     const exported = visFeaturesForExport(250, 600, buf);
-    expect(exported.bass).toBeCloseTo(preview.bass, 5);
-    expect(exported.rms).toBeCloseTo(preview.rms, 5);
+    expect(preview.rms).toBe(0);
+    expect(preview.beatPulse).toBe(0);
+    expect(preview.tempoBpm).toBeNull();
+    expect(exported.bass).toBeGreaterThan(exported.treble);
   });
 
   it("3 HF tone: 12 kHz is a treble-dominant FFT band", () => {
@@ -516,7 +518,7 @@ describe("VIS-SYNC-01 host routing", () => {
     expect(gap.onset).toBe(false);
   });
 
-  it("empty project still uses the 120 BPM fallback", () => {
+  it("empty project preview is a zero vector, not the 120 BPM fallback", () => {
     const p = createEmptyProject("Empty");
     expect(p.clips.length).toBe(0);
     const empty = visFeaturesForPreview({
@@ -525,7 +527,8 @@ describe("VIS-SYNC-01 host routing", () => {
       audioLoaded: false,
       hasClipAtPlayhead: false,
     });
-    expect(empty.tempoBpm).toBe(120);
-    expect(empty.energy).toBeCloseTo(1, 5);
+    expect(empty.tempoBpm).toBeNull();
+    expect(empty.beatPulse).toBe(0);
+    expect(empty.energy).toBe(0);
   });
 });

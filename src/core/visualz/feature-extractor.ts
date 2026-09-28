@@ -1,8 +1,8 @@
 /**
- * Lightweight Web Audio feature extractor — Visualz (b67410c).
- * Shared onset/energy/spectrum step is the only musical clock when real audio
- * is loaded. Preview (AnalyserNode) and Export (offline PCM FFT) both call
- * assembleAudioFeatures so they cannot drift into unrelated algorithms.
+ * Lightweight Web Audio feature extractor.
+ * Live Preview AnalyserNode uses the visualz flux vector (kick/snare/hat/vocal/
+ * buildup/drop). Export / mix-PCM stays on assembleAudioFeatures — do not point
+ * the live path at that weaker onset detector.
  * Presentation shaping lives in vis-response.ts — this file stays raw.
  */
 
@@ -71,6 +71,12 @@ export function applySilenceGate(features: AudioFeatures): AudioFeatures {
     treble: 0,
     onset: false,
     beatPulse: 0,
+    kick: 0,
+    snare: 0,
+    hat: 0,
+    vocal: 0,
+    buildup: 0,
+    drop: 0,
   };
 }
 
@@ -158,7 +164,10 @@ export function assembleAudioFeatures(opts: {
   };
 }
 
-/** Adapter A — live AnalyserNode bytes already FFT'd + smoothed by Web Audio. */
+/**
+ * Byte adapter for the export-equivalent band split (n/6) and energy onset.
+ * Not the live VIS vector. Live frames use stepLiveAnalyser.
+ */
 export function featuresFromAnalyserBytes(
   freqData: ArrayLike<number>,
   timeData: ArrayLike<number>,
@@ -176,6 +185,115 @@ export function featuresFromAnalyserBytes(
   return assembleAudioFeatures({ timeMs, rms, bass, mid, treble, spectrum, state });
 }
 
+/**
+ * Live visualz flux state. One vector per frame: kick is an impulse, not bass mass.
+ * Thresholds match ailexsi-visualz src/audio/feature-extractor.ts.
+ */
+export type LiveFeatureState = {
+  kick: number;
+  snare: number;
+  hat: number;
+  vocal: number;
+  rise: number;
+  prevE: number;
+  lastKick: number;
+  prev: Float32Array;
+};
+
+/** Visualz AnalyserNode smoothing. Offline export stays at ANALYSER_SMOOTHING (0.75). */
+export const LIVE_ANALYSER_SMOOTHING = 0.55;
+
+export function createLiveFeatureState(binCount: number): LiveFeatureState {
+  return {
+    kick: 0,
+    snare: 0,
+    hat: 0,
+    vocal: 0,
+    rise: 0,
+    prevE: 0,
+    lastKick: 0,
+    prev: new Float32Array(Math.max(0, binCount)),
+  };
+}
+
+/**
+ * Pure live step. `freqData` / `timeData` are AnalyserNode bytes (0–255).
+ * Silence (rms < 0.02 && bass < 0.03) zeros kick, snare, hat, vocal, buildup,
+ * drop, onset, and beatPulse on the returned packet.
+ */
+export function stepLiveAnalyser(opts: {
+  freqData: ArrayLike<number>;
+  timeData: ArrayLike<number>;
+  timeMs: number;
+  state: LiveFeatureState;
+}): AudioFeatures {
+  const { freqData, timeData, timeMs, state } = opts;
+  const n = freqData.length;
+  if (state.prev.length !== n) state.prev = new Float32Array(n);
+  const spectrum = new Float32Array(n);
+  let ss = 0;
+  const timeN = timeData.length;
+  for (let i = 0; i < timeN; i++) {
+    const v = ((timeData[i] ?? 128) - 128) / 128;
+    ss += v * v;
+  }
+  const rms = Math.min(1, Math.sqrt(ss / Math.max(1, timeN)) * 2.2);
+  let fluxB = 0;
+  let fluxM = 0;
+  let fluxH = 0;
+  for (let i = 0; i < n; i++) {
+    spectrum[i] = (freqData[i] ?? 0) / 255;
+    const d = Math.max(0, spectrum[i] - (state.prev[i] ?? 0));
+    if (i < n * 0.06) fluxB += d;
+    else if (i < n * 0.28) fluxM += d;
+    else fluxH += d;
+    state.prev[i] = spectrum[i] ?? 0;
+  }
+  const avg = (a: number, b: number) => {
+    let s = 0;
+    const end = Math.min(n, b);
+    for (let i = a; i < end; i++) s += spectrum[i] ?? 0;
+    return s / Math.max(1, end - a);
+  };
+  const bass = avg(0, Math.floor(n * 0.06));
+  const mid = avg(Math.floor(n * 0.06), Math.floor(n * 0.28));
+  const treble = avg(Math.floor(n * 0.28), n);
+  const silent = rms < SILENCE_RMS && bass < SILENCE_BASS;
+  const kickHit = !silent && fluxB > 0.35 && bass > 0.16 && timeMs - state.lastKick > 100;
+  const snareHit = !silent && fluxM > 0.4 && mid > 0.14 && bass < 0.55;
+  const hatHit = !silent && (fluxH > 0.25 || treble > 0.22);
+  if (kickHit) {
+    state.lastKick = timeMs;
+    state.kick = 1;
+  } else state.kick = Math.max(0, state.kick - 0.08);
+  state.snare = snareHit ? 1 : Math.max(0, state.snare - 0.12);
+  state.hat = Math.min(1, state.hat * 0.72 + (hatHit ? 0.5 : 0));
+  state.vocal = state.vocal * 0.88 + mid * 0.12 * (1 - bass * 0.35);
+  const energy = rms * 0.45 + bass * 0.4 + mid * 0.15;
+  const de = energy - state.prevE;
+  state.rise = Math.max(0, state.rise * 0.92 + de * 4);
+  const buildup = state.rise > 0.12 ? Math.min(1, state.rise * 1.2) : 0;
+  const drop = state.rise > 0.25 && de > 0.08 && bass > 0.28 ? 1 : 0;
+  state.prevE = energy * 0.5 + state.prevE * 0.5;
+  return {
+    timeMs,
+    rms: silent ? 0 : rms,
+    bass: silent ? 0 : bass,
+    mid: silent ? 0 : mid,
+    treble: silent ? 0 : treble,
+    spectrum: spectrum.slice(),
+    onset: kickHit,
+    beatPulse: silent ? 0 : state.kick,
+    tempoBpm: null,
+    kick: silent ? 0 : state.kick,
+    snare: silent ? 0 : state.snare,
+    hat: silent ? 0 : state.hat,
+    vocal: silent ? 0 : Math.min(1, state.vocal * 1.6),
+    buildup: silent ? 0 : buildup,
+    drop: silent ? 0 : drop,
+  };
+}
+
 export function createFeatureExtractor(
   audioContext: AudioContext,
   sourceNode: AudioNode,
@@ -183,7 +301,7 @@ export function createFeatureExtractor(
 ): FeatureExtractor {
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = config.fftSize ?? ANALYSER_FFT_SIZE;
-  analyser.smoothingTimeConstant = config.smoothingTimeConstant ?? ANALYSER_SMOOTHING;
+  analyser.smoothingTimeConstant = config.smoothingTimeConstant ?? LIVE_ANALYSER_SMOOTHING;
   if (config.minDecibels != null) analyser.minDecibels = config.minDecibels;
   if (config.maxDecibels != null) analyser.maxDecibels = config.maxDecibels;
 
@@ -192,13 +310,13 @@ export function createFeatureExtractor(
   const freqBinCount = analyser.frequencyBinCount;
   const freqData = new Uint8Array(freqBinCount);
   const timeData = new Uint8Array(analyser.fftSize);
-  const state = createFeatureState();
+  const state = createLiveFeatureState(freqBinCount);
 
   return {
     sample(timeMs = performance.now()) {
       analyser.getByteFrequencyData(freqData);
       analyser.getByteTimeDomainData(timeData);
-      return featuresFromAnalyserBytes(freqData, timeData, timeMs, state);
+      return stepLiveAnalyser({ freqData, timeData, timeMs, state });
     },
 
     disconnect() {

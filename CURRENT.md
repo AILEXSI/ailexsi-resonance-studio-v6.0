@@ -52,6 +52,10 @@ Evidence: **IMPLEMENTED** | **AUTOMATED-TESTED** | **HUMAN-PROVEN** | **PLANNED*
 | Nächster Slice | Production Pass **I** (44-Track Acceptance) — **PLANNED / NOT IMPLEMENTED**. D + E + F + G + **H** stay HUMAN-PROVEN. Future UI zettel is **not** I. STOP — no I+. |
 | Production Pass | **D HUMAN-PROVEN** (incl. mixer resize/scroll). **E HUMAN-PROVEN** (Stem Import). **F HUMAN-PROVEN** (Track/Chapter Groups collapse UI — create / assign / collapse / rename). **G HUMAN-PROVEN** (Volume Automation — VOL lane). **H HUMAN-PROVEN** (Write Volume **W** — Vite + Root-Exe `24f4337`). **I–N + zettel PLANNED / NOT IMPLEMENTED**. Four Chapters + bis 11 Suno-Stems × 4. Kein Cubase-Klon. VIS-Ausbau-Intent = K–N. Version 5.0.0. AUTO unangetastet. |
 
+## VIS live analyser — resonance-dunes
+
+resonance-dunes is not testable without the live analyser feature vector. Fallbacks exist only for missing optional fields during bring-up. Preview does not substitute mix-PCM or a 120 BPM grid when the live packet is missing or silent. Export still uses the offline analyser. Not HUMAN-PROVEN. The look is not locked.
+
 ## V5.6 — HUMAN-PROVEN 2026-09-18
 
 **IMPLEMENTED / AUTOMATED-TESTED / HUMAN-PROVEN.** Ready to consolidate into `main`. Coordinator merges this branch tip, closes superseded drafts **#27–#34**, builds final `AILEXSI Resonance Studio V5.6.exe`. Agent does **not** merge.

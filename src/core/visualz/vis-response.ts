@@ -181,6 +181,12 @@ export function applyVisResponse(
     onset: raw.onset,
     beatPulse: visBeat,
     tempoBpm: raw.tempoBpm,
+    kick: raw.kick,
+    snare: raw.snare,
+    hat: raw.hat,
+    vocal: raw.vocal,
+    buildup: raw.buildup,
+    drop: raw.drop,
     energy,
     high: visTreble,
   };

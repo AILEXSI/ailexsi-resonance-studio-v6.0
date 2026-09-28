@@ -20,7 +20,6 @@ import {
   type MixPcm as ExtractorMixPcm,
   type OfflineFeatureExtractor,
 } from "./visualz/feature-extractor";
-import { preferLiveFeatures } from "./visualz/playback-tap";
 import { applyVisResponse } from "./visualz/vis-response";
 
 export const DEFAULT_VIS_EVENT_MS = 4000;
@@ -225,11 +224,36 @@ export function visFeaturesForExport(
 }
 
 /**
- * Preview clock: live AnalyserNode when a clip is under the playhead and the
- * tap has energy (Studio playback). Else mix-PCM through the shared offline
- * FFT (paused / seek / no tap). Else quiet if the project audio path is
- * active (including a silent gap). Else the empty-project 120 BPM fallback.
- * `featuresAt` must not run while real audio exists but is currently silent.
+ * Zero vector for Preview. No tempo, no beatPulse, no mix-PCM substitute.
+ * Spectrum length matches the live packet when one exists.
+ */
+function zeroPreviewFeatures(timeMs: number, spectrumLength: number): VisualizerFeatures {
+  return {
+    timeMs,
+    energy: 0,
+    rms: 0,
+    bass: 0,
+    mid: 0,
+    high: 0,
+    treble: 0,
+    spectrum: new Float32Array(Math.max(0, spectrumLength)),
+    onset: false,
+    beatPulse: 0,
+    tempoBpm: null,
+    kick: 0,
+    snare: 0,
+    hat: 0,
+    vocal: 0,
+    buildup: 0,
+    drop: 0,
+  };
+}
+
+/**
+ * Preview clock is the live analyser packet only.
+ * A packet below the silence floor (rms < 0.02 && bass < 0.03) stays zero —
+ * beatPulse on that packet is not promoted. No mix-PCM substitute and no
+ * 120 BPM `featuresAt` grid. Export still uses `visFeaturesForExport`.
  */
 export function visFeaturesForPreview(opts: {
   timeMs: number;
@@ -237,27 +261,18 @@ export function visFeaturesForPreview(opts: {
   mix?: MixPcm | null;
   live?: AudioFeatures | null;
   audioLoaded: boolean;
-  /** False = timeline gap / no clip under the playhead. Omit = infer from mix. */
+  /** False = timeline gap / no clip under the playhead. */
   hasClipAtPlayhead?: boolean;
 }): VisualizerFeatures {
-  const clipHere = opts.hasClipAtPlayhead ?? Boolean(opts.mix && opts.mix.length >= 8);
-  if (opts.hasClipAtPlayhead === false && opts.audioLoaded) {
-    return quietVisualizerFeatures(opts.timeMs);
+  const live = opts.live ?? null;
+  const spectrumLength = live?.spectrum.length ?? 0;
+  if (opts.hasClipAtPlayhead === false) {
+    return zeroPreviewFeatures(live?.timeMs ?? opts.timeMs, spectrumLength);
   }
-  if (clipHere && opts.live && !isSilentEnergy(opts.live.rms, opts.live.bass)) {
-    return presentVisualizerFeatures(opts.live);
+  if (!live || isSilentEnergy(live.rms, live.bass)) {
+    return zeroPreviewFeatures(live?.timeMs ?? opts.timeMs, spectrumLength);
   }
-  if (clipHere && opts.mix && opts.mix.length >= 8) {
-    return featuresFromMix(opts.mix, opts.timeMs);
-  }
-  if (opts.audioLoaded) {
-    const live = preferLiveFeatures(opts.live, quietVisualizerFeatures(opts.timeMs));
-    return presentVisualizerFeatures(live);
-  }
-  const fallback = preferLiveFeatures(opts.live, featuresAt(opts.timeMs, opts.durationMs));
-  // featuresAt is already presented; a live tap still needs the same transform.
-  if (fallback === opts.live) return presentVisualizerFeatures(fallback);
-  return fallback as VisualizerFeatures;
+  return presentVisualizerFeatures(live);
 }
 
 export function nextSceneId(current: VisualizerSceneId): VisualizerSceneId {

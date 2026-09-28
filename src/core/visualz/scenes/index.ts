@@ -14,6 +14,7 @@ import { sunCoreScene } from "./sun-core";
 import { emberRainScene } from "./ember-rain";
 import { particleFieldScene } from "./particle-field";
 import { resonanceWaveScene } from "./resonance-wave";
+import { resonanceDunesScene } from "./resonance-dunes";
 import { tunnelSpiralScene } from "./tunnel-spiral";
 import { litaBloomScene } from "./lita-bloom";
 import { voidLatticeScene } from "./void-lattice";
@@ -39,6 +40,7 @@ export const builtinScenes: Scene[] = [
   emberRainScene,
   particleFieldScene,
   resonanceWaveScene,
+  resonanceDunesScene,
   tunnelSpiralScene,
   litaBloomScene,
   voidLatticeScene,
@@ -65,6 +67,7 @@ export {
   emberRainScene,
   particleFieldScene,
   resonanceWaveScene,
+  resonanceDunesScene,
   tunnelSpiralScene,
   litaBloomScene,
   voidLatticeScene,
