@@ -243,6 +243,7 @@ describe("Visualz scene registry", () => {
       "ember-rain",
       "particle-field",
       "resonance-wave",
+      "resonance-dunes",
       "tunnel-spiral",
       "lita-bloom",
       "void-lattice",

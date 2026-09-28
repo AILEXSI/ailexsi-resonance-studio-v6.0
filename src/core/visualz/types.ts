@@ -14,6 +14,13 @@ export interface AudioFeatures {
   onset: boolean;
   beatPulse: number;
   tempoBpm?: number | null;
+  /** Kick envelope 0–1 (impulse, not mass) */
+  kick?: number;
+  snare?: number;
+  hat?: number;
+  vocal?: number;
+  buildup?: number;
+  drop?: number;
 }
 
 export interface AudioAnalyserConfig {

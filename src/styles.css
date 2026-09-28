@@ -2239,6 +2239,7 @@ body.media-asset-dragging .project-overlay-drawer {
 .vis-span[data-scene="ember-rain"] { background: rgba(72, 16, 8, 0.86); color: #ff8a5a; }
 .vis-span[data-scene="particle-field"] { background: rgba(36, 20, 80, 0.86); color: #c4b0ff; }
 .vis-span[data-scene="resonance-wave"] { background: rgba(72, 28, 12, 0.82); color: #ffb08a; }
+.vis-span[data-scene="resonance-dunes"] { background: rgba(80, 52, 8, 0.86); color: #ffe7a8; }
 .vis-span[data-scene="tunnel-spiral"] { background: rgba(8, 48, 72, 0.86); color: #7de8ff; }
 .vis-span[data-scene="lita-bloom"] { background: rgba(72, 16, 36, 0.86); color: #ff8aac; }
 .vis-span[data-scene="void-lattice"] { background: rgba(6, 28, 48, 0.88); color: #7deeff; }

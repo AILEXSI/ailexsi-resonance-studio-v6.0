@@ -153,7 +153,7 @@ describe("VIS events", () => {
       selectedVis: true,
       selectedVisEventId: null,
     });
-    expect(fallback.project.visualizer.sceneId).toBe("tunnel-spiral");
+    expect(fallback.project.visualizer.sceneId).toBe("resonance-dunes");
     expect(visualizerEventsOf(fallback.project)[0]!.sceneId).toBe("pulse-orb");
     const selected = applyCommand(sessionOf(project), { type: "selectVisEvent", eventId: "ve1" });
     const cycled = applyCycleVisualizerScene(selected);
