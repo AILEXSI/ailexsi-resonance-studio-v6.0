@@ -17,6 +17,13 @@ import { resonanceWaveScene } from "./resonance-wave";
 import { tunnelSpiralScene } from "./tunnel-spiral";
 import { litaBloomScene } from "./lita-bloom";
 import { voidLatticeScene } from "./void-lattice";
+import { journeyLatticeScene } from "./journey-lattice";
+import { journeyTerrainScene } from "./journey-terrain";
+import { journeyCanyonScene } from "./journey-canyon";
+import { journeyGatesScene } from "./journey-gates";
+import { journeyOceanScene } from "./journey-ocean";
+import { journeyMonolithsScene } from "./journey-monoliths";
+import { journeyVoyageScene } from "./journey-voyage";
 import { nebulaHelixScene } from "./nebula-helix";
 import { accretionDiskScene } from "./accretion-disk";
 import { crystalStormScene } from "./crystal-storm";
@@ -42,6 +49,13 @@ export const builtinScenes: Scene[] = [
   tunnelSpiralScene,
   litaBloomScene,
   voidLatticeScene,
+  journeyLatticeScene,
+  journeyTerrainScene,
+  journeyCanyonScene,
+  journeyGatesScene,
+  journeyOceanScene,
+  journeyMonolithsScene,
+  journeyVoyageScene,
   nebulaHelixScene,
   accretionDiskScene,
   crystalStormScene,
@@ -68,6 +82,13 @@ export {
   tunnelSpiralScene,
   litaBloomScene,
   voidLatticeScene,
+  journeyLatticeScene,
+  journeyTerrainScene,
+  journeyCanyonScene,
+  journeyGatesScene,
+  journeyOceanScene,
+  journeyMonolithsScene,
+  journeyVoyageScene,
   nebulaHelixScene,
   accretionDiskScene,
   crystalStormScene,
