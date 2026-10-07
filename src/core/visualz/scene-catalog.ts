@@ -155,6 +155,15 @@ export const SCENE_CATALOG = [
     renderer: "void-lattice",
   },
   {
+    id: "journey-lattice",
+    displayName: "Journey Lattice",
+    shortName: "Journey",
+    suite: "CLASSIC",
+    family: "FORM",
+    description: "Evolution scene — music-shaped forward journey through an evolving 3D lattice",
+    renderer: "journey-lattice",
+  },
+  {
     id: "nebula-helix",
     displayName: "Nebula Helix",
     shortName: "Helix",
