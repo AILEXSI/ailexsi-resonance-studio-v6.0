@@ -209,6 +209,15 @@ export const SCENE_CATALOG = [
     renderer: "journey-monoliths",
   },
   {
+    id: "journey-voyage",
+    displayName: "Journey Voyage",
+    shortName: "Voyage",
+    suite: "CLASSIC",
+    family: "FORM",
+    description: "Continuous musical voyage transitioning through all Journey worlds",
+    renderer: "journey-voyage",
+  },
+  {
     id: "nebula-helix",
     displayName: "Nebula Helix",
     shortName: "Helix",
