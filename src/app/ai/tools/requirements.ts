@@ -84,6 +84,14 @@ export const TOOL_REQUIREMENTS: readonly ToolRequirement[] = [
     targetType: "project",
     supportsMultipleTargets: false,
   },
+  {
+    name: "song.analyze",
+    mutation: false,
+    requiredPermission: "READ",
+    requiredContext: "PROJECT",
+    targetType: "none",
+    supportsMultipleTargets: false,
+  },
 ];
 
 export function toolRequirementOf(name: string | null | undefined): ToolRequirement | null {

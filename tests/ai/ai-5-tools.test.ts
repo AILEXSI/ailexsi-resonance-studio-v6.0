@@ -55,6 +55,7 @@ describe("AI-5 read-only tool registry", () => {
       "audio.get_analysis",
       "automation.read",
       "timeline.inspect_range",
+      "song.analyze",
     ]);
     expect(listTools().every((t) => t.grant === "READ")).toBe(true);
   });
@@ -157,6 +158,7 @@ describe("AI-5 read-only tool registry", () => {
     invokeTool("audio.get_analysis", { clipId: "clip_test" }, { session, grant: "READ" });
     invokeTool("automation.read", { trackId: "A1" }, { session, grant: "READ" });
     invokeTool("timeline.inspect_range", { fromMs: 0, toMs: 60_000 }, { session, grant: "READ" });
+    invokeTool("song.analyze", { lyrics: "unaligned line" }, { session, grant: "READ" });
     expect(session.project).toBe(before);
     expect(session.history.past.length).toBe(beforeHistory);
     expect(session.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
