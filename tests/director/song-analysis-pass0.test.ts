@@ -1,0 +1,331 @@
+/**
+ * Pass-0 song analysis hard rules.
+ * The signal is generated here: clicks, a tone, and a silence gap. No binary assets.
+ */
+import { describe, expect, it } from "vitest";
+import { invokeTool } from "../../src/app/ai/tools/registry";
+import { createSession } from "../../src/app/session";
+import { PROJECT_SCHEMA_VERSION, serializeProject } from "../../src/core/project";
+import {
+  analyzeSong,
+  createEffectHypothesis,
+  formatSongReport,
+  nullAligner,
+  parseLrc,
+  SEMANTIC_FIT_RE,
+  sealStatement,
+  splitLyricsText,
+  StatementLevelError,
+  type SongAnalysisReport,
+  type Statement,
+} from "../../src/core/director/song-analysis";
+import type { MixPcm } from "../../src/core/visualz/feature-extractor";
+import { createMemoryBlobStore } from "../../src/core/persistence";
+import { asset, clip, projectWith } from "../helpers";
+
+const SR = 44100;
+
+function silence(durationMs: number): Float32Array {
+  return new Float32Array(Math.round((SR * durationMs) / 1000));
+}
+
+function pcmOf(data: Float32Array): MixPcm {
+  return {
+    sampleRate: SR,
+    length: data.length,
+    numberOfChannels: 1,
+    getChannelData: () => data,
+  } as MixPcm;
+}
+
+function addTone(data: Float32Array, fromMs: number, toMs: number, freqHz: number, amp: number): void {
+  const start = Math.round((fromMs / 1000) * SR);
+  const end = Math.min(data.length, Math.round((toMs / 1000) * SR));
+  for (let i = start; i < end; i += 1) {
+    const t = (i - start) / SR;
+    data[i] = (data[i] ?? 0) + amp * Math.sin(2 * Math.PI * freqHz * t);
+  }
+}
+
+/** Short bass click. Same shape as the in-repo visualizer probes, generated in-test. */
+function addClick(data: Float32Array, timeMs: number): void {
+  const start = Math.round((timeMs / 1000) * SR);
+  const clickN = Math.round(SR * 0.012);
+  for (let i = 0; i < clickN && start + i < data.length; i += 1) {
+    const env = 1 - i / clickN;
+    const t = i / SR;
+    data[start + i] = env * (0.95 * Math.sin(2 * Math.PI * 70 * t) + 0.3 * Math.sin(2 * Math.PI * 160 * t));
+  }
+}
+
+/** Clicks + tone + a one-second silence gap. License-free, no file. */
+function syntheticTrack(): Float32Array {
+  const data = silence(4200);
+  addTone(data, 500, 2000, 220, 0.35);
+  for (const timeMs of [500, 1000, 1500, 2000]) addClick(data, timeMs);
+  for (const timeMs of [3200, 3700]) addClick(data, timeMs);
+  return data;
+}
+
+function audioStatements(report: SongAnalysisReport): Statement[] {
+  return report.statements.filter(
+    (statement) => statement.level === "OBSERVATION" && statement.signalSource === "pcm.offline_extractor",
+  );
+}
+
+describe("song analysis pass 0", () => {
+  it("no audio marks audio UNAVAILABLE and emits no audio-event statements", () => {
+    const report = analyzeSong({ lyricsText: "warp remains\nactive" });
+    expect(report.audio.status).toBe("UNAVAILABLE");
+    expect(report.audio.reason).toBe("NO_PCM");
+    expect(audioStatements(report)).toEqual([]);
+    expect(report.tempo.bpm).toBeNull();
+    expect(report.tempo.confidence).toBeNull();
+    expect(report.segments).toEqual([]);
+    expect(report.joint).toEqual([]);
+    expect(report.statements.every((statement) => statement.level === "OBSERVATION")).toBe(true);
+    expect(formatSongReport(report)).toMatch(/Audio: UNAVAILABLE \(NO_PCM\)/);
+  });
+
+  it("text-only input never produces an audio OBSERVATION", () => {
+    const report = analyzeSong({ lyricsText: "engine room\nout" });
+    expect(report.lyrics.status).toBe("TEXT");
+    expect(report.lyrics.lines.every((line) => line.timeMs == null && line.status === "UNALIGNED")).toBe(true);
+    for (const statement of report.statements) {
+      if (statement.level !== "OBSERVATION") continue;
+      expect(statement.signalSource).not.toBe("pcm.offline_extractor");
+      expect(["onset", "kick", "energy", "tempo", "segment", "segment_boundary", "energy_dip"]).not.toContain(statement.kind);
+    }
+    expect(audioStatements(report)).toHaveLength(0);
+  });
+
+  it("alignment-only result never produces a semantic-fit statement", () => {
+    const aligned = analyzeSong({
+      manualLines: [
+        {
+          text: "warp remains",
+          timeMs: 1000,
+          words: [
+            { text: "warp", timeMs: 1000 },
+            { text: "remains", timeMs: 1400 },
+          ],
+        },
+      ],
+      aligner: nullAligner,
+    });
+    expect(aligned.lyrics.lines[0]?.timeMs).toBe(1000);
+    expect(aligned.lyrics.lines[0]?.words[0]?.status).toBe("MANUAL");
+    expect(aligned.audio.status).toBe("UNAVAILABLE");
+    for (const statement of aligned.statements) {
+      expect(statement.level).not.toBe("INTERPRETATION");
+      expect(statement.text).not.toMatch(SEMANTIC_FIT_RE);
+      if (statement.level === "INTERPRETATION") {
+        expect(statement.basis).not.toBe("semantic_fit" as never);
+      }
+    }
+
+    const withAudio = analyzeSong({
+      pcm: pcmOf(syntheticTrack()),
+      manualLines: [{ text: "warp remains", timeMs: 1000, words: [{ text: "warp", timeMs: 1000 }] }],
+    });
+    const interpretations = withAudio.statements.filter((statement) => statement.level === "INTERPRETATION");
+    expect(interpretations.length).toBeGreaterThan(0);
+    for (const statement of interpretations) {
+      expect(statement.basis).toBe("co_occurrence");
+      expect(statement.text).not.toMatch(SEMANTIC_FIT_RE);
+      expect(statement.context).not.toMatch(SEMANTIC_FIT_RE);
+      expect(statement.observationIds.length).toBeGreaterThan(0);
+    }
+    expect(() =>
+      sealStatement({
+        id: "bad_fit",
+        level: "INTERPRETATION",
+        basis: "semantic_fit",
+        observationIds: ["obs_0000"],
+        context: "the words match the drop",
+        confidence: null,
+        evidenceRefs: ["obs_0000"],
+        text: "this semantic fit means that the line expresses the drop",
+      }),
+    ).toThrow(StatementLevelError);
+  });
+
+  it("EFFECT_HYPOTHESIS is never emitted as OBSERVATION or INTERPRETATION", () => {
+    const hypothesis = createEffectHypothesis({
+      id: "hyp_0000",
+      text: "A cut on this onset might read as impact.",
+      observationIds: [],
+    });
+    expect(hypothesis.level).toBe("EFFECT_HYPOTHESIS");
+    expect(hypothesis.hypothesis).toBe(true);
+    expect(hypothesis.statedAs).toBe("HYPOTHESIS");
+    expect(() => sealStatement({ ...hypothesis, level: "OBSERVATION" })).toThrow(/OBSERVATION or INTERPRETATION/);
+    expect(() => sealStatement({ ...hypothesis, level: "INTERPRETATION" })).toThrow(/OBSERVATION or INTERPRETATION/);
+    expect(() => sealStatement({ ...hypothesis, hypothesis: false })).toThrow(/flagged/);
+
+    const report = analyzeSong({ pcm: pcmOf(syntheticTrack()), lyricsText: "warp" });
+    expect(report.notDone.effectHypothesis).toBe("NOT_EMITTED");
+    expect(report.statements.filter((statement) => statement.level === "EFFECT_HYPOTHESIS")).toHaveLength(0);
+    for (const statement of report.statements) {
+      expect(statement.level === "OBSERVATION" || statement.level === "INTERPRETATION").toBe(true);
+      expect("hypothesis" in statement).toBe(false);
+    }
+  });
+
+  it("unknown tempo and unaligned times stay null and are never invented", () => {
+    const quiet = analyzeSong({
+      pcm: pcmOf(silence(2000)),
+      lyricsText: "one two\nthree",
+    });
+    expect(quiet.tempo.bpm).toBeNull();
+    expect(quiet.tempo.confidence).toBeNull();
+    expect(quiet.statements.some((statement) => statement.level === "OBSERVATION" && statement.kind === "tempo")).toBe(false);
+    for (const line of quiet.lyrics.lines) {
+      expect(line.timeMs).toBeNull();
+      expect(line.status).toBe("UNALIGNED");
+      for (const word of line.words) {
+        expect(word.timeMs).toBeNull();
+        expect(word.endMs).toBeNull();
+        expect(word.status).toBe("UNALIGNED");
+        expect(word.confidence).toBeNull();
+      }
+    }
+    const plain = splitLyricsText("alpha beta");
+    expect(plain[0]?.words.map((word) => word.timeMs)).toEqual([null, null]);
+    const json = JSON.stringify(quiet);
+    expect(json).not.toContain("undefined");
+    expect(json).not.toMatch(/"bpm":\s*120/);
+    for (const line of quiet.lyrics.lines) {
+      expect(JSON.stringify(line)).not.toMatch(/"timeMs":(?!null)/);
+    }
+    expect(formatSongReport(quiet)).toMatch(/Tempo: UNKNOWN/);
+  });
+
+  it("the same PCM produces the same report", () => {
+    const pcm = pcmOf(syntheticTrack());
+    const input = {
+      pcm,
+      lrc: "[00:01.00]warp remains\n[00:03.20]still active",
+      windowMs: 400,
+    };
+    const a = analyzeSong(input);
+    const b = analyzeSong(input);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(a.pass).toBe(0);
+    expect(a.timeline).toBe("ms");
+    const onsets = a.statements.flatMap((statement) =>
+      statement.level === "OBSERVATION" && statement.kind === "onset" ? [statement.timeMs] : [],
+    );
+    expect(onsets).toEqual([520, 3220, 3720]);
+    expect(a.tempo.bpm).toBeNull();
+    expect(a.tempo.confidence).toBeNull();
+  });
+
+  it("tempo stays null when intervals are unreliable and is reported when a click train agrees", () => {
+    const masked = analyzeSong({ pcm: pcmOf(syntheticTrack()) });
+    expect(masked.tempo).toEqual({ bpm: null, confidence: null, onsetCount: 3 });
+    const clicks = silence(3000);
+    for (const timeMs of [200, 700, 1200, 1700, 2200]) addClick(clicks, timeMs);
+    const train = analyzeSong({ pcm: pcmOf(clicks) });
+    expect(train.tempo.bpm).toBe(120);
+    expect(train.tempo.confidence).toBe(1);
+    expect(train.statements.some((statement) => statement.level === "OBSERVATION" && statement.kind === "tempo" && statement.value === 120)).toBe(true);
+    expect(JSON.stringify(train)).toBe(JSON.stringify(analyzeSong({ pcm: pcmOf(clicks) })));
+  });
+
+  it("LRC and manual times are kept and NullAligner does not invent the rest", () => {
+    const lrc = parseLrc("[ti:Engine]\n[offset:0]\n[00:01.00]Hello <00:01.40>world\n[00:02.50]only line");
+    expect(lrc[0]?.timeMs).toBe(1000);
+    expect(lrc[0]?.status).toBe("LRC");
+    expect(lrc[0]?.text).toBe("Hello world");
+    expect(lrc[0]?.words.map((word) => word.timeMs)).toEqual([null, 1400]);
+    expect(lrc[0]?.words[0]?.status).toBe("UNALIGNED");
+    expect(lrc[0]?.words[1]?.status).toBe("LRC");
+    expect(lrc[1]?.words.every((word) => word.timeMs == null && word.status === "UNALIGNED")).toBe(true);
+
+    const report = analyzeSong({
+      lyricsText: "this plain text must not replace lrc",
+      lrc: "[00:00.50]kept",
+    });
+    expect(report.lyrics.lines.map((line) => line.text)).toEqual(["kept"]);
+    expect(report.lyrics.alignerId).toBe("null");
+    expect(report.lyrics.lines[0]?.timeMs).toBe(500);
+
+    const untouched = nullAligner.align({ lines: splitLyricsText("no times here"), pcm: pcmOf(syntheticTrack()) });
+    expect(untouched.every((line) => line.timeMs == null && line.words.every((word) => word.timeMs == null))).toBe(true);
+  });
+
+  it("a timed lyric line attaches audio observations and an untimed line does not", () => {
+    const report = analyzeSong({
+      pcm: pcmOf(syntheticTrack()),
+      manualLines: [
+        { text: "inside the tone", timeMs: 1000 },
+        { text: "no clock" },
+      ],
+    });
+    const timed = report.joint.find((link) => link.lineId === "line_0000");
+    const untimed = report.joint.find((link) => link.lineId === "line_0001");
+    expect(timed).toBeTruthy();
+    expect(timed!.observationIds.length).toBeGreaterThan(0);
+    expect(timed!.interpretationId).toBeTruthy();
+    expect(untimed).toBeUndefined();
+    const interpretation = report.statements.find((statement) => statement.id === timed!.interpretationId);
+    expect(interpretation?.level).toBe("INTERPRETATION");
+    if (interpretation?.level === "INTERPRETATION") {
+      for (const id of interpretation.observationIds) {
+        const cited = report.statements.find((statement) => statement.id === id);
+        expect(cited?.level).toBe("OBSERVATION");
+        expect(cited && cited.level === "OBSERVATION" ? cited.signalSource : null).toBe("pcm.offline_extractor");
+      }
+    }
+    const dip = report.statements.find(
+      (statement) => statement.level === "OBSERVATION" && statement.kind === "energy_dip",
+    );
+    expect(dip?.level).toBe("OBSERVATION");
+    const breakSeg = report.segments.find((segment) => segment.label === "break");
+    expect(breakSeg).toBeTruthy();
+    expect(breakSeg!.startMs).toBeGreaterThanOrEqual(1800);
+    expect(breakSeg!.endMs).toBeLessThanOrEqual(3400);
+  });
+
+  it("song.analyze is a read-only Director tool and does not mutate the project", () => {
+    const stored = asset({ id: "asset_song", kind: "audio", durationMs: 4200 });
+    const placed = clip({ id: "clip_song", assetId: stored.id, trackId: "A1", startMs: 0, durationMs: 4200 });
+    const session = {
+      ...createSession(createMemoryBlobStore()),
+      project: projectWith([placed], [stored]),
+      selectedClipId: placed.id,
+      selectedClipIds: [placed.id],
+    };
+    const before = session.project;
+    const beforeHistory = session.history.past.length;
+    const result = invokeTool(
+      "song.analyze",
+      { clipId: placed.id, lyrics: "plain only", lrc: "[00:01.00]warp remains" },
+      { session, grant: "READ", pcmByClipId: { [placed.id]: pcmOf(syntheticTrack()) } },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const data = result.data as { summary: string; report: SongAnalysisReport };
+    expect(data.summary).toMatch(/Song analysis \(pass 0\)/);
+    expect(data.report.audio.status).toBe("OK");
+    expect(data.report.pass).toBe(0);
+    expect(data.summary).toMatch(/warp remains/);
+    expect(JSON.stringify(data)).not.toMatch(/sourcePath|objectUrl/);
+    expect(session.project).toBe(before);
+    expect(session.history.past.length).toBe(beforeHistory);
+    expect(session.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(JSON.parse(serializeProject(session.project)).schemaVersion).toBe(5);
+
+    const missing = invokeTool("song.analyze", { lyrics: "text only" }, { session, grant: "READ" });
+    expect(missing.ok).toBe(true);
+    if (missing.ok) {
+      const report = (missing.data as { report: SongAnalysisReport }).report;
+      expect(report.audio.status).toBe("UNAVAILABLE");
+      expect(audioStatements(report)).toHaveLength(0);
+    }
+    expect(invokeTool("song.analyze", { clipId: "clip_missing" }, { session, grant: "READ" })).toMatchObject({
+      code: "UNKNOWN_CLIP",
+    });
+  });
+});

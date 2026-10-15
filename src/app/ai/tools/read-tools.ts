@@ -14,6 +14,7 @@ import { selectionOf, type Session } from "../../session";
 import type { JsonSchema, ToolDefinition, ToolError, ToolResult } from "./types";
 import { isLikelyDisplayName, validateArgs } from "./validate";
 import { INSPECT_RANGE_TOOL, inspectTimelineRange } from "./inspect-range";
+import { SONG_ANALYZE_TOOL, songAnalyze } from "./song-analyze";
 
 export interface ToolRuntime {
   session: Session;
@@ -86,6 +87,19 @@ export const READ_TOOLS: ToolDefinition[] = [
       toMs: { type: "number", description: "Exclusive end (ms)" },
       trackIds: { type: "array", description: "Optional track id filter", items: { type: "string" } },
       maxClips: { type: "number", description: "Fail closed when the range has more clips" },
+    }),
+  },
+  {
+    name: SONG_ANALYZE_TOOL,
+    description:
+      "Pass-0 song report on one millisecond timeline. Offline PCM observations plus plain lyrics, LRC, or manual times. Does not invent alignment. Read-only. No network.",
+    grant: "READ",
+    inputSchema: object({
+      lyrics: { type: "string", description: "Plain lyric text. Words stay UNALIGNED." },
+      lrc: { type: "string", description: "LRC text. Line times, and <mm:ss.xx> word times when present." },
+      clipId: { type: "string", description: "Clip whose runtime PCM is analyzed. Project does not store PCM." },
+      windowMs: { type: "number", description: "Joint window half-width in ms." },
+      timelineOriginMs: { type: "number", description: "Added to PCM times so audio shares the lyric timeline." },
     }),
   },
 ];
@@ -215,6 +229,8 @@ export function invokeReadTool(name: string, args: unknown, runtime: ToolRuntime
         },
       };
     }
+    case SONG_ANALYZE_TOOL:
+      return songAnalyze(rec, runtime);
     case INSPECT_RANGE_TOOL:
       return inspectTimelineRange(session, {
         fromMs: typeof rec.fromMs === "number" ? rec.fromMs : undefined,
