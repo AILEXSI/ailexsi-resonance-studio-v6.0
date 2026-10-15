@@ -209,9 +209,7 @@ function parseWordPayload(payload: string, offsetMs = 0): TimedToken[] {
     const seconds = match[2] ?? match[5];
     const fraction = match[3] ?? match[6];
     if (minutes != null && seconds != null) {
-      const timeMs = lrcStampToMs(minutes, seconds, fraction) + offsetMs;
-      assertLyricTimeMs(timeMs);
-      pending = timeMs;
+      pending = applyLrcOffset(lrcStampToMs(minutes, seconds, fraction), offsetMs);
     }
     cursor = match.index + match[0].length;
   }
@@ -232,17 +230,31 @@ function parseOffsetTag(line: string): number {
   return offset;
 }
 
+/**
+ * LRC offset is one value for the whole file, wherever the tag sits.
+ * Positive offset means earlier: timeMs = stamp - offset.
+ */
+function fileOffsetMs(lines: readonly string[]): number {
+  let offsetMs = 0;
+  for (const line of lines) {
+    if (/^\[offset:/i.test(line)) offsetMs = parseOffsetTag(line);
+  }
+  return offsetMs;
+}
+
+function applyLrcOffset(stampMs: number, offsetMs: number): number {
+  const timeMs = stampMs - offsetMs;
+  assertLyricTimeMs(timeMs);
+  return timeMs;
+}
+
 export function parseLrc(lrc: string): LyricLine[] {
   assertLyricTextLimits(lrc, "lrc");
-  let offsetMs = 0;
+  const source = lrc.split(/\r?\n/).map((raw) => raw.trim()).filter((line) => line.length > 0);
+  const offsetMs = fileOffsetMs(source);
   const rows: Array<{ timeMs: number; text: string }> = [];
-  for (const raw of lrc.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (/^\[offset:/i.test(line)) {
-      offsetMs = parseOffsetTag(line);
-      continue;
-    }
+  for (const line of source) {
+    if (/^\[offset:/i.test(line)) continue;
     if (/^\[[a-z]+:/i.test(line)) continue;
     if (/[<[]\d{5,}:/.test(line)) throw new SongInputError("LRC timestamp is invalid");
     if (!/^\[\d+:/.test(line)) continue;
@@ -251,9 +263,7 @@ export function parseLrc(lrc: string): LyricLine[] {
     let rest = line;
     let lead: RegExpExecArray | null;
     while ((lead = LEADING_STAMP.exec(rest))) {
-      const timeMs = lrcStampToMs(lead[1]!, lead[2]!, lead[3]) + offsetMs;
-      assertLyricTimeMs(timeMs);
-      times.push(timeMs);
+      times.push(applyLrcOffset(lrcStampToMs(lead[1]!, lead[2]!, lead[3]), offsetMs));
       rest = rest.slice(lead[0].length);
     }
     if (times.length === 0) throw new SongInputError("LRC timestamp is invalid");

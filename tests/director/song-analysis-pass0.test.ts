@@ -123,23 +123,23 @@ describe("song analysis pass 0", () => {
     for (const statement of aligned.statements) {
       expect(statement.level).not.toBe("INTERPRETATION");
       expect(statement.text).not.toMatch(SEMANTIC_FIT_RE);
-      if (statement.level === "INTERPRETATION") {
-        expect(statement.basis).not.toBe("semantic_fit" as never);
-      }
     }
 
     const withAudio = analyzeSong({
       pcm: pcmOf(syntheticTrack()),
       manualLines: [{ text: "warp remains", timeMs: 1000, words: [{ text: "warp", timeMs: 1000 }] }],
     });
-    const interpretations = withAudio.statements.filter((statement) => statement.level === "INTERPRETATION");
-    expect(interpretations.length).toBeGreaterThan(0);
-    for (const statement of interpretations) {
-      expect(statement.basis).toBe("co_occurrence");
+    let sawInterpretation = false;
+    for (const statement of withAudio.statements) {
       expect(statement.text).not.toMatch(SEMANTIC_FIT_RE);
-      expect(statement.context).not.toMatch(SEMANTIC_FIT_RE);
-      expect(statement.observationIds.length).toBeGreaterThan(0);
+      if (statement.level === "INTERPRETATION") {
+        sawInterpretation = true;
+        expect(statement.basis).toBe("co_occurrence");
+        expect(statement.context).not.toMatch(SEMANTIC_FIT_RE);
+        expect(statement.observationIds.length).toBeGreaterThan(0);
+      }
     }
+    expect(sawInterpretation).toBe(true);
     expect(() =>
       sealStatement({
         id: "bad_fit",
@@ -181,8 +181,7 @@ describe("song analysis pass 0", () => {
       pcm: pcmOf(silence(2000)),
       lyricsText: "one two\nthree",
     });
-    expect(quiet.tempo.bpm).toBeNull();
-    expect(quiet.tempo.confidence).toBeNull();
+    expect(quiet.tempo).toEqual({ bpm: null, confidence: null, onsetCount: 0 });
     expect(quiet.statements.some((statement) => statement.level === "OBSERVATION" && statement.kind === "tempo")).toBe(false);
     for (const line of quiet.lyrics.lines) {
       expect(line.timeMs).toBeNull();
@@ -198,7 +197,6 @@ describe("song analysis pass 0", () => {
     expect(plain[0]?.words.map((word) => word.timeMs)).toEqual([null, null]);
     const json = JSON.stringify(quiet);
     expect(json).not.toContain("undefined");
-    expect(json).not.toMatch(/"bpm":\s*120/);
     for (const line of quiet.lyrics.lines) {
       expect(JSON.stringify(line)).not.toMatch(/"timeMs":(?!null)/);
     }
@@ -303,10 +301,13 @@ describe("song analysis pass 0", () => {
     };
     const before = session.project;
     const beforeHistory = session.history.past.length;
+    const samples = syntheticTrack();
+    const pcmSnapshot = samples.slice();
+    const pcm = pcmOf(samples);
     const result = invokeTool(
       "song.analyze",
       { clipId: placed.id, lyrics: "plain only", lrc: "[00:01.00]warp remains" },
-      { session, grant: "READ", pcmByClipId: { [placed.id]: pcmOf(syntheticTrack()) } },
+      { session, grant: "READ", pcmByClipId: { [placed.id]: pcm } },
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -318,6 +319,10 @@ describe("song analysis pass 0", () => {
     expect(JSON.stringify(data)).not.toMatch(/sourcePath|objectUrl/);
     expect(session.project).toBe(before);
     expect(session.history.past.length).toBe(beforeHistory);
+    expect(pcm.getChannelData(0)).toEqual(pcmSnapshot);
+    expect(pcm.sampleRate).toBe(SR);
+    expect(pcm.length).toBe(pcmSnapshot.length);
+    expect(pcm.numberOfChannels).toBe(1);
     expect(session.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(JSON.parse(serializeProject(session.project)).schemaVersion).toBe(5);
 
@@ -381,8 +386,42 @@ describe("song analysis pass 0", () => {
       expect(JSON.stringify(result)).not.toMatch(/Infinity/);
     }
     const shifted = parseLrc("[offset:-500]\n[00:01.00]hello");
-    expect(shifted[0]?.timeMs).toBe(500);
+    expect(shifted[0]?.timeMs).toBe(1500);
     expect(Number.isFinite(shifted[0]?.timeMs)).toBe(true);
+  });
+
+  it("LRC offset is one file-wide value and a positive offset is earlier", () => {
+    const lyric = "[00:01.00]a <00:01.50>b";
+    for (const lrc of [`[offset:500]\n${lyric}`, `${lyric}\n[offset:500]`]) {
+      const lines = parseLrc(lrc);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.timeMs).toBe(500);
+      expect(lines[0]?.words.map((word) => [word.text, word.timeMs])).toEqual([
+        ["a", null],
+        ["b", 1000],
+      ]);
+      expect(lines[0]?.words.every((word) => word.timeMs == null || Number.isFinite(word.timeMs))).toBe(true);
+    }
+    const later = parseLrc(`[offset:-500]\n${lyric}`);
+    expect(later[0]?.timeMs).toBe(1500);
+    expect(later[0]?.words.map((word) => word.timeMs)).toEqual([null, 2000]);
+  });
+
+  it("LRC keeps fraction widths, colon stamps, repeated stamps, and drops empty text", () => {
+    expect(parseLrc("[00:00.5]tenth")[0]?.timeMs).toBe(500);
+    expect(parseLrc("[00:01.250]millis")[0]?.timeMs).toBe(1250);
+    const colon = parseLrc("[00:01:40]colon form");
+    expect(colon[0]?.timeMs).toBe(1400);
+    expect(colon[0]?.text).toBe("colon form");
+
+    const repeated = parseLrc("[00:03.00][00:01.00]same words");
+    expect(repeated.map((line) => [line.timeMs, line.text])).toEqual([
+      [1000, "same words"],
+      [3000, "same words"],
+    ]);
+
+    const skipped = parseLrc("[00:01.00]\n[00:02.00]   \n\n[00:03.00]kept");
+    expect(skipped.map((line) => [line.timeMs, line.text])).toEqual([[3000, "kept"]]);
   });
 
   it("song.analyze rejects malformed LRC with INVALID_ARGS", () => {
