@@ -10,15 +10,19 @@ import {
   analyzeSong,
   createEffectHypothesis,
   formatSongReport,
+  MAX_LYRICS_BYTES,
+  MAX_LYRICS_LINES,
   nullAligner,
   parseLrc,
   SEMANTIC_FIT_RE,
   sealStatement,
+  SongInputError,
   splitLyricsText,
   StatementLevelError,
   type SongAnalysisReport,
   type Statement,
 } from "../../src/core/director/song-analysis";
+import { toSongAnalyzeError } from "../../src/app/ai/tools/song-analyze";
 import type { MixPcm } from "../../src/core/visualz/feature-extractor";
 import { createMemoryBlobStore } from "../../src/core/persistence";
 import { asset, clip, projectWith } from "../helpers";
@@ -327,5 +331,95 @@ describe("song analysis pass 0", () => {
     expect(invokeTool("song.analyze", { clipId: "clip_missing" }, { session, grant: "READ" })).toMatchObject({
       code: "UNKNOWN_CLIP",
     });
+  });
+
+  it("song.analyze rejects lyrics over 256 KB with INVALID_ARGS", () => {
+    const session = createSession(createMemoryBlobStore());
+    const over = "x".repeat(MAX_LYRICS_BYTES + 1);
+    const result = invokeTool("song.analyze", { lyrics: over }, { session, grant: "READ" });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "INVALID_ARGS",
+      message: `lyrics exceeds ${MAX_LYRICS_BYTES} bytes`,
+    });
+    expect(JSON.stringify(result)).not.toContain(over);
+    const atLimit = analyzeSong({ lyricsText: "y".repeat(MAX_LYRICS_BYTES) });
+    expect(atLimit.lyrics.lines).toHaveLength(1);
+    expect(atLimit.lyrics.lines[0]?.text).toHaveLength(MAX_LYRICS_BYTES);
+  });
+
+  it("song.analyze rejects more than 5000 lyric lines with INVALID_ARGS", () => {
+    const session = createSession(createMemoryBlobStore());
+    const tooMany = Array.from({ length: MAX_LYRICS_LINES + 1 }, () => "a").join("\n");
+    const result = invokeTool("song.analyze", { lrc: tooMany }, { session, grant: "READ" });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "INVALID_ARGS",
+      message: `lrc exceeds ${MAX_LYRICS_LINES} lines`,
+    });
+    const atLimit = splitLyricsText(Array.from({ length: MAX_LYRICS_LINES }, () => "a").join("\n"));
+    expect(atLimit).toHaveLength(MAX_LYRICS_LINES);
+  });
+
+  it("song.analyze rejects an LRC timestamp with huge minutes", () => {
+    const session = createSession(createMemoryBlobStore());
+    const lrc = `[${"9".repeat(30)}:00.00]hello`;
+    expect(() => parseLrc(lrc)).toThrow(SongInputError);
+    const result = invokeTool("song.analyze", { lrc }, { session, grant: "READ" });
+    expect(result).toMatchObject({ ok: false, code: "INVALID_ARGS" });
+    if (!result.ok) expect(result.message).toMatch(/LRC timestamp is invalid/);
+    expect(JSON.stringify(result)).not.toMatch(/Infinity|9{10}/);
+  });
+
+  it("song.analyze rejects an Infinity or huge LRC offset", () => {
+    const session = createSession(createMemoryBlobStore());
+    for (const lrc of ["[offset:Infinity]\n[00:01.00]hello", `[offset:${"9".repeat(20)}]\n[00:01.00]hello`, "[offset:86400001]\n[00:01.00]hello"]) {
+      expect(() => parseLrc(lrc)).toThrow(SongInputError);
+      const result = invokeTool("song.analyze", { lrc }, { session, grant: "READ" });
+      expect(result).toMatchObject({ ok: false, code: "INVALID_ARGS" });
+      if (!result.ok) expect(result.message).toMatch(/LRC offset is invalid/);
+      expect(JSON.stringify(result)).not.toMatch(/Infinity/);
+    }
+    const shifted = parseLrc("[offset:-500]\n[00:01.00]hello");
+    expect(shifted[0]?.timeMs).toBe(500);
+    expect(Number.isFinite(shifted[0]?.timeMs)).toBe(true);
+  });
+
+  it("song.analyze rejects malformed LRC with INVALID_ARGS", () => {
+    const session = createSession(createMemoryBlobStore());
+    const result = invokeTool("song.analyze", { lrc: "[00:99.00]broken" }, { session, grant: "READ" });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "INVALID_ARGS",
+      message: "LRC timestamp is invalid",
+    });
+    expect(toSongAnalyzeError(new SongInputError("LRC timestamp is invalid")).code).toBe("INVALID_ARGS");
+  });
+
+  it("song.analyze returns a structured INTERNAL error instead of throwing", () => {
+    const stored = asset({ id: "asset_song", kind: "audio", durationMs: 1000 });
+    const placed = clip({ id: "clip_song", assetId: stored.id, trackId: "A1", startMs: 0, durationMs: 1000 });
+    const session = {
+      ...createSession(createMemoryBlobStore()),
+      project: projectWith([placed], [stored]),
+    };
+    const pcm = {
+      sampleRate: 44100,
+      length: 44100,
+      numberOfChannels: 1,
+      getChannelData(): Float32Array {
+        throw new Error("pcm exploded");
+      },
+    } as MixPcm;
+    let result: ReturnType<typeof invokeTool> | undefined;
+    expect(() => {
+      result = invokeTool(
+        "song.analyze",
+        { clipId: placed.id, lyrics: "hi" },
+        { session, grant: "READ", pcmByClipId: { [placed.id]: pcm } },
+      );
+    }).not.toThrow();
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL", message: "song.analyze failed: pcm exploded" });
+    expect(toSongAnalyzeError("nope")).toMatchObject({ ok: false, code: "INTERNAL" });
   });
 });

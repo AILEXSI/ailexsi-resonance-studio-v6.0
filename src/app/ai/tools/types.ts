@@ -23,7 +23,8 @@ export type ToolErrorCode =
   | "UNKNOWN_CLIP"
   | "UNKNOWN_TRACK"
   | "GRANT_DENIED"
-  | "NOT_AVAILABLE";
+  | "NOT_AVAILABLE"
+  | "INTERNAL";
 
 export interface ToolError {
   ok: false;

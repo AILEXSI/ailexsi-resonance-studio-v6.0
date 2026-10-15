@@ -5,7 +5,16 @@
 import type { MixPcm } from "../../visualz/feature-extractor";
 import { analyzePcm, pcmIsUsable } from "./audio";
 import { buildJoint, DEFAULT_JOINT_WINDOW_MS } from "./joint";
-import { linesFromManual, normalizeLines, nullAligner, parseLrc, splitLyricsText, type Aligner, type ManualLyricLine } from "./lyrics";
+import {
+  assertLyricTextLimits,
+  linesFromManual,
+  normalizeLines,
+  nullAligner,
+  parseLrc,
+  splitLyricsText,
+  type Aligner,
+  type ManualLyricLine,
+} from "./lyrics";
 import { isAudioObservation, sealStatement, StatementLevelError, type IdFactory } from "./seal";
 import {
   SONG_ANALYSIS_PASS,
@@ -166,6 +175,8 @@ export function analyzeSong(input: SongAnalysisInput = {}): SongAnalysisReport {
   if (!Number.isFinite(timelineOriginMs)) throw new StatementLevelError("timelineOriginMs must be finite");
   const windowMs = input.windowMs ?? DEFAULT_JOINT_WINDOW_MS;
   if (!Number.isFinite(windowMs) || windowMs <= 0) throw new StatementLevelError("windowMs must be a positive finite number");
+  if (input.lyricsText != null) assertLyricTextLimits(input.lyricsText, "lyrics");
+  if (input.lrc != null) assertLyricTextLimits(input.lrc, "lrc");
   const aligner = input.aligner ?? nullAligner;
   const lines = normalizeLines(aligner.align({ lines: resolveLines(input), pcm: input.pcm ?? null }));
   const ids = createIdFactory();

@@ -5,9 +5,10 @@
 import type { Session } from "../../session";
 import { clipById } from "../../../core/models";
 import { analyzeSong, formatSongReport, type SongAnalysisReport } from "../../../core/director/song-analysis";
+import { SongInputError } from "../../../core/director/song-analysis/lyrics";
 import { StatementLevelError } from "../../../core/director/song-analysis/seal";
 import type { MixPcm } from "../../../core/visualz/feature-extractor";
-import type { ToolResult } from "./types";
+import type { ToolError, ToolResult } from "./types";
 import { isLikelyDisplayName } from "./validate";
 
 interface SongAnalyzeRuntime {
@@ -20,6 +21,15 @@ export const SONG_ANALYZE_TOOL = "song.analyze";
 export interface SongAnalyzeData {
   summary: string;
   report: SongAnalysisReport;
+}
+
+/** Input failures are INVALID_ARGS. Any other failure is a structured INTERNAL error, not a throw. */
+export function toSongAnalyzeError(error: unknown): ToolError {
+  if (error instanceof SongInputError || error instanceof StatementLevelError) {
+    return { ok: false, code: "INVALID_ARGS", message: error.message };
+  }
+  const detail = error instanceof Error && error.message ? error.message : "unexpected failure";
+  return { ok: false, code: "INTERNAL", message: `song.analyze failed: ${detail}` };
 }
 
 export function songAnalyze(args: Record<string, unknown>, runtime: SongAnalyzeRuntime): ToolResult<SongAnalyzeData> {
@@ -51,9 +61,6 @@ export function songAnalyze(args: Record<string, unknown>, runtime: SongAnalyzeR
     });
     return { ok: true, data: { summary: formatSongReport(report), report } };
   } catch (error) {
-    if (error instanceof StatementLevelError) {
-      return { ok: false, code: "INVALID_ARGS", message: error.message };
-    }
-    throw error;
+    return toSongAnalyzeError(error);
   }
 }

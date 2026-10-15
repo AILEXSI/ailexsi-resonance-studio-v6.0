@@ -1,11 +1,17 @@
 export { analyzePcm, estimateTempo, pcmIsUsable, walkOfflineFrames, ENERGY_BUCKET_MS, SONG_ANALYSIS_HOP_MS } from "./audio";
 export { buildJoint, DEFAULT_JOINT_WINDOW_MS } from "./joint";
 export {
+  assertLyricTextLimits,
+  assertLyricTimeMs,
   linesFromManual,
   lrcStampToMs,
+  MAX_LYRIC_TIME_MS,
+  MAX_LYRICS_BYTES,
+  MAX_LYRICS_LINES,
   normalizeLines,
   nullAligner,
   parseLrc,
+  SongInputError,
   splitLyricsText,
 } from "./lyrics";
 export type { Aligner, AlignRequest, ManualLyricLine, ManualLyricWord } from "./lyrics";
