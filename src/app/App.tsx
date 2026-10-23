@@ -70,6 +70,8 @@ import { Mixer, type MixPeaks } from "../ui/mixer/Mixer";
 import { ProjectFilePanel } from "../ui/project-file/ProjectFilePanel";
 import { Toolbar } from "../ui/toolbar/Toolbar";
 import { ShortcutsOverlay } from "../ui/shortcuts/ShortcutsOverlay";
+import { DirectorShell } from "../ui/director/DirectorShell";
+import { readAiDirectorEnabled, writeAiDirectorEnabled } from "./ai/flag";
 import { ExportDialog } from "../ui/export/ExportDialog";
 import {
   applyFit,
@@ -176,6 +178,9 @@ export function App() {
   const saveProjectAsRef = useRef<() => void>(() => {});
   const dragBaseRef = useRef<Session | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [directorOn, setDirectorOn] = useState(() =>
+    readAiDirectorEnabled(typeof localStorage === "undefined" ? null : localStorage),
+  );
   const [exporting, setExporting] = useState(false);
   const [exportDialog, setExportDialog] = useState(closedExportDialog);
   const exportAbortRef = useRef<AbortController | null>(null);
@@ -1569,6 +1574,24 @@ export function App() {
               {inspectorCollapsed ? <span className="inspector-reopen-label">INS</span> : null}
             </button>
             {inspectorCollapsed ? null : <span className="inspector-chrome-label">Ins</span>}
+            {inspectorCollapsed ? null : (
+              <button
+                type="button"
+                className={`ai-director-toggle${directorOn ? " active" : ""}`}
+                data-testid="ai-director-toggle"
+                aria-pressed={directorOn}
+                title="AI Director is off until you turn it on. It does not change the project by itself."
+                onClick={() => {
+                  setDirectorOn((on) => {
+                    const next = !on;
+                    writeAiDirectorEnabled(next, localStorage);
+                    return next;
+                  });
+                }}
+              >
+                AI
+              </button>
+            )}
           </div>
           {inspectorCollapsed ? null : (
             <div id="inspector-body" className="inspector-body">
@@ -1596,6 +1619,7 @@ export function App() {
                 onTransition={(cmd) => setSession(applyCommand(session, cmd))}
                 onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
               />
+              {directorOn ? <DirectorShell /> : null}
             </div>
           )}
         </div>
