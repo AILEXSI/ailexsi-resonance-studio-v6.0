@@ -1,7 +1,7 @@
 import type { EditorCommand } from "../../commands";
 import { selectionOf, type Session } from "../../session";
 import { editableLinkedMate } from "../../../core/link";
-import { clipById, clipIsLocked } from "../../../core/models";
+import { clipById, clipIsLocked, SPLIT_EDGE_GUARD_MS } from "../../../core/models";
 import { previewPlan, type PlanStep } from "../preview";
 import { toolErr, toolOk, type ToolResult } from "./result";
 
@@ -10,6 +10,7 @@ export const MUTATION_TOOL_NAMES = [
   "timeline.split_at_playhead",
   "timeline.lift_delete",
   "timeline.nudge",
+  "timeline.split_at_markers",
 ] as const;
 
 export type MutationToolName = (typeof MUTATION_TOOL_NAMES)[number];
@@ -30,6 +31,13 @@ export interface MutationProposal {
 function argsOf(args: unknown): Record<string, unknown> {
   if (!args || typeof args !== "object" || Array.isArray(args)) return {};
   return args as Record<string, unknown>;
+}
+
+function finiteNumber(value: unknown, label: string): { ok: true; ms: number } | { ok: false; error: string } {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { ok: false, error: `${label} must be a finite number of milliseconds` };
+  }
+  return { ok: true, ms: value };
 }
 
 function integerMs(value: unknown, label: string): { ok: true; ms: number } | { ok: false; error: string } {
@@ -152,7 +160,7 @@ export function planNudge(session: Session, args: unknown): ToolResult<MutationP
     return toolErr("SCHEMA_INVALID", "Provide exactly one of deltaMs or deltaSeconds");
   }
   const key = present[0]!;
-  const parsed = key === "deltaSeconds" ? secondsToMs(raw[key], key) : integerMs(raw[key], key);
+  const parsed = key === "deltaSeconds" ? secondsToMs(raw[key], key) : finiteNumber(raw[key], key);
   if (!parsed.ok) return toolErr("SCHEMA_INVALID", parsed.error);
   const ids = selectionOf(session);
   if (ids.length === 0) return toolErr("NO_SELECTION", "No clip selected");
@@ -171,6 +179,64 @@ export function planNudge(session: Session, args: unknown): ToolResult<MutationP
   });
 }
 
+export function planSplitsAtMarkers(session: Session, args: unknown): ToolResult<MutationProposal> {
+  const raw = argsOf(args);
+  const includeTransitions = raw.includeTransitions === true;
+  const selected = selectionOf(session);
+  if (selected.length === 0) return toolErr("NO_SELECTION", "No clip selected");
+  if (selected.length !== 1) return toolErr("AMBIGUOUS_SELECTION", "Select exactly one clip");
+  const clip = clipById(session.project, selected[0]!);
+  if (!clip) return toolErr("CLIP_NOT_FOUND", "Clip not found");
+  if (clipIsLocked(clip)) return toolErr("CLIP_LOCKED", "Clip is locked");
+  const markers = [...session.project.markers].sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
+  if (markers.length === 0) {
+    return toolErr(
+      "NO_BEAT_DATA",
+      "No beat or marker data is in this project. Audio was not analyzed.",
+    );
+  }
+  const hits: number[] = [];
+  const skipped: number[] = [];
+  for (const marker of markers) {
+    const offset = marker.timeMs - clip.startMs;
+    const inside = offset >= SPLIT_EDGE_GUARD_MS && clip.durationMs - offset >= SPLIT_EDGE_GUARD_MS;
+    if (inside) hits.push(marker.timeMs);
+    else skipped.push(marker.timeMs);
+  }
+  if (hits.length === 0) {
+    return toolErr(
+      "NO_BEAT_DATA",
+      "No marker falls inside the selected clip. Audio was not analyzed.",
+    );
+  }
+  const steps: PlanStep[] = hits.flatMap((timeMs) => [
+    { kind: "seek" as const, timeMs },
+    { kind: "command" as const, command: { type: "split" as const } },
+  ]);
+  const preview = previewPlan(session, steps);
+  if (!preview.ok) return toolErr("PREVIEW_REJECTED", preview.error);
+  let transitionNote =
+    "No transition was proposed. Resonance transitions need an overlapping video edit pair, and audio was not analyzed.";
+  if (includeTransitions) {
+    const withTransition = previewPlan(preview.session, [
+      { kind: "command", command: { type: "setTransition", transitionType: "crossfade", durationMs: 200 } },
+    ]);
+    const beforeCount = preview.session.project.transitions.length;
+    const afterCount = withTransition.ok ? withTransition.session.project.transitions.length : beforeCount;
+    if (withTransition.ok && afterCount > beforeCount) {
+      steps.push({ kind: "command", command: { type: "setTransition", transitionType: "crossfade", durationMs: 200 } });
+      transitionNote = "A crossfade was proposed on an existing video edit pair.";
+    }
+  }
+  const skipNote = skipped.length > 0 ? ` Skipped marker times ${skipped.join(", ")} ms.` : "";
+  return toolOk({
+    tool: "timeline.split_at_markers",
+    summary: `Split ${clip.id} at ${hits.length} project marker time${hits.length === 1 ? "" : "s"} (${hits.join(", ")} ms). Audio was not analyzed.${skipNote} ${transitionNote}`,
+    steps,
+    command: { type: "split" },
+  });
+}
+
 /** Build a proposal. Does not assign the live session. */
 export function planMutation(session: Session, name: string, args?: unknown): ToolResult<MutationProposal> {
   switch (name) {
@@ -182,6 +248,8 @@ export function planMutation(session: Session, name: string, args?: unknown): To
       return planLiftDelete(session, args);
     case "timeline.nudge":
       return planNudge(session, args);
+    case "timeline.split_at_markers":
+      return planSplitsAtMarkers(session, args);
     default:
       return toolErr("UNKNOWN_TOOL", "Unknown tool");
   }

@@ -1,7 +1,18 @@
+import type { ReactNode } from "react";
+
 export interface DirectorLine {
   id: string;
   role: "system" | "user" | "assistant";
   text: string;
+}
+
+export interface DirectorProposalCard {
+  id: string;
+  status: string;
+  tool: string;
+  summary: string;
+  commandJson: string;
+  error?: string;
 }
 
 interface Props {
@@ -10,13 +21,28 @@ interface Props {
   onDraft: (value: string) => void;
   onSend: () => void;
   busy?: boolean;
+  proposals?: DirectorProposalCard[];
+  onAccept?: (id: string) => void;
+  onReject?: (id: string) => void;
+  extra?: ReactNode;
 }
 
 /**
- * Presentational Director shell. It has no session and cannot mutate a project.
- * Later phases pass proposals in; AI-1 only shows the empty proposal slot.
+ * Presentational Director panel. It does not own the session.
+ * Accept and Reject are callbacks. The parent decides whether a project changes.
  */
-export function DirectorPanel({ lines, draft, onDraft, onSend, busy }: Props) {
+export function DirectorPanel({
+  lines,
+  draft,
+  onDraft,
+  onSend,
+  busy,
+  proposals,
+  onAccept,
+  onReject,
+  extra,
+}: Props) {
+  const cards = proposals ?? [];
   return (
     <section className="director-panel" data-testid="ai-director" aria-label="AI Director">
       <header className="director-head">
@@ -33,8 +59,38 @@ export function DirectorPanel({ lines, draft, onDraft, onSend, busy }: Props) {
       </div>
       <div className="director-proposals" data-testid="ai-director-proposals">
         <h3>Proposals</h3>
-        <p data-testid="ai-director-empty">No proposals yet.</p>
+        {cards.length === 0 ? <p data-testid="ai-director-empty">No proposals yet.</p> : null}
+        {cards.map((card) => (
+          <article key={card.id} className="director-card" data-testid={`ai-proposal-${card.id}`} data-status={card.status}>
+            <p>
+              <strong>{card.tool}</strong> · {card.status}
+            </p>
+            <p>{card.summary}</p>
+            <pre>{card.commandJson}</pre>
+            {card.error ? <p data-testid="ai-proposal-error">{card.error}</p> : null}
+            <div className="director-card-actions">
+              <button
+                type="button"
+                data-testid={`ai-proposal-accept-${card.id}`}
+                disabled={busy || card.status !== "proposed"}
+                onClick={() => onAccept?.(card.id)}
+              >
+                Accept
+              </button>
+              <button
+                type="button"
+                data-testid={`ai-proposal-reject-${card.id}`}
+                disabled={busy || card.status !== "proposed"}
+                onClick={() => onReject?.(card.id)}
+              >
+                Reject
+              </button>
+            </div>
+          </article>
+        ))}
+        <p className="director-note">Undo uses the editor Undo button. The Director does not undo by itself.</p>
       </div>
+      {extra}
       <form
         className="director-compose"
         onSubmit={(event) => {

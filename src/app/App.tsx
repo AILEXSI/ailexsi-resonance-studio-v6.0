@@ -70,7 +70,7 @@ import { Mixer, type MixPeaks } from "../ui/mixer/Mixer";
 import { ProjectFilePanel } from "../ui/project-file/ProjectFilePanel";
 import { Toolbar } from "../ui/toolbar/Toolbar";
 import { ShortcutsOverlay } from "../ui/shortcuts/ShortcutsOverlay";
-import { DirectorShell } from "../ui/director/DirectorShell";
+import { DirectorController } from "../ui/director/DirectorController";
 import { readAiDirectorEnabled, writeAiDirectorEnabled } from "./ai/flag";
 import { ExportDialog } from "../ui/export/ExportDialog";
 import {
@@ -310,6 +310,10 @@ export function App() {
 
   const runCommand = useCallback((command: EditorCommand) => {
     setSession((s) => applyCommand(s, command));
+  }, []);
+
+  const applySession = useCallback((update: (session: Session) => Session) => {
+    setSession(update(sessionRef.current));
   }, []);
 
   const onTimelineViewport = useCallback(
@@ -1619,7 +1623,9 @@ export function App() {
                 onTransition={(cmd) => setSession(applyCommand(session, cmd))}
                 onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
               />
-              {directorOn ? <DirectorShell /> : null}
+              {directorOn ? (
+                <DirectorController session={session} applySession={applySession} />
+              ) : null}
             </div>
           )}
         </div>
