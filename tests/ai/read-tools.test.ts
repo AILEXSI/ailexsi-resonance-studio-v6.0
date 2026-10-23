@@ -1,6 +1,7 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+// Vitest runs on Node. This repo's tsconfig does not include @types/node.
+// @ts-expect-error node:fs is resolved by Vitest, not by the app bundle
+import * as nodeFs from "node:fs";
 import { applyCommand } from "../../src/app/commands";
 import { createSession, type Session } from "../../src/app/session";
 import { createMemoryBlobStore } from "../../src/core/persistence";
@@ -144,17 +145,19 @@ describe("AI-2 read tools", () => {
 
 describe("AI source boundary", () => {
   it("keeps provider and frame-engine imports out of the AI tree so far", () => {
-    const root = join(process.cwd(), "src/app/ai");
+    const cwd = (globalThis as { process?: { cwd: () => string } }).process?.cwd();
+    expect(cwd).toBeTruthy();
+    const root = `${cwd}/src/app/ai`;
     const files: string[] = [];
     const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const path = join(dir, name);
-        if (statSync(path).isDirectory()) walk(path);
+      for (const name of nodeFs.readdirSync(dir)) {
+        const path = `${dir}${dir.endsWith("/") ? "" : "/"}${name}`;
+        if (nodeFs.statSync(path).isDirectory()) walk(path);
         else if (path.endsWith(".ts") || path.endsWith(".tsx")) files.push(path);
       }
     };
     walk(root);
-    const source = files.map((path) => readFileSync(path, "utf8")).join("\n");
+    const source = files.map((path) => nodeFs.readFileSync(path, "utf8")).join("\n");
     expect(source).not.toContain("frame-engine");
     expect(source).not.toContain("sk-");
     expect(source).not.toMatch(/api[_-]?key\s*[:=]\s*["'][^"']+["']/i);

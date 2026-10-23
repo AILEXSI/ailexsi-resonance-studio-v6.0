@@ -9,6 +9,7 @@ AI-0 remains the authoritative map. Later rows are implementation notes. They do
 | [`OPEN_QUESTIONS.md`](./OPEN_QUESTIONS.md) | Unresolved questions |
 | [`phases/AI-1.md`](./phases/AI-1.md) | Director shell, flag default off |
 | [`phases/AI-2.md`](./phases/AI-2.md) | In-process read-only tools |
+| [`phases/AI-3.md`](./phases/AI-3.md) | Proposal-only mutation plans |
 
 V5.6 AI-0 recon (`docs/ai-director/` on unmerged branch `cursor/ai-0-recon-architecture-freeze-45e4`, V5.6 PR **#36**) is **non-authoritative reference**. Do not merge it into V6 `main`. Re-verify every claim against this tree.
 
