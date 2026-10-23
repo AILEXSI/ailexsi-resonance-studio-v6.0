@@ -14,12 +14,15 @@ The owner answered the open questions and asked for the missing pieces on the sa
 
 ## Windows EXE
 
-Not produced.
+The Linux agent VM still cannot produce the EXE (rustc 1.83.0, no Windows target, lockfile needs Rust 1.85+ for `icu_locale_core` 2.3.0). GitHub Actions builds it instead.
 
-- The packaging path is `npm run tauri:exe`, which runs `tauri build` and then `scripts/copy-exe.ps1` (Windows PowerShell) to copy `src-tauri/target/release/*.exe`.
-- This VM's Rust host is `x86_64-unknown-linux-gnu` (rustc 1.83.0). `rustup target list --installed` has no Windows target.
-- `x86_64-w64-mingw32-gcc` and `makensis` are not installed.
-- `cargo check` of `src-tauri` cannot finish on this toolchain: the lockfile already contains `icu_locale_core` 2.3.0, whose manifest requires Cargo edition 2024 (Rust 1.85+). That failure is in the existing Tauri graph, not in the Director. A Linux check was not a substitute for a Windows EXE.
+- Workflow: `.github/workflows/windows-exe.yml`
+- Runner: `windows-latest`, Rust stable (the job fails if rustc is older than 1.85)
+- Command: `npm run tauri:exe` (`tauri build`, then `scripts/copy-exe.ps1`)
+- Triggers: push to `cursor/ai-director-d706`, and `workflow_dispatch`
+- Artifact: `resonance-studio-v6-windows` (repo-root EXE, plus NSIS/MSI if the bundler produced them)
+- No signing secrets and no GitHub Release
+- The job also checks that the built EXE contains the keychain service id and `ai-director-api-key`, so the new keyring commands were linked
 
 ## Inherited export tests
 

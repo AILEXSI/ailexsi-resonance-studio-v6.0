@@ -1,0 +1,94 @@
+# Builds the Windows standalone EXE on GitHub-hosted windows-latest.
+# Trigger: push to cursor/ai-director-d706, and workflow_dispatch.
+# No signing secrets and no GitHub Release. The EXE is a workflow artifact only.
+# The Linux agent VM cannot compile this lockfile (Rust 1.83 vs edition 2024).
+
+name: Windows EXE
+
+on:
+  push:
+    branches:
+      - cursor/ai-director-d706
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-exe:
+    name: tauri windows exe
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Require Rust 1.85 or newer
+        shell: pwsh
+        run: |
+          rustc --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $m = [regex]::Match((rustc --version), 'rustc (\d+)\.(\d+)\.(\d+)')
+          if (-not $m.Success) { Write-Error 'Could not parse rustc version'; exit 1 }
+          $major = [int]$m.Groups[1].Value
+          $minor = [int]$m.Groups[2].Value
+          if ($major -lt 1 -or ($major -eq 1 -and $minor -lt 85)) {
+            Write-Error "Rust $($m.Groups[0].Value) is older than 1.85"
+            exit 1
+          }
+
+      - name: Cache Cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build EXE with the repo tauri:exe path
+        run: npm run tauri:exe
+
+      - name: Confirm the keychain commands are linked
+        shell: pwsh
+        run: |
+          $exe = Join-Path (Get-Location) 'AILEXSI Resonance Studio V6.0.exe'
+          if (-not (Test-Path -LiteralPath $exe)) {
+            Write-Error "Missing $exe"
+            exit 1
+          }
+          $text = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($exe))
+          foreach ($needle in @('com.ailexsi.resonance-studio-v6-0', 'ai-director-api-key')) {
+            if (-not $text.Contains($needle)) {
+              Write-Error "EXE does not contain keychain string: $needle"
+              exit 1
+            }
+            Write-Host "Linked: $needle"
+          }
+          $item = Get-Item -LiteralPath $exe
+          Write-Host ("EXE bytes: " + $item.Length)
+          $bundle = Join-Path (Get-Location) 'src-tauri\target\release\bundle'
+          if (Test-Path -LiteralPath $bundle) {
+            Get-ChildItem -LiteralPath $bundle -Recurse -Include *.exe,*.msi | ForEach-Object {
+              Write-Host ("Bundle: " + $_.FullName + " bytes=" + $_.Length)
+            }
+          }
+
+      - name: Upload EXE and installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: resonance-studio-v6-windows
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            AILEXSI Resonance Studio V6.0.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
