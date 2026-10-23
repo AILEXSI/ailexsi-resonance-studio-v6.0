@@ -85,7 +85,7 @@ export type EditorCommand =
   | { type: "paste" }
   | { type: "duplicate" }
   | { type: "split" }
-  | { type: "addMarker" }
+  | { type: "addMarker"; label?: string }
   | { type: "renameMarker"; markerId: string; label: string }
   | { type: "renameProject"; name: string }
   | { type: "clearInOut" }
@@ -179,7 +179,7 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
     case "split":
       return applySplit(session);
     case "addMarker":
-      return applyMarker(session);
+      return applyMarker(session, command.label);
     case "renameMarker":
       return applyRenameMarker(session, command.markerId, command.label);
     case "renameProject":

@@ -1,10 +1,12 @@
 import type { Session } from "../session";
+import { detectBeatsFromPcm } from "./audio/beats";
+import { loadSelectedClipAudio, type ClipDecoder } from "./audio/load";
 import { buildSendContext, redactSensitiveText } from "./context";
 import { dispatchTool } from "./orchestrator";
 import { createMockProvider } from "./providers/mock";
 import type { AIProvider, ProviderMessage, ProviderToolSpec, ToolCall } from "./providers/types";
-import { isMutationToolName } from "./tools/mutate";
-import type { AITransaction } from "./transactions";
+import { isMutationToolName, planBeatMarkers } from "./tools/mutate";
+import { proposeTransaction, type AITransaction } from "./transactions";
 
 export const DIRECTOR_TOOL_SPECS: readonly ProviderToolSpec[] = [
   { name: "get_project_summary", description: "Counts, duration, snap, and playhead. No names or paths." },
@@ -19,7 +21,13 @@ export const DIRECTOR_TOOL_SPECS: readonly ProviderToolSpec[] = [
   { name: "timeline.nudge", description: "Propose a nudge. Snap may change the delta." },
   {
     name: "timeline.split_at_markers",
-    description: "Propose splits at existing marker times inside the one selected clip. Does not analyze audio.",
+    description:
+      "Propose splits at existing marker times inside the one selected clip. Does not analyze audio. includeTransitions adds same-track audio fades.",
+  },
+  {
+    name: "audio.detect_beats",
+    description:
+      "Measure onsets in the selected clip's loaded audio and propose markers. Do not supply times. No audio means no markers.",
   },
 ];
 
@@ -40,6 +48,8 @@ export async function runDirectorTurn(opts: {
   provider?: AIProvider;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
+  /** Test hook. The app uses Web Audio decode of the clip's object URL. */
+  decodeClip?: ClipDecoder;
 }): Promise<DirectorTurn> {
   const provider = opts.provider ?? createMockProvider();
   const messages: ProviderMessage[] = [{ role: "user", content: opts.prompt }];
@@ -56,6 +66,9 @@ export async function runDirectorTurn(opts: {
     }
     if (mutations.length === 1) {
       const call = mutations[0]!;
+      if (call.name === "audio.detect_beats") {
+        return proposeDetectedBeats(opts.session, opts.prompt, opts.decodeClip);
+      }
       const dispatched = dispatchTool(opts.session, call.name, call.arguments, opts.prompt);
       if (dispatched.kind === "proposal") {
         return { text: dispatched.transaction.summary, transaction: dispatched.transaction };
@@ -70,6 +83,15 @@ export async function runDirectorTurn(opts: {
     }
   }
   return { text: "Stopped. Nothing was changed.", transaction: null };
+}
+
+async function proposeDetectedBeats(session: Session, prompt: string, decode?: ClipDecoder): Promise<DirectorTurn> {
+  const loaded = await loadSelectedClipAudio(session, decode);
+  if (!loaded.ok) return { text: `${loaded.error} Nothing was changed.`, transaction: null };
+  const analysis = detectBeatsFromPcm(loaded.pcm, loaded.window);
+  const planned = planBeatMarkers(session, analysis);
+  if (!planned.ok) return { text: `${planned.error} Nothing was changed.`, transaction: null };
+  return { text: planned.data.summary, transaction: proposeTransaction(session, planned.data, prompt) };
 }
 
 function toolContent(session: Session, call: ToolCall, prompt: string): string {

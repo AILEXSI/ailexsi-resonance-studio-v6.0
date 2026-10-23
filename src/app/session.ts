@@ -1002,9 +1002,9 @@ export function applyClearInOut(session: Session): Session {
   return { ...session, project: clearInOut(session.project), status: "IN/OUT cleared", error: null };
 }
 
-export function applyMarker(session: Session): Session {
+export function applyMarker(session: Session, label?: string): Session {
   const at = snapPlayheadSeek(session.project, session.project.playheadMs);
-  const next = addMarker(session.project, at);
+  const next = addMarker(session.project, at, label);
   const added = next.markers[next.markers.length - 1];
   return {
     ...withClipSelection(withHistory(session, next, "Marker added"), []),

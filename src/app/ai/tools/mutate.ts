@@ -1,9 +1,12 @@
 import type { EditorCommand } from "../../commands";
 import { selectionOf, type Session } from "../../session";
 import { editableLinkedMate } from "../../../core/link";
-import { clipById, clipIsLocked, SPLIT_EDGE_GUARD_MS } from "../../../core/models";
+import { clipById, clipIsLocked, kindOfTrack, SPLIT_EDGE_GUARD_MS } from "../../../core/models";
+import type { BeatAnalysis } from "../audio/beats";
 import { previewPlan, type PlanStep } from "../preview";
 import { toolErr, toolOk, type ToolResult } from "./result";
+
+export const AUDIO_CROSSFADE_MS = 200;
 
 export const MUTATION_TOOL_NAMES = [
   "timeline.move_clip",
@@ -11,6 +14,7 @@ export const MUTATION_TOOL_NAMES = [
   "timeline.lift_delete",
   "timeline.nudge",
   "timeline.split_at_markers",
+  "audio.detect_beats",
 ] as const;
 
 export type MutationToolName = (typeof MUTATION_TOOL_NAMES)[number];
@@ -26,6 +30,10 @@ export interface MutationProposal {
   steps: PlanStep[];
   /** The editor command a human can read. Exact moves are `moveClips`, never nudge. */
   command: EditorCommand;
+  /** Scratch replay keeps detected marker times instead of snapping them. */
+  exactMarkerTimes?: boolean;
+  /** Accept keeps the clip selection. Marker adds clear it on the scratch session. */
+  preserveSelection?: boolean;
 }
 
 function argsOf(args: unknown): Record<string, unknown> {
@@ -215,25 +223,95 @@ export function planSplitsAtMarkers(session: Session, args: unknown): ToolResult
   ]);
   const preview = previewPlan(session, steps);
   if (!preview.ok) return toolErr("PREVIEW_REJECTED", preview.error);
-  let transitionNote =
-    "No transition was proposed. Resonance transitions need an overlapping video edit pair, and audio was not analyzed.";
+  let transitionNote = "No video transition was added. Overlapping video edit pairs are unchanged.";
+  if (includeTransitions && kindOfTrack(clip.trackId) === "audio") {
+    const fadeStep: PlanStep = { kind: "audio-crossfade", durationMs: AUDIO_CROSSFADE_MS, boundariesMs: hits };
+    const faded = previewPlan(preview.session, [fadeStep]);
+    if (faded.ok) {
+      steps.push(fadeStep);
+      const pieces = faded.session.project.clips
+        .filter((item) => item.trackId === clip.trackId)
+        .map((item) => `${item.fadeInMs}/${item.fadeOutMs}`);
+      transitionNote = `Audio crossfades use setClipFades (${AUDIO_CROSSFADE_MS} ms, clamped by the existing fade normalizer). Fade in/out ms by piece: ${pieces.join(", ")}.`;
+    } else {
+      transitionNote = `No audio crossfade was added. ${faded.error}`;
+    }
+  }
   if (includeTransitions) {
     const withTransition = previewPlan(preview.session, [
-      { kind: "command", command: { type: "setTransition", transitionType: "crossfade", durationMs: 200 } },
+      { kind: "command", command: { type: "setTransition", transitionType: "crossfade", durationMs: AUDIO_CROSSFADE_MS } },
     ]);
     const beforeCount = preview.session.project.transitions.length;
     const afterCount = withTransition.ok ? withTransition.session.project.transitions.length : beforeCount;
     if (withTransition.ok && afterCount > beforeCount) {
-      steps.push({ kind: "command", command: { type: "setTransition", transitionType: "crossfade", durationMs: 200 } });
-      transitionNote = "A crossfade was proposed on an existing video edit pair.";
+      steps.push({
+        kind: "command",
+        command: { type: "setTransition", transitionType: "crossfade", durationMs: AUDIO_CROSSFADE_MS },
+      });
+      transitionNote = `${transitionNote} A video crossfade was also proposed on an existing edit pair.`;
     }
   }
+  const full = previewPlan(session, steps);
+  if (!full.ok) return toolErr("PREVIEW_REJECTED", full.error);
   const skipNote = skipped.length > 0 ? ` Skipped marker times ${skipped.join(", ")} ms.` : "";
   return toolOk({
     tool: "timeline.split_at_markers",
-    summary: `Split ${clip.id} at ${hits.length} project marker time${hits.length === 1 ? "" : "s"} (${hits.join(", ")} ms). Audio was not analyzed.${skipNote} ${transitionNote}`,
+    summary: `Split ${clip.id} at ${hits.length} project marker time${hits.length === 1 ? "" : "s"} (${hits.join(", ")} ms). These marker times were already on the project. Audio was not analyzed for this proposal.${skipNote} ${transitionNote}`,
     steps,
     command: { type: "split" },
+  });
+}
+
+function beatLabel(event: { timeMs: number; kind: "beat" | "onset"; confidence: number }): string {
+  const word = event.kind === "beat" ? "Beat" : "Onset";
+  return `${word} ${event.timeMs} ms · ${event.confidence.toFixed(2)}`;
+}
+
+/**
+ * Marker proposal for onsets already measured from PCM.
+ * Model-supplied times are not accepted here.
+ */
+export function planBeatMarkers(session: Session, analysis: BeatAnalysis): ToolResult<MutationProposal> {
+  if (analysis.events.length === 0) {
+    return toolErr("NO_BEAT_DATA", "No onsets were found in the selected clip's audio. No beats were invented.");
+  }
+  const steps: PlanStep[] = analysis.events.flatMap((event) => [
+    { kind: "seek" as const, timeMs: event.timeMs },
+    { kind: "command" as const, command: { type: "addMarker" as const, label: beatLabel(event) } },
+  ]);
+  const preview = previewPlan(session, steps, { exactMarkerTimes: true });
+  if (!preview.ok) return toolErr("PREVIEW_REJECTED", preview.error);
+  const added = preview.session.project.markers.filter(
+    (marker) => !session.project.markers.some((existing) => existing.id === marker.id),
+  );
+  const expected = analysis.events.map((event) => event.timeMs);
+  const actual = [...added].map((marker) => marker.timeMs).sort((a, b) => a - b);
+  const wanted = [...expected].sort((a, b) => a - b);
+  if (actual.length !== wanted.length || actual.some((time, index) => time !== wanted[index])) {
+    return toolErr("NOT_EXACT", "Marker times did not match the detected onsets.");
+  }
+  if (preview.session.project.snap !== session.project.snap) {
+    return toolErr("NOT_EXACT", "Snap would have changed.");
+  }
+  const gap = analysis.medianGapMs == null ? "no median gap" : `median gap ${analysis.medianGapMs} ms`;
+  const truncated = analysis.truncated ? " The list was truncated." : "";
+  const summary = [
+    `${analysis.events.length} ${analysis.events[0]?.kind === "beat" ? "beat" : "onset"} marker${analysis.events.length === 1 ? "" : "s"} from the selected clip's audio.`,
+    `Method: ${analysis.method}. Confidence ${analysis.confidence.toFixed(2)} is the share of onset gaps within 15% of the ${gap}.`,
+    analysis.events[0]?.kind === "beat"
+      ? "The gaps are regular enough to call these beats."
+      : "A steady beat was not found, so these stay labeled as onsets.",
+    `Times: ${analysis.events.map((event) => beatLabel(event)).join("; ")}.`,
+    "No tempo was invented. Nothing changes until you accept.",
+    truncated,
+  ].join(" ");
+  return toolOk({
+    tool: "audio.detect_beats",
+    summary,
+    steps,
+    command: { type: "addMarker", label: beatLabel(analysis.events[0]!) },
+    exactMarkerTimes: true,
+    preserveSelection: true,
   });
 }
 
@@ -250,6 +328,8 @@ export function planMutation(session: Session, name: string, args?: unknown): To
       return planNudge(session, args);
     case "timeline.split_at_markers":
       return planSplitsAtMarkers(session, args);
+    case "audio.detect_beats":
+      return toolErr("SCHEMA_INVALID", "Beat times cannot be supplied. Detection reads the selected clip's audio.");
     default:
       return toolErr("UNKNOWN_TOOL", "Unknown tool");
   }

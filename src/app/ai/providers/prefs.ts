@@ -6,6 +6,8 @@ export interface AiPrefs {
   provider: AiProviderKind;
   baseUrl: string;
   model: string;
+  /** Opt in to the OS keychain. This flag is not the key. */
+  rememberKey: boolean;
 }
 
 export interface PrefsStorage {
@@ -17,6 +19,7 @@ export const DEFAULT_AI_PREFS: AiPrefs = {
   provider: "mock",
   baseUrl: "",
   model: "",
+  rememberKey: false,
 };
 
 function kindOf(value: unknown): AiProviderKind {
@@ -33,6 +36,7 @@ export function readAiPrefs(storage?: PrefsStorage | null): AiPrefs {
       provider: kindOf(parsed.provider),
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
       model: typeof parsed.model === "string" ? parsed.model : "",
+      rememberKey: parsed.rememberKey === true,
     };
   } catch {
     return { ...DEFAULT_AI_PREFS };
@@ -47,6 +51,7 @@ export function writeAiPrefs(prefs: AiPrefs, storage?: PrefsStorage | null): voi
         provider: kindOf(prefs.provider),
         baseUrl: prefs.baseUrl,
         model: prefs.model,
+        rememberKey: prefs.rememberKey === true,
       }),
     );
   } catch {

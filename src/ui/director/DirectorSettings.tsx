@@ -5,9 +5,22 @@ interface Props {
   apiKey: string;
   onPrefs: (prefs: AiPrefs) => void;
   onApiKey: (value: string) => void;
+  contextJson: string;
+  contextNote: string;
+  keychainAvailable: boolean;
+  keychainReason: string;
 }
 
-export function DirectorSettings({ prefs, apiKey, onPrefs, onApiKey }: Props) {
+export function DirectorSettings({
+  prefs,
+  apiKey,
+  onPrefs,
+  onApiKey,
+  contextJson,
+  contextNote,
+  keychainAvailable,
+  keychainReason,
+}: Props) {
   return (
     <div className="director-settings" data-testid="ai-provider-settings">
       <label>
@@ -48,19 +61,37 @@ export function DirectorSettings({ prefs, apiKey, onPrefs, onApiKey }: Props) {
         </>
       )}
       {prefs.provider === "cloud" ? (
-        <label>
-          API key (not saved)
-          <input
-            type="password"
-            data-testid="ai-provider-key"
-            value={apiKey}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => onApiKey(event.target.value)}
-          />
-        </label>
+        <>
+          <label>
+            API key (session memory)
+            <input
+              type="password"
+              data-testid="ai-provider-key"
+              value={apiKey}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => onApiKey(event.target.value)}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              data-testid="ai-keychain-opt-in"
+              checked={prefs.rememberKey}
+              disabled={!keychainAvailable}
+              onChange={(event) => onPrefs({ ...prefs, rememberKey: event.target.checked })}
+            />
+            Remember the key in the OS keychain
+          </label>
+          <p className="director-note" data-testid="ai-keychain-reason">
+            {keychainReason}
+          </p>
+        </>
       ) : null}
-      <p className="director-note">Send includes ids and times only. It does not include media, paths, or this key.</p>
+      <p className="director-note">{contextNote}</p>
+      <pre className="director-context" data-testid="ai-send-context">
+        {contextJson}
+      </pre>
     </div>
   );
 }

@@ -2,6 +2,8 @@
 
 Status: complete.
 
+Owner follow-up: same-track audio fades are now part of this proposal when transitions are requested. See [`OWNER_FOLLOWUP.md`](../OWNER_FOLLOWUP.md). The commit that first landed AI-6 is still `cb988ed`, shared with AI-4 and AI-5.
+
 ## What landed
 
 - A beat request reads project markers. It does not read audio, FFT, onset, or the synthetic 120 BPM fallback.

@@ -82,6 +82,26 @@ describe("AI-5 mock provider", () => {
     vi.unstubAllGlobals();
   });
 
+  it("treats Überblendungen as a transition request", () => {
+    const markers = JSON.stringify({ ok: true, data: [{ id: "m", timeMs: 400 }] });
+    const blended = mockIntent([
+      { role: "user", content: "Schneide an den Beats und füge Überblendungen hinzu" },
+      { role: "tool", content: markers, toolCallId: "m" },
+    ]);
+    expect(blended.toolCalls[0]?.name).toBe("timeline.split_at_markers");
+    expect(blended.toolCalls[0]?.arguments).toEqual({ includeTransitions: true });
+    const passages = mockIntent([
+      { role: "user", content: "Schneide an den Beats und füge Übergänge hinzu" },
+      { role: "tool", content: markers, toolCallId: "m" },
+    ]);
+    expect(passages.toolCalls[0]?.arguments).toEqual({ includeTransitions: true });
+    const plain = mockIntent([
+      { role: "user", content: "Schneide an den Beats" },
+      { role: "tool", content: markers, toolCallId: "m" },
+    ]);
+    expect(plain.toolCalls[0]?.arguments).toEqual({ includeTransitions: false });
+  });
+
   it("asks for markers before a beat cut and refuses when none exist", async () => {
     const first = mockIntent([
       { role: "user", content: "Schneide den Song an den Beats und füge Transitions ein" },
@@ -156,7 +176,7 @@ describe("AI-5 provider gate", () => {
     };
     storage.setItem(AI_PREFS_KEY, JSON.stringify({ provider: "cloud", baseUrl: "https://example.com/v1", model: "m", apiKey: "super-secret" }));
     const prefs = readAiPrefs(storage);
-    expect(prefs).toEqual({ provider: "cloud", baseUrl: "https://example.com/v1", model: "m" });
+    expect(prefs).toEqual({ provider: "cloud", baseUrl: "https://example.com/v1", model: "m", rememberKey: false });
     expect(JSON.stringify(prefs)).not.toContain("super-secret");
     writeAiPrefs(prefs, storage);
     expect(storage.getItem(AI_PREFS_KEY)).not.toContain("super-secret");
@@ -195,7 +215,9 @@ describe("AI-5 provider gate", () => {
     ].join("");
     const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       const body = String(init?.body ?? "");
-      expect(body).not.toContain("SECRET");
+      expect(body).toContain("SECRET-Vocals");
+      expect(body).toContain("SECRET chorus");
+      expect(body).not.toContain("SECRET-vocals.wav");
       expect(body).not.toContain("/home/secret");
       expect(body).not.toContain("runtime-key");
       expect(body).toContain("SEND_STRUCTURE");
@@ -229,12 +251,17 @@ describe("AI-5 provider gate", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("omits names and paths from the structure context", () => {
+  it("includes project, track, and marker names and still omits paths and media", () => {
     const context = buildSendContext(fixedSession());
     const encoded = JSON.stringify(context);
     expect(context?.privacy).toBe("SEND_STRUCTURE");
-    expect(encoded).not.toContain("SECRET");
-    expect(encoded).not.toContain("sourcePath");
+    expect(context?.includesNames).toBe(true);
+    expect(context?.project.name).toBe("Test");
+    expect(encoded).toContain("SECRET-Vocals");
+    expect(encoded).toContain("SECRET chorus");
+    expect(encoded).not.toContain("SECRET-vocals.wav");
+    expect(encoded).not.toContain("/home/secret");
+    expect(encoded).not.toContain("blob:");
     expect(encoded).toContain("c1");
     expect(encoded).toContain("30000");
   });

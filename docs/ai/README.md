@@ -6,7 +6,8 @@ AI-0 remains the authoritative map. Later rows are implementation notes. They do
 | --- | --- |
 | [`AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md`](./AI_DIRECTOR_IMPLEMENTATION_MAP_v6.0.md) | Authoritative V6 map (sections 1–31) |
 | [`DECISIONS.md`](./DECISIONS.md) | Conservative choices where the brief and the map differ |
-| [`OPEN_QUESTIONS.md`](./OPEN_QUESTIONS.md) | Unresolved questions |
+| [`OPEN_QUESTIONS.md`](./OPEN_QUESTIONS.md) | Owner answers. Nothing in that list is still open. |
+| [`phases/OWNER_FOLLOWUP.md`](./phases/OWNER_FOLLOWUP.md) | Names, audio fades, beat markers, keychain, EXE and export notes |
 | [`phases/AI-1.md`](./phases/AI-1.md) | Director shell, flag default off |
 | [`phases/AI-2.md`](./phases/AI-2.md) | In-process read-only tools |
 | [`phases/AI-3.md`](./phases/AI-3.md) | Proposal-only mutation plans |

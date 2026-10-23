@@ -4,13 +4,15 @@ import type { Session } from "../../app/session";
 import { runDirectorTurn } from "../../app/ai/loop";
 import { createOpenAiCompatibleProvider } from "../../app/ai/providers/openai-compatible";
 import { createMockProvider } from "../../app/ai/providers/mock";
+import { buildSendContext } from "../../app/ai/context";
+import { BROWSER_KEYCHAIN_REASON, detectOsKeychain, memoryKeychain, type OsKeychain } from "../../app/ai/providers/keychain";
 import { readAiPrefs, writeAiPrefs, type AiPrefs } from "../../app/ai/providers/prefs";
 import { acceptTransaction, rejectTransaction, type AITransaction } from "../../app/ai/transactions";
 import { DirectorPanel, type DirectorLine, type DirectorProposalCard } from "./DirectorPanel";
 import { DirectorSettings } from "./DirectorSettings";
 
 const SHELL_NOTICE =
-  "Mock provider is local. Click Send to make a proposal. Accept is required before the project changes. Audio is not analyzed.";
+  "Mock provider is local. Click Send to make a proposal. Accept is required before the project changes. Beat detection runs only when you ask, and only on audio already in the project.";
 
 interface Props {
   session: Session;
@@ -48,7 +50,10 @@ export function DirectorController({ session, applySession, offer }: Props) {
   const [busy, setBusy] = useState(false);
   const [prefs, setPrefs] = useState<AiPrefs>(() => readAiPrefs(storageOrNull()));
   const [apiKey, setApiKey] = useState("");
+  const [keychain, setKeychain] = useState<OsKeychain>(() => memoryKeychain(BROWSER_KEYCHAIN_REASON));
   const abortRef = useRef<AbortController | null>(null);
+  const keyRef = useRef("");
+  keyRef.current = apiKey;
 
   useEffect(() => {
     if (!offer) return;
@@ -58,6 +63,21 @@ export function DirectorController({ session, applySession, offer }: Props) {
   useEffect(() => {
     writeAiPrefs(prefs, storageOrNull());
   }, [prefs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void detectOsKeychain().then((found) => {
+      if (cancelled) return;
+      if (found.available || found.reason !== BROWSER_KEYCHAIN_REASON) setKeychain(found);
+      if (!found.available || !prefs.rememberKey) return;
+      void found.read().then((stored) => {
+        if (!cancelled && stored && keyRef.current.length === 0) setApiKey(stored);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -143,7 +163,36 @@ export function DirectorController({ session, applySession, offer }: Props) {
       onAccept={onAccept}
       onReject={onReject}
       extra={
-        <DirectorSettings prefs={prefs} apiKey={apiKey} onPrefs={setPrefs} onApiKey={setApiKey} />
+        <DirectorSettings
+          prefs={prefs}
+          apiKey={apiKey}
+          onPrefs={(next) => {
+            const previous = prefs.rememberKey;
+            setPrefs(next);
+            if (!keychain?.available) return;
+            if (next.rememberKey && !previous) {
+              const secret = apiKey.trim();
+              if (secret) void keychain.write(secret);
+            }
+            if (!next.rememberKey && previous) void keychain.remove();
+          }}
+          onApiKey={(value) => {
+            setApiKey(value);
+            if (prefs.rememberKey && keychain?.available) {
+              const secret = value.trim();
+              if (secret) void keychain.write(secret);
+              else void keychain.remove();
+            }
+          }}
+          contextJson={JSON.stringify(buildSendContext(session), null, 2)}
+          contextNote={
+            prefs.provider === "mock"
+              ? "This is the context Send would include. The mock provider does not receive it. Names are included. Paths and media are not."
+              : "This is the context Send includes when you click Send. Names are included. Paths, media, and the API key are not."
+          }
+          keychainAvailable={keychain.available}
+          keychainReason={keychain.reason}
+        />
       }
     />
   );

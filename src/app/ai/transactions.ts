@@ -1,7 +1,7 @@
 import { applyCommand, type EditorCommand } from "../commands";
 import { createId } from "../../core/ids";
 import { commitPreparedProject, type Session } from "../session";
-import { previewPlan, type PlanStep } from "./preview";
+import { previewPlan, type PlanStep, type PreviewOptions } from "./preview";
 import { projectStandIn } from "./stand-in";
 import type { MutationProposal } from "./tools/mutate";
 
@@ -16,6 +16,8 @@ export interface AITransaction {
   summary: string;
   steps: PlanStep[];
   command: EditorCommand;
+  exactMarkerTimes?: boolean;
+  preserveSelection?: boolean;
   baseStandIn: string;
   basePastLength: number;
   prompt: string;
@@ -37,6 +39,8 @@ export function proposeTransaction(session: Session, proposal: MutationProposal,
     summary: proposal.summary,
     steps: proposal.steps,
     command: proposal.command,
+    exactMarkerTimes: proposal.exactMarkerTimes,
+    preserveSelection: proposal.preserveSelection,
     baseStandIn: projectStandIn(session.project),
     basePastLength: session.history.past.length,
     prompt,
@@ -68,16 +72,25 @@ export function acceptTransaction(session: Session, txn: AITransaction): Transac
     return { session, transaction: txn, error: "TRANSACTION_CONFLICT" };
   }
   const single = txn.steps.length === 1 && txn.steps[0]?.kind === "command" ? txn.steps[0].command : null;
-  const preview = previewPlan(session, txn.steps);
+  const previewOptions: PreviewOptions | undefined = txn.exactMarkerTimes ? { exactMarkerTimes: true } : undefined;
+  const preview = previewPlan(session, txn.steps, previewOptions);
   if (!preview.ok) {
     return { session, transaction: txn, error: preview.error };
   }
   const accepted = withStatus(txn, "accepted");
-  const next = single
+  let next = single
     ? applyCommand(session, single)
     : commitPreparedProject(session, preview.session, `AI — ${txn.tool}`);
   if (next.history.past.length !== session.history.past.length + 1) {
     return { session, transaction: txn, error: next.error ?? "No change" };
+  }
+  if (txn.preserveSelection) {
+    next = {
+      ...next,
+      selectedClipId: session.selectedClipId,
+      selectedClipIds: [...session.selectedClipIds],
+      selectionAnchorClipId: session.selectionAnchorClipId,
+    };
   }
   return {
     session: next,

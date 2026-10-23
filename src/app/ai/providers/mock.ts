@@ -17,13 +17,28 @@ function userText(messages: readonly ProviderMessage[]): string {
 }
 
 /**
+ * ASCII \\b does not see ü/Ü as a word character, and /i does not fold them
+ * without the unicode flag. Match the German words without that boundary.
+ */
+export function wantsTransitions(text: string): boolean {
+  return /(?:\b(?:transitions?|cross-?fades?|fades?)\b)|(?:übergäng\w*|überblend\w*|ueberblend\w*)/iu.test(text);
+}
+
+/**
  * Deterministic offline intent. No network and no project bytes.
- * Beat language is refused here; marker cuts are a later step.
+ * Beat detection is a tool call. This function does not invent times.
  */
 export function mockIntent(messages: readonly ProviderMessage[]): MockIntent {
   const text = userText(messages);
   const beat = /\b(beat|beats|takt|takte)\b/i.test(text);
+  const detect = /\b(detect|analys\w*|erkenne\w*|onsets?)\b/i.test(text);
   const toolReply = [...messages].reverse().find((message) => message.role === "tool");
+  if (!toolReply && detect && (beat || /\b(audio|ton|onset)\b/i.test(text))) {
+    return {
+      text: "Beat detection reads the selected clip's audio in this session. Nothing changes until you accept.",
+      toolCalls: [call("audio.detect_beats", {})],
+    };
+  }
   if (toolReply && beat) {
     let count = 0;
     try {
@@ -38,7 +53,7 @@ export function mockIntent(messages: readonly ProviderMessage[]): MockIntent {
         toolCalls: [],
       };
     }
-    const includeTransitions = /\b(transition|transitions|übergang|übergänge|crossfade)\b/i.test(text);
+    const includeTransitions = wantsTransitions(text);
     return {
       text: "Using project marker times only. Audio was not analyzed. Nothing changes until you accept.",
       toolCalls: [call("timeline.split_at_markers", { includeTransitions })],

@@ -49,7 +49,8 @@ describe("AI-6 marker splits", () => {
     expect(turn.transaction?.tool).toBe("timeline.split_at_markers");
     expect(turn.transaction?.status).toBe("proposed");
     expect(turn.text).toMatch(/Audio was not analyzed/);
-    expect(turn.text).toMatch(/No transition was proposed/);
+    expect(turn.text).toMatch(/setClipFades/);
+    expect(turn.text).not.toMatch(/\b120\b/);
     expect(turn.text).toContain("50000");
     expect(turn.text).not.toMatch(/\b120\b/);
     expect(turn.text).not.toContain("secret.wav");
@@ -65,12 +66,18 @@ describe("AI-6 marker splits", () => {
     expect(accepted.session.project.transitions).toHaveLength(0);
     expect(accepted.session.project.schemaVersion).toBe(5);
     expect(accepted.session.project.clips.map((item) => item.startMs).sort((a, b) => a - b)).toEqual([0, 2000, 6000]);
+    const pieces = [...accepted.session.project.clips].sort((a, b) => a.startMs - b.startMs);
+    expect(pieces.map((item) => [item.fadeInMs, item.fadeOutMs])).toEqual([
+      [0, 200],
+      [200, 200],
+      [200, 0],
+    ]);
     expect(fetchSpy).not.toHaveBeenCalled();
 
     const undone = applyCommand(accepted.session, { type: "undo" });
     expect(undone.history.past).toHaveLength(0);
     expect(undone.project.clips).toHaveLength(1);
-    expect(undone.project.clips[0]).toMatchObject({ id: "c1", startMs: 0, durationMs: 10000 });
+    expect(undone.project.clips[0]).toMatchObject({ id: "c1", startMs: 0, durationMs: 10000, fadeInMs: 0, fadeOutMs: 0 });
     expect(undone.project.playheadMs).toBe(0);
     vi.unstubAllGlobals();
   });
