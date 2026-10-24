@@ -118,12 +118,27 @@ describe("AI-7 lyric sidecar", () => {
       executableName: "main",
       modelName: "ggml.bin",
       configured: true,
+      message: "",
     });
     expect(whisperStatusFrom({ executable: "/tmp/secret/main", model: "/tmp/secret/ggml.bin" })).toEqual({
       executableName: "",
       modelName: "",
       configured: false,
+      message: "",
     });
+    const sealed = await alignLyrics({
+      lines,
+      configured: false,
+      unavailableMessage:
+        "The whisper.cpp choice was changed outside the file dialog. Choose the executable and model again. Nothing was started.",
+      audioPath: "/media/song.wav",
+      invoke: async () => {
+        throw new Error("whisper should not start");
+      },
+    });
+    expect(sealed.alignment.message).toContain("file dialog");
+    expect(sealed.alignment.message).toContain("Nothing was started");
+    expect(sealed.lines[0]?.text).toBe("Zeile eins");
   });
 
   it("does not invent a proposal when no lyrics were pasted", () => {

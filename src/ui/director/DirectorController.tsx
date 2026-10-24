@@ -93,7 +93,10 @@ export function DirectorController({ session, applySession, offer, expanded, onT
     void import("@tauri-apps/api/core")
       .then(({ invoke }) => invoke("whisper_status"))
       .then((value) => {
-        if (!cancelled) setWhisper(whisperStatusFrom(value));
+        if (cancelled) return;
+        const status = whisperStatusFrom(value);
+        setWhisper(status);
+        if (status.message) setLyricStatus(status.message);
       })
       .catch(() => undefined);
     return () => {
@@ -145,7 +148,9 @@ export function DirectorController({ session, applySession, offer, expanded, onT
     if (!isTauriRuntime()) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      setWhisper(whisperStatusFrom(await invoke(command)));
+      const status = whisperStatusFrom(await invoke(command));
+      setWhisper(status);
+      if (status.message) setLyricStatus(status.message);
     } catch (error) {
       const message = error instanceof Error ? error.message : "No file was chosen. Nothing was saved.";
       setLyricStatus(message);
@@ -306,6 +311,7 @@ export function DirectorController({ session, applySession, offer, expanded, onT
               const aligned = await alignLyrics({
                 lines: saved.lines,
                 configured: whisper.configured,
+                unavailableMessage: whisper.message || undefined,
                 audioPath: "path" in audio ? audio.path : null,
               });
               const next = {

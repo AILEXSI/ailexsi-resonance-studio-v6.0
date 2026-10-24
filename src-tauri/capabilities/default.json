@@ -24,8 +24,12 @@
       "identifier": "fs:scope",
       "allow": [
         { "path": "$APPDATA" },
-        { "path": "$APPDATA/*" },
-        { "path": "$APPDATA/**" }
+        { "path": "$APPDATA/last-project.json" }
+      ],
+      "deny": [
+        { "path": "$APPDATA/whisper-cpp.json" },
+        { "path": "$APPDATA/resonance-sealed" },
+        { "path": "$APPDATA/resonance-sealed/**" }
       ]
     }
   ]

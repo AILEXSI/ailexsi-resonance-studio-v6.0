@@ -154,12 +154,17 @@ export async function alignLyrics(opts: {
   audioPath: string | null;
   /** False when the desktop app has not stored an executable and a model. */
   configured?: boolean;
+  /** Shown when the desktop app already knows the choice is missing or unsealed. */
+  unavailableMessage?: string;
   run?: (input: WhisperRunInput) => Promise<string>;
   invoke?: (command: string, args: WhisperRunInput) => Promise<string>;
   tauri?: boolean;
 }): Promise<{ lines: LyricLine[]; alignment: LyricAlignment }> {
   if (opts.configured === false) {
-    return { lines: opts.lines.map((line) => ({ ...line })), alignment: { engine: "none", status: "unavailable", message: NOT_CONFIGURED } };
+    return {
+      lines: opts.lines.map((line) => ({ ...line })),
+      alignment: { engine: "none", status: "unavailable", message: opts.unavailableMessage || NOT_CONFIGURED },
+    };
   }
   if (!opts.audioPath) {
     return { lines: opts.lines.map((line) => ({ ...line })), alignment: { engine: "none", status: "unavailable", message: NO_AUDIO } };

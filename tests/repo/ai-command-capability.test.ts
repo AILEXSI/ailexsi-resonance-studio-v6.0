@@ -51,5 +51,24 @@ describe("AI command capability", () => {
     expect(controller).not.toContain("writeWhisperConfig");
     expect(controller).not.toContain("executable: whisper");
     expect(config).not.toContain("setItem");
+    const scope = (capability.permissions ?? []).find(
+      (entry): entry is { identifier?: string; allow?: { path?: string }[]; deny?: { path?: string }[] } =>
+        typeof entry === "object" && entry !== null && (entry as { identifier?: string }).identifier === "fs:scope",
+    );
+    const allow = (scope?.allow ?? []).map((item) => item.path ?? "");
+    const deny = (scope?.deny ?? []).map((item) => item.path ?? "");
+    expect(allow).toEqual(["$APPDATA", "$APPDATA/last-project.json"]);
+    expect(allow.join(" ")).not.toContain("*");
+    expect(deny).toContain("$APPDATA/whisper-cpp.json");
+    expect(deny).toContain("$APPDATA/resonance-sealed");
+    expect(deny).toContain("$APPDATA/resonance-sealed/**");
+    expect(rust).toContain("resonance-sealed");
+    expect(rust).toContain("fn check_whisper_seal");
+    expect(rust).toContain("fn path_is_whisper_store");
+    const alignFn = rust.slice(rust.indexOf("fn lyrics_whisper_align"), rust.indexOf("fn read_whisper_json"));
+    expect(alignFn.indexOf("load_whisper")).toBeGreaterThan(-1);
+    expect(alignFn.indexOf("load_whisper")).toBeLessThan(alignFn.indexOf("Command::new"));
+    const grant = rust.slice(rust.indexOf("fn allow_media_paths"), rust.indexOf("fn grant_fs_file"));
+    expect(grant.indexOf("path_is_whisper_store")).toBeLessThan(grant.indexOf("grant_fs_file"));
   });
 });
