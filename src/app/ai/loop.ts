@@ -1,6 +1,6 @@
 import type { Session } from "../session";
 import { detectBeatsFromPcm } from "./audio/beats";
-import { loadSelectedClipAudio, type ClipDecoder } from "./audio/load";
+import { loadBeatClipAudio, type ClipDecoder } from "./audio/load";
 import { buildSendContext, redactSensitiveText } from "./context";
 import { dispatchTool } from "./orchestrator";
 import { createMockProvider } from "./providers/mock";
@@ -67,7 +67,7 @@ export async function runDirectorTurn(opts: {
     if (mutations.length === 1) {
       const call = mutations[0]!;
       if (call.name === "audio.detect_beats") {
-        return proposeDetectedBeats(opts.session, opts.prompt, opts.decodeClip);
+        return proposeDetectedBeats(opts.session, opts.prompt, call.arguments, opts.decodeClip);
       }
       const dispatched = dispatchTool(opts.session, call.name, call.arguments, opts.prompt);
       if (dispatched.kind === "proposal") {
@@ -85,13 +85,19 @@ export async function runDirectorTurn(opts: {
   return { text: "Stopped. Nothing was changed.", transaction: null };
 }
 
-async function proposeDetectedBeats(session: Session, prompt: string, decode?: ClipDecoder): Promise<DirectorTurn> {
-  const loaded = await loadSelectedClipAudio(session, decode);
+async function proposeDetectedBeats(
+  session: Session,
+  prompt: string,
+  args: unknown,
+  decode?: ClipDecoder,
+): Promise<DirectorTurn> {
+  const loaded = await loadBeatClipAudio(session, args, decode);
   if (!loaded.ok) return { text: `${loaded.error} Nothing was changed.`, transaction: null };
   const analysis = detectBeatsFromPcm(loaded.pcm, loaded.window);
   const planned = planBeatMarkers(session, analysis);
   if (!planned.ok) return { text: `${planned.error} Nothing was changed.`, transaction: null };
-  return { text: planned.data.summary, transaction: proposeTransaction(session, planned.data, prompt) };
+  const text = loaded.note ? `${loaded.note} ${planned.data.summary}` : planned.data.summary;
+  return { text, transaction: proposeTransaction(session, planned.data, prompt) };
 }
 
 function toolContent(session: Session, call: ToolCall, prompt: string): string {

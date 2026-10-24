@@ -15,5 +15,7 @@ describe("repo line endings", () => {
     expect(text).toMatch(/^src-tauri\/capabilities\/\*\.json text eol=lf$/m);
     const cargo = nodeFs.readFileSync("src-tauri/Cargo.toml", "utf8") as string;
     expect(cargo.includes("\r")).toBe(false);
+    expect(cargo).toMatch(/^tauri = \{ workspace = true \}$/m);
+    expect(cargo).toMatch(/^tauri-build = \{ workspace = true \}$/m);
   });
 });

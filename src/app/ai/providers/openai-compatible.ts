@@ -67,6 +67,84 @@ function consumeDelta(acc: Map<number, ToolAcc>, delta: unknown): string {
   return text;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function argumentsOf(value: unknown): unknown | undefined {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function callFromRecord(value: unknown, allowed: ReadonlySet<string>): ToolCall | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const nested = asRecord(record.function);
+  const nameValue = nested?.name ?? record.name;
+  if (typeof nameValue !== "string" || !allowed.has(nameValue)) return null;
+  const argsValue = nested && "arguments" in nested ? nested.arguments : record.arguments;
+  const args = argsValue === undefined ? {} : argumentsOf(argsValue);
+  if (args === undefined) return null;
+  const id = typeof record.id === "string" && record.id ? record.id : nameValue;
+  return { id, name: nameValue, arguments: args };
+}
+
+function callsFromJson(value: unknown, allowed: ReadonlySet<string>): ToolCall[] {
+  const items = Array.isArray(value) ? value : [value];
+  const calls: ToolCall[] = [];
+  for (const item of items) {
+    const call = callFromRecord(item, allowed);
+    if (call) calls.push(call);
+  }
+  return calls;
+}
+
+function candidateChunks(text: string): string[] {
+  const chunks: string[] = [];
+  const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
+  const tag = /<tool_call>\s*([\s\S]*?)<\/tool_call>/gi;
+  for (const match of text.matchAll(fence)) {
+    if (match[1]?.trim()) chunks.push(match[1].trim());
+  }
+  for (const match of text.matchAll(tag)) {
+    if (match[1]?.trim()) chunks.push(match[1].trim());
+  }
+  if (chunks.length === 0 && text.trim()) chunks.push(text.trim());
+  return chunks;
+}
+
+/**
+ * Some local models print tool calls as JSON text instead of `tool_calls`.
+ * Only names in `allowed` are kept. Malformed arguments are dropped.
+ */
+export function parseTextToolCalls(text: string, allowed: readonly string[]): ToolCall[] {
+  const names = new Set(allowed);
+  const calls: ToolCall[] = [];
+  const seen = new Set<string>();
+  for (const chunk of candidateChunks(text)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(chunk) as unknown;
+    } catch {
+      continue;
+    }
+    for (const call of callsFromJson(parsed, names)) {
+      const key = `${call.name}:${JSON.stringify(call.arguments)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      calls.push(call);
+    }
+  }
+  return calls;
+}
+
 export function toolCallsFromAccumulators(acc: Map<number, ToolAcc>): ToolCall[] {
   const calls: ToolCall[] = [];
   for (const row of acc.values()) {
@@ -116,6 +194,7 @@ const SYSTEM = [
   "The structure context includes project, track, and marker names, plus ids and times.",
   "It does not include file paths, media bytes, or waveforms.",
   "Propose at most one edit. The human accepts or rejects it.",
+  "Use the tool interface for tool calls. Do not print a tool call as JSON text.",
 ].join(" ");
 
 export function createOpenAiCompatibleProvider(config: OpenAiCompatibleConfig): AIProvider {
@@ -180,7 +259,10 @@ export function createOpenAiCompatibleProvider(config: OpenAiCompatibleConfig): 
         yield { type: "error", message: "Provider stream failed. Nothing was changed." };
         return;
       }
-      yield { type: "done", text, toolCalls: toolCallsFromAccumulators(acc) };
+      const structured = toolCallsFromAccumulators(acc);
+      const toolCalls =
+        structured.length > 0 ? structured : parseTextToolCalls(text, request.tools.map((tool) => tool.name));
+      yield { type: "done", text, toolCalls };
     },
   };
 }

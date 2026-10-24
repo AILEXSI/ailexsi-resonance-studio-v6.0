@@ -5,15 +5,24 @@ description = "AILEXSI Resonance Studio V6.0 standalone"
 authors = ["AILEXSI"]
 edition = "2021"
 
+[workspace]
+resolver = "2"
+
+# `tauri build` rewrites this file when the tauri dependency is inline.
+# `workspace = true` makes that rewrite skip the file (tauri-cli 2.11).
+[workspace.dependencies]
+tauri = { version = "2.2", features = [] }
+tauri-build = { version = "2.2", features = [] }
+
 [lib]
 name = "ailexsi_resonance_studio_v6_0_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.2", features = [] }
+tauri-build = { workspace = true }
 
 [dependencies]
-tauri = { version = "2.2", features = [] }
+tauri = { workspace = true }
 tauri-plugin-fs = "2.4"
 tauri-plugin-dialog = "2.4"
 keyring = { version = "3.6.3", default-features = false, features = ["linux-native-sync-persistent", "windows-native", "apple-native"] }
