@@ -78,6 +78,9 @@ import {
   applyTrim,
   applyTrimToPlayhead,
   applyUndo,
+  applyRazorAll,
+  applyLinkClips,
+  applyUnlinkSelection,
   applyUnlinkClips,
   revertToLastSave,
   type Session,
@@ -163,6 +166,9 @@ export type EditorCommand =
   | { type: "addVisKeyframe"; eventId: string; localMs: number }
   | { type: "removeVisKeyframe"; eventId: string; timeMs: number }
   | { type: "setTrackPan"; trackId: TrackId; pan: number }
+  | { type: "razorAll" }
+  | { type: "linkClips" }
+  | { type: "unlinkSelection" }
   | { type: "unlinkClips"; clipId: string }
   | { type: "relinkClips"; clipIds: readonly string[]; assetId: string }
   | {
@@ -331,6 +337,12 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyRemoveVisKeyframe(session, command.eventId, command.timeMs);
     case "setTrackPan":
       return applySetTrackPan(session, command.trackId, command.pan);
+    case "razorAll":
+      return applyRazorAll(session);
+    case "linkClips":
+      return applyLinkClips(session);
+    case "unlinkSelection":
+      return applyUnlinkSelection(session);
     case "unlinkClips":
       return applyUnlinkClips(session, command.clipId);
     case "relinkClips":

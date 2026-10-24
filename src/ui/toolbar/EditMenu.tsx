@@ -29,6 +29,9 @@ export const EDIT_MENU_ITEMS: Item[] = [
   { id: "reverse", label: "Reverse", shortcut: CLIP_MENU_SHORTCUTS.reverse, command: { type: "toggleReverse" } },
   { id: "freeze", label: "Freeze frame", shortcut: CLIP_MENU_SHORTCUTS.freeze, command: { type: "freezeFrame" } },
   { id: "keyframe", label: "Add keyframe", shortcut: CLIP_MENU_SHORTCUTS.keyframe, command: { type: "addKeyframe" } },
+  { id: "razor-all", label: "Razor all", shortcut: CLIP_MENU_SHORTCUTS.razorAll, command: { type: "razorAll" } },
+  { id: "link", label: "Link", shortcut: CLIP_MENU_SHORTCUTS.link, command: { type: "linkClips" } },
+  { id: "unlink", label: "Unlink", shortcut: CLIP_MENU_SHORTCUTS.unlink, command: { type: "unlinkSelection" } },
   { id: "ripple-delete", label: "Ripple delete", shortcut: CLIP_MENU_SHORTCUTS.rippleDelete, command: { type: "rippleDelete" } },
   { id: "lift-delete", label: "Lift delete", shortcut: CLIP_MENU_SHORTCUTS.delete, command: { type: "liftDelete" } },
 ];

@@ -1994,6 +1994,15 @@ export function App() {
         onToggleReverse={() => runCommand({ type: "toggleReverse" })}
         onFreezeFrame={() => runCommand({ type: "freezeFrame" })}
         onSetRate={(rate) => runCommand({ type: "setSelectionRate", rate })}
+        onRazorAll={(timeMs) => {
+          setSession((s) => {
+            const parked =
+              timeMs != null ? applyPlayhead(s, snapPlayheadSeek(s.project, timeMs)) : s;
+            return applyCommand(parked, { type: "razorAll" });
+          });
+        }}
+        onLinkClips={() => runCommand({ type: "linkClips" })}
+        onUnlinkClips={() => runCommand({ type: "unlinkSelection" })}
         onAddClipKeyframe={(clipId, kind, localMs) =>
           runCommand({ type: "addClipKeyframe", clipId, kind, localMs })
         }

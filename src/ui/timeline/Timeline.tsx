@@ -177,6 +177,9 @@ interface Props {
   onFreezeFrame?: () => void;
   onSetRate?: (rate: number) => void;
   onAddClipKeyframe?: (clipId: string, kind: "gain" | "opacity", localMs: number) => void;
+  onRazorAll?: (timeMs?: number) => void;
+  onLinkClips?: () => void;
+  onUnlinkClips?: () => void;
   onClipKeysLive?: (clipId: string, kind: "gain" | "opacity", lane: VolumeAutomation) => void;
   onClipKeysCommit?: () => void;
   onRemoveClipKeyframe?: (clipId: string, kind: "gain" | "opacity", timeMs: number) => void;
@@ -313,6 +316,9 @@ export function Timeline({
   onFreezeFrame,
   onSetRate,
   onAddClipKeyframe,
+  onRazorAll,
+  onLinkClips,
+  onUnlinkClips,
   onClipKeysLive,
   onClipKeysCommit,
   onRemoveClipKeyframe,
@@ -1260,7 +1266,7 @@ export function Timeline({
   const onClipContext = (e: ReactMouseEvent, clip: Clip) => {
     e.preventDefault();
     e.stopPropagation();
-    onSelect(clip.id);
+    if (!selectedIds.includes(clip.id)) onSelect(clip.id);
     setMarkerMenu(null);
     setOverflowOpenId(null);
     setMenu({
@@ -2553,6 +2559,45 @@ export function Timeline({
             >
               <span>Freeze frame</span>
               <kbd>{CLIP_MENU_SHORTCUTS.freeze}</kbd>
+            </button>
+          ) : null}
+          {onRazorAll ? (
+            <button
+              type="button"
+              data-testid="clip-menu-razor-all"
+              onClick={() => {
+                onRazorAll(menu.timeMs);
+                setMenu(null);
+              }}
+            >
+              <span>Razor all</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.razorAll}</kbd>
+            </button>
+          ) : null}
+          {onLinkClips ? (
+            <button
+              type="button"
+              data-testid="clip-menu-link"
+              onClick={() => {
+                onLinkClips();
+                setMenu(null);
+              }}
+            >
+              <span>Link</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.link}</kbd>
+            </button>
+          ) : null}
+          {onUnlinkClips ? (
+            <button
+              type="button"
+              data-testid="clip-menu-unlink"
+              onClick={() => {
+                onUnlinkClips();
+                setMenu(null);
+              }}
+            >
+              <span>Unlink</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.unlink}</kbd>
             </button>
           ) : null}
           {onAddClipKeyframe ? (

@@ -96,6 +96,38 @@ export function firstFreeAudioTrack(
   return undefined;
 }
 
+/** Link exactly one video clip and one audio clip. Previous partners of those clips are released. */
+export function linkClipPair(
+  project: Project,
+  clipIds: readonly string[],
+): { project: Project; error?: string } {
+  const found = [...new Set(clipIds)]
+    .map((id) => clipById(project, id))
+    .filter((c): c is Clip => c != null && clipIsEnabled(c));
+  const video = found.filter((c) => kindOfTrack(c.trackId) === "video");
+  const audio = found.filter((c) => kindOfTrack(c.trackId) === "audio");
+  if (video.length !== 1 || audio.length !== 1 || found.length !== 2) {
+    return { project, error: "Select one video clip and one audio clip" };
+  }
+  const picture = video[0]!;
+  const sound = audio[0]!;
+  if (clipIsLocked(picture) || clipIsLocked(sound)) return { project, error: "Clip is locked" };
+  if (picture.linkId && picture.linkId === sound.linkId) return { project };
+  const previous = new Set([picture.linkId, sound.linkId].filter((id): id is string => Boolean(id)));
+  const linkId = createId("link");
+  return {
+    project: {
+      ...project,
+      updatedAt: new Date().toISOString(),
+      clips: project.clips.map((c) => {
+        if (c.id === picture.id || c.id === sound.id) return { ...c, linkId };
+        if (c.linkId && previous.has(c.linkId)) return { ...c, linkId: undefined };
+        return c;
+      }),
+    },
+  };
+}
+
 export function unlinkClips(
   project: Project,
   clipId: string,

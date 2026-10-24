@@ -50,6 +50,7 @@ function commandFromKey(
       const clipId = firstClipIdWithLivingMate(session.project, selectionOf(session));
       return clipId ? { type: "unlinkClips", clipId } : null;
     }
+    if (letter === "l") return { type: "linkClips" };
     return null;
   }
 
@@ -79,6 +80,7 @@ function commandFromKey(
   }
   if (letter === "r") return e.shiftKey ? { type: "freezeFrame" } : { type: "toggleReverse" };
   if (!e.altKey && letter === "v") return { type: "addKeyframe" };
+  if (letter === "b") return { type: "razorAll" };
   if (letter === "s") return { type: "split" };
   if (letter === "g") return { type: "closeGap" };
   if (letter === "q") return { type: "rippleTrimToPlayhead", edge: "in" };
@@ -203,6 +205,9 @@ export function dispatchEditorKey(
     command.type === "liftRange" ||
     command.type === "extractRange" ||
     command.type === "unlinkClips" ||
+    command.type === "unlinkSelection" ||
+    command.type === "linkClips" ||
+    command.type === "razorAll" ||
     command.type === "gotoNextEdit" ||
     command.type === "gotoPrevEdit" ||
     command.type === "closeGap" ||

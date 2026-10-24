@@ -1,4 +1,4 @@
-import { editableLinkedMate, unlinkClips } from "../core/link";
+import { editableLinkedMate, linkClipPair, unlinkClips } from "../core/link";
 import { addClipKeyPoint, keyFactorAt, laneWithPoint, laneWithoutPoint, setClipKeyLane, setVisOpacityKeys } from "../core/clip-keys";
 import { DEFAULT_FADE_MS, normalizeClipFades } from "../core/fades";
 import {
@@ -1217,6 +1217,41 @@ export function applyRelinkClips(
   if ("unchanged" in result) return session;
   if ("error" in result) return { ...session, error: result.error, status: "Relink failed" };
   return withHistory(session, result.project, sel.clipIds.length > 1 ? "Relinked clips" : "Relinked clip");
+}
+
+export function applyRazorAll(session: Session): Session {
+  const clips = splitAtPlayhead(session.project);
+  let project = clips.error ? session.project : clips.project;
+  const vis = splitVisualizerAtPlayhead(project);
+  if (!vis.error) project = vis.project;
+  if (project === session.project) return { ...session, error: "Nothing to cut at the playhead" };
+  return withHistory(session, project, "Razor all");
+}
+
+export function applyLinkClips(session: Session): Session {
+  const result = linkClipPair(session.project, selectionOf(session));
+  if (result.error) return { ...session, error: result.error };
+  if (result.project === session.project) return session;
+  return withHistory(session, result.project, "Linked clips");
+}
+
+export function applyUnlinkSelection(session: Session): Session {
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  const seen = new Set<string>();
+  let changed = false;
+  for (const id of ids) {
+    const clip = clipById(project, id);
+    if (!clip?.linkId || seen.has(clip.linkId)) continue;
+    seen.add(clip.linkId);
+    const result = unlinkClips(project, id);
+    if (result.error) return { ...session, error: result.error };
+    if (result.project !== project) changed = true;
+    project = result.project;
+  }
+  if (!changed) return { ...session, error: "No linked clip selected" };
+  return withHistory(session, project, "Unlinked clips");
 }
 
 export function applyUnlinkClips(session: Session, clipId: string): Session {
