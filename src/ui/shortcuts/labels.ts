@@ -75,12 +75,12 @@ export const SHORTCUT_ROWS: { key: string; action: string }[] = [
   { key: CLIP_MENU_SHORTCUTS.speedDouble, action: "Set selection speed to 2x" },
   {
     key: "Inspector rate",
-    action: "Any speed from 0.25x to 4x. Preview keeps pitch. Export changes pitch with speed.",
+    action: "Any speed from 0.25x to 4x. Preview and export keep pitch.",
   },
   { key: CLIP_MENU_SHORTCUTS.reverse, action: "Play the selected clip backward" },
   {
     key: CLIP_MENU_SHORTCUTS.freeze,
-    action: "Freeze the video frame at the playhead for 2 s (linked audio stays put)",
+    action: "Freeze the video frame at the playhead for 2 s (linked audio pauses, then stays in sync)",
   },
   {
     key: CLIP_MENU_SHORTCUTS.keyframe,

@@ -115,14 +115,23 @@ describe("speed, reverse, and freeze", () => {
     expect(sourceTimeSec(held, 800, 30)).toBeCloseTo(1.5, 5);
   });
 
-  it("inserts a 2s freeze at the playhead and leaves linked audio in place", () => {
+  it("inserts a 2s freeze and pauses linked audio so the rest stays in sync", () => {
     const start = session();
     const next = applyCommand(start, { type: "freezeFrame" });
     expect(next.history.past).toHaveLength(1);
     expect(next.project.schemaVersion).toBe(5);
-    const audio = next.project.clips.find((c) => c.id === "a1")!;
-    expect(audio.startMs).toBe(0);
-    expect(audio.durationMs).toBe(4000);
+    const leftAudio = next.project.clips.find((c) => c.id === "a1")!;
+    expect(leftAudio.startMs).toBe(0);
+    expect(leftAudio.durationMs).toBe(1000);
+    expect(leftAudio.sourceOutMs).toBe(1000);
+    const rightAudio = next.project.clips.find((c) => c.trackId === "A1" && c.id !== "a1")!;
+    expect(rightAudio.startMs).toBe(3000);
+    expect(rightAudio.durationMs).toBe(3000);
+    expect(rightAudio.sourceInMs).toBe(1000);
+    const during = next.project.clips.some(
+      (c) => c.trackId === "A1" && c.startMs < 2500 && c.startMs + c.durationMs > 1500,
+    );
+    expect(during).toBe(false);
     const freeze = next.project.clips.find((c) => c.holdSourceMs != null);
     expect(freeze?.trackId).toBe("V1");
     expect(freeze?.startMs).toBe(1000);
@@ -130,10 +139,29 @@ describe("speed, reverse, and freeze", () => {
     expect(freeze?.holdSourceMs).toBe(1000);
     expect(freeze?.linkId).toBeUndefined();
     expect(sourceTimeAt(freeze!, 1500)).toBe(1000);
-    const right = next.project.clips.find((c) => c.trackId === "V1" && c.id !== "v1" && c.holdSourceMs == null);
-    expect(right?.startMs).toBe(3000);
+    const leftVideo = next.project.clips.find((c) => c.id === "v1")!;
+    const rightVideo = next.project.clips.find(
+      (c) => c.trackId === "V1" && c.id !== "v1" && c.holdSourceMs == null,
+    )!;
+    expect(rightVideo.startMs).toBe(3000);
+    expect(leftVideo.linkId).toBe(leftAudio.linkId);
+    expect(rightVideo.linkId).toBe(rightAudio.linkId);
+    expect(rightVideo.linkId).not.toBe(leftVideo.linkId);
     const undone = applyCommand(next, { type: "undo" });
     expect(undone.project.clips.filter((c) => c.trackId === "V1")).toHaveLength(1);
+    expect(undone.project.clips.find((c) => c.id === "a1")?.durationMs).toBe(4000);
+  });
+
+  it("does not freeze when the linked audio is locked", () => {
+    const start = session();
+    start.project = {
+      ...start.project,
+      clips: start.project.clips.map((c) => (c.id === "a1" ? { ...c, locked: true } : c)),
+    };
+    const next = applyCommand(start, { type: "freezeFrame" });
+    expect(next.history.past).toHaveLength(0);
+    expect(next.error).toBe("Clip is locked");
+    expect(next.project.clips).toHaveLength(2);
   });
 
   it("routes R, Shift+R, and Alt+3 and lists them in the Edit menu", () => {

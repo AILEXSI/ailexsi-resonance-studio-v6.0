@@ -281,7 +281,7 @@ export function planSetSpeed(session: Session, args: unknown): ToolResult<Mutati
   if (unchanged) return toolErr("NO_CHANGE", "Speed would not change the clip");
   return toolOk({
     tool: "timeline.set_speed",
-    summary: `Set speed to ${raw.rate}x. Source in and out stay. Nothing changes until you accept. Preview keeps pitch. Export changes pitch with speed.`,
+    summary: `Set speed to ${raw.rate}x. Source in and out stay. Nothing changes until you accept. Preview and export keep pitch.`,
     steps: [{ kind: "command", command }],
     command,
   });

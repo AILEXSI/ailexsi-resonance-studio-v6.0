@@ -1,5 +1,6 @@
 import { scheduleGainEnvelope } from "../fades";
 import { clampClipRate } from "../models";
+import { timeStretchChannels } from "./time-stretch";
 import { scheduleTransitionAudioGain } from "../transition";
 import { clampPan, equalPowerPan } from "../volume";
 import { scheduleVolumeAutomation, volumeAutomationIsActive } from "../volume-automation";
@@ -215,6 +216,81 @@ function sliceReversed(
   return out;
 }
 
+export type AudioPlaybackPlan = {
+  /** True when the source slice is time-stretched, then played at 1x so pitch stays. */
+  stretch: boolean;
+  playRate: number;
+  offsetSec: number;
+  sourceDurSec: number;
+};
+
+/**
+ * Schedule for one mix window.
+ * Rate 1, forward, not held matches the c3b4206 playbackRate path:
+ * offset walks the source, duration is the window times the rate.
+ * Any other rate time-stretches first and plays at 1x.
+ */
+export function audioPlaybackPlan(
+  clip: {
+    sourceInMs: number;
+    rate?: number;
+    reversed?: boolean;
+    holdSourceMs?: number;
+  },
+  window: { startMs: number; endMs: number },
+  clipStartMs: number,
+): AudioPlaybackPlan {
+  const held = clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs);
+  const reversed = !held && clip.reversed === true;
+  const rate = clampClipRate(clip.rate ?? 1);
+  const stretch = !held && Math.abs(rate - 1) > 1e-4;
+  const playRate = held || stretch ? 1 : rate;
+  const localMs = Math.max(0, window.startMs - clipStartMs);
+  const windowMs = Math.max(0, window.endMs - window.startMs);
+  const offsetSec =
+    held || reversed || stretch
+      ? Math.max(0, localMs / 1000)
+      : Math.max(0, (clip.sourceInMs + localMs * rate) / 1000);
+  return {
+    stretch,
+    playRate,
+    offsetSec,
+    sourceDurSec: Math.max(0.01, (windowMs * playRate) / 1000),
+  };
+}
+
+function bufferFromChannels(ctx: BaseAudioContext, channels: readonly Float32Array[], sampleRate: number): AudioBuffer {
+  const length = Math.max(1, channels[0]?.length ?? 1);
+  const out = ctx.createBuffer(Math.max(1, channels.length), length, sampleRate);
+  for (let ch = 0; ch < channels.length; ch++) out.getChannelData(ch).set(channels[ch]!);
+  return out;
+}
+
+function stretchSpan(
+  ctx: BaseAudioContext,
+  decoded: AudioBuffer,
+  fromSec: number,
+  toSec: number,
+  factor: number,
+): AudioBuffer {
+  const sr = decoded.sampleRate;
+  const lo = Math.max(0, Math.min(fromSec, toSec));
+  const hi = Math.min(decoded.duration, Math.max(fromSec, toSec));
+  const start = Math.min(decoded.length - 1, Math.max(0, Math.floor(lo * sr)));
+  const end = Math.min(decoded.length, Math.max(start + 1, Math.ceil(hi * sr)));
+  const channels: Float32Array[] = [];
+  for (let ch = 0; ch < decoded.numberOfChannels; ch++) {
+    channels.push(decoded.getChannelData(ch).subarray(start, end));
+  }
+  return bufferFromChannels(ctx, timeStretchChannels(channels, sr, factor), sr);
+}
+
+function stretchWhole(ctx: BaseAudioContext, decoded: AudioBuffer, factor: number): AudioBuffer {
+  const channels: Float32Array[] = [];
+  for (let ch = 0; ch < decoded.numberOfChannels; ch++) channels.push(decoded.getChannelData(ch));
+  return bufferFromChannels(ctx, timeStretchChannels(channels, decoded.sampleRate, factor), decoded.sampleRate);
+}
+
 /** Short loop of the held source time. Playback loops it across the clip. */
 function holdGrain(ctx: BaseAudioContext, decoded: AudioBuffer, holdSec: number): AudioBuffer {
   const sr = decoded.sampleRate;
@@ -260,7 +336,9 @@ export async function mixJobAudio(
       if (!decodedBufferIsAudible(decoded)) continue;
       const held = clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs);
       const reversed = !held && clip.reversed === true;
-      const buffer = held
+      const rate = clampClipRate(clip.rate ?? 1);
+      const stretch = !held && Math.abs(rate - 1) > 1e-4;
+      let buffer = held
         ? holdGrain(ctx, decoded, clip.holdSourceMs! / 1000)
         : reversed
           ? sliceReversed(
@@ -270,6 +348,17 @@ export async function mixJobAudio(
               Math.max(clip.sourceInMs, clip.sourceOutMs) / 1000,
             )
           : decoded;
+      if (stretch) {
+        buffer = reversed
+          ? stretchWhole(ctx, buffer, 1 / rate)
+          : stretchSpan(
+              ctx,
+              decoded,
+              Math.min(clip.sourceInMs, clip.sourceOutMs) / 1000,
+              Math.max(clip.sourceInMs, clip.sourceOutMs) / 1000,
+              1 / rate,
+            );
+      }
       const src = ctx.createBufferSource();
       src.buffer = buffer;
       const gain = ctx.createGain();
@@ -336,21 +425,15 @@ export async function mixJobAudio(
       } else {
         connectTrackPan(ctx, mixOut, trackPanOfJob(job, clip.trackId));
       }
-      const rate = clampClipRate(clip.rate ?? 1);
-      const playRate = held ? 1 : rate;
+      const playRate = held || stretch ? 1 : rate;
       src.playbackRate.value = playRate;
       if (held) src.loop = true;
       const first = windows[0]!;
       const startOne = (w: { startMs: number; endMs: number }, node: AudioBufferSourceNode) => {
-        const localMs = Math.max(0, w.startMs - clip.startMs);
-        const offsetSec =
-          held || reversed
-            ? Math.max(0, (localMs * playRate) / 1000)
-            : Math.max(0, (clip.sourceInMs + localMs * rate) / 1000);
-        const sourceDurSec = Math.max(0.01, ((w.endMs - w.startMs) * playRate) / 1000);
-        node.playbackRate.value = playRate;
+        const plan = audioPlaybackPlan(clip, w, clip.startMs);
+        node.playbackRate.value = plan.playRate;
         if (held) node.loop = true;
-        node.start(Math.max(0, w.startMs / 1000), offsetSec, sourceDurSec);
+        node.start(Math.max(0, w.startMs / 1000), plan.offsetSec, plan.sourceDurSec);
       };
       startOne(first, src);
       for (let i = 1; i < windows.length; i++) {
