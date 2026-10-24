@@ -42,6 +42,8 @@ function clipPath(): string | null {
   return CLIP_CANDIDATES.find((p) => existsSync(p)) ?? null;
 }
 
+const STRESS03_MEDIA = clipPath();
+
 function loadMovie(path: string) {
   if (!existsSync(path)) return null;
   return parseIsoBmff(new Uint8Array(readFileSync(path)));
@@ -51,7 +53,11 @@ afterEach(() => {
   resetStageTrace();
 });
 
-describe("STRESS-03 physical source 1000001827 - Kopie.mp4", () => {
+describe.skipIf(!STRESS03_MEDIA)(
+  STRESS03_MEDIA
+    ? "STRESS-03 physical source 1000001827 - Kopie.mp4"
+    : "STRESS-03 skipped: physical clip missing, set STRESS03_CLIP to 1000001827 - Kopie.mp4",
+  () => {
   it("H. alone at sourceInMs 0: parse + sample select + decoderConfig succeed", () => {
     const path = clipPath();
     expect(path, "STRESS-03 clip missing — set STRESS03_CLIP").toBeTruthy();
