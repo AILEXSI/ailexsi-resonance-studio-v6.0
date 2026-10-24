@@ -1,3 +1,4 @@
+import { ensureLexiScenes } from "../visualz/scenes";
 import { canUseWebCodecs, exportWithWebCodecs, webCodecsUnavailableMessage } from "./webcodecs";
 import { beginExportFailSession, exportResultFromCaughtThrow } from "./export-fail-dump";
 import { missingOnlyVideoLabel } from "./job";
@@ -159,6 +160,7 @@ export async function exportTimeline(
   if (!canUseWebCodecs()) {
     return fail(job, webCodecsUnavailableMessage());
   }
+  await ensureLexiScenes();
   beginExportFailSession(job);
   try {
     return await exportWithWebCodecs(job, hooks);

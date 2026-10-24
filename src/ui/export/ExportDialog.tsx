@@ -1,4 +1,4 @@
-import { exportFrameEngineLabel } from "../../core/exporter/frame-source";
+import { exportFrameEngineLabel } from "../../core/exporter/frame-backend";
 import {
   applyExportDialogSize,
   EXPORT_FPS_PRESETS,

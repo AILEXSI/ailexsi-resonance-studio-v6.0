@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { deserializeProject, serializeProject, createEmptyProject } from "../../src/core/project";
 import { createVisualEngine } from "../../src/core/visualz/engine";
 import {
@@ -10,12 +10,16 @@ import {
   getCatalogEntry,
   lexiFamilyOf,
 } from "../../src/core/visualz/scene-catalog";
-import { builtinScenes, getRegisteredScene } from "../../src/core/visualz";
+import { builtinScenes, ensureLexiScenes, getRegisteredScene } from "../../src/core/visualz";
 import { featuresAt, renderVisualizerScene, sceneShortName } from "../../src/core/visualizer";
 import { jobFromProject } from "../../src/core/exporter/job";
 import { createPixelCanvas } from "../helpers/pixel-canvas";
 
 const LEXI_FAMILY_SET = new Set<string>(LEXI_FAMILIES);
+
+beforeAll(async () => {
+  await ensureLexiScenes();
+});
 
 function stubCanvas() {
   const canvas = {

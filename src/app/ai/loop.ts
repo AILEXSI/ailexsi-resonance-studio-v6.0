@@ -5,6 +5,8 @@ import { buildSendContext, redactSensitiveText } from "./context";
 import { dispatchTool } from "./orchestrator";
 import { createMockProvider } from "./providers/mock";
 import type { AIProvider, ProviderMessage, ProviderToolSpec, ToolCall } from "./providers/types";
+import { proposeLyricScenes } from "./lyrics/scenes";
+import type { LyricSidecar } from "./lyrics/sidecar";
 import { isMutationToolName, planBeatMarkers } from "./tools/mutate";
 import { proposeTransaction, type AITransaction } from "./transactions";
 
@@ -29,6 +31,11 @@ export const DIRECTOR_TOOL_SPECS: readonly ProviderToolSpec[] = [
     description:
       "Measure onsets in the selected clip's loaded audio and propose markers. Do not supply times. No audio means no markers.",
   },
+  {
+    name: "lyrics.suggest_scenes",
+    description:
+      "Propose one catalog scene and an image idea for each pasted lyric line. Local only. Do not invent lines, times, or scene ids. Accept does not edit the timeline.",
+  },
 ];
 
 export interface DirectorTurn {
@@ -50,6 +57,9 @@ export async function runDirectorTurn(opts: {
   onDelta?: (text: string) => void;
   /** Test hook. The app uses Web Audio decode of the clip's object URL. */
   decodeClip?: ClipDecoder;
+  /** Lyrics already pasted in the panel. They are not added to cloud context. */
+  lyricText?: string;
+  lyricSidecar?: LyricSidecar | null;
 }): Promise<DirectorTurn> {
   const provider = opts.provider ?? createMockProvider();
   const messages: ProviderMessage[] = [{ role: "user", content: opts.prompt }];
@@ -68,6 +78,9 @@ export async function runDirectorTurn(opts: {
       const call = mutations[0]!;
       if (call.name === "audio.detect_beats") {
         return proposeDetectedBeats(opts.session, opts.prompt, call.arguments, opts.decodeClip);
+      }
+      if (call.name === "lyrics.suggest_scenes") {
+        return proposeLyricScenes(opts.session, opts.lyricText, call.arguments, opts.lyricSidecar);
       }
       const dispatched = dispatchTool(opts.session, call.name, call.arguments, opts.prompt);
       if (dispatched.kind === "proposal") {

@@ -15,6 +15,7 @@ export const MUTATION_TOOL_NAMES = [
   "timeline.nudge",
   "timeline.split_at_markers",
   "audio.detect_beats",
+  "lyrics.suggest_scenes",
 ] as const;
 
 export type MutationToolName = (typeof MUTATION_TOOL_NAMES)[number];
@@ -330,6 +331,8 @@ export function planMutation(session: Session, name: string, args?: unknown): To
       return planSplitsAtMarkers(session, args);
     case "audio.detect_beats":
       return toolErr("SCHEMA_INVALID", "Beat times cannot be supplied. Detection reads the selected clip's audio.");
+    case "lyrics.suggest_scenes":
+      return toolErr("SCHEMA_INVALID", "Scene ideas are planned from pasted lyrics. This path does not apply them.");
     default:
       return toolErr("UNKNOWN_TOOL", "Unknown tool");
   }

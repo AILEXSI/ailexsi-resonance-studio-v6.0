@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { assetById, clipById, type TrackId } from "../core/models";
 import { canAddAudioTrack, canRemoveAudioTrack } from "../core/audio-tracks";
 import { MEDIA_FILE_ACCEPT, preferredTrackForAsset } from "../core/media";
@@ -42,38 +42,33 @@ import {
   applyExportProgress,
   closeExportDialog,
   closedExportDialog,
-  downloadMp4,
-  downloadWav,
-  exportMixWav,
-  exportTimeline,
   failExportDialog,
   isExportSuccess,
-  existingExportNamesFromMemory,
-  jobFromProject,
-  nextVersionedFileName,
   openExportDialog,
   readyExportDialog,
-  readyExportNameFromProjectAsync,
-  runExportWithDestination,
   succeedExportDialog,
-  wavFileName,
-  ExportPlanError,
-  exportResultFromCaughtThrow,
-} from "../core/exporter";
+} from "../core/exporter/dialog";
+import { ExportPlanError, jobFromProject } from "../core/exporter/job";
+import { existingExportNamesFromMemory, nextVersionedFileName, wavFileName } from "../core/exporter/filename-version";
+import { readyExportNameFromProjectAsync } from "../core/exporter/export-name";
 import { wavExportPickerOptions } from "../core/project-file";
 import { MediaBrowser } from "../ui/media-browser/MediaBrowser";
 import { Preview } from "../ui/preview/Preview";
 import { Inspector } from "../ui/inspector/Inspector";
 import { Transport } from "../ui/transport/Transport";
-import { Timeline } from "../ui/timeline/Timeline";
 import { Mixer, type MixPeaks } from "../ui/mixer/Mixer";
 import { ProjectFilePanel } from "../ui/project-file/ProjectFilePanel";
 import { Toolbar } from "../ui/toolbar/Toolbar";
 import { ShortcutsOverlay } from "../ui/shortcuts/ShortcutsOverlay";
-import { DirectorController } from "../ui/director/DirectorController";
+const DirectorController = lazy(() =>
+  import("../ui/director/DirectorController").then((mod) => ({ default: mod.DirectorController })),
+);
+const ExportDialog = lazy(() => import("../ui/export/ExportDialog").then((mod) => ({ default: mod.ExportDialog })));
+const timelineChunk = () => import("../ui/timeline/Timeline");
+const Timeline = lazy(() => timelineChunk().then((mod) => ({ default: mod.Timeline })));
+void timelineChunk();
 import { DirectorMasterVolume } from "../ui/mixer/DirectorMasterVolume";
 import { readAiDirectorEnabled, writeAiDirectorEnabled } from "./ai/flag";
-import { ExportDialog } from "../ui/export/ExportDialog";
 import {
   applyFit,
   applyInAt,
@@ -768,13 +763,14 @@ export function App() {
     void (async () => {
       const ac = new AbortController();
       try {
-        const outcome = await runExportWithDestination({
+        const exporter = await import("../core/exporter");
+        const outcome = await exporter.runExportWithDestination({
           job: planned,
           host: pickerHost,
           store: projectFileStore,
           memory: projectFileRef.current,
-          encode: kind === "wav" ? exportMixWav : exportTimeline,
-          downloadMp4: kind === "wav" ? downloadWav : downloadMp4,
+          encode: kind === "wav" ? exporter.exportMixWav : exporter.exportTimeline,
+          downloadMp4: kind === "wav" ? exporter.downloadWav : exporter.downloadMp4,
           pickerOptions: kind === "wav" ? wavExportPickerOptions : undefined,
           signal: ac.signal,
           onBeforeEncode: (job) => {
@@ -815,7 +811,9 @@ export function App() {
           setSession((s) => ({ ...s, status: "Export cancelled", error: null }));
           return;
         }
-        const dump = exportResultFromCaughtThrow(planned, e).error ?? String(e);
+        const dump =
+          (await import("../core/exporter/export-fail-dump")).exportResultFromCaughtThrow(planned, e).error ??
+          String(e);
         setExportDialog((d) => failExportDialog(d, dump));
         setSession((s) => ({ ...s, error: dump, status: "Export failed" }));
       } finally {
@@ -1787,12 +1785,14 @@ export function App() {
                       : { flex: `${1 - directorSplitRatio} 1 0px`, minHeight: 0 }
                   }
                 >
-                  <DirectorController
-                    session={session}
-                    applySession={applySession}
-                    expanded={directorExpanded}
-                    onToggleExpanded={toggleDirectorExpanded}
-                  />
+                  <Suspense fallback={null}>
+                    <DirectorController
+                      session={session}
+                      applySession={applySession}
+                      expanded={directorExpanded}
+                      onToggleExpanded={toggleDirectorExpanded}
+                    />
+                  </Suspense>
                 </div>
               ) : null}
             </div>
@@ -1901,6 +1901,7 @@ export function App() {
                 }),
         }}
       >
+      <Suspense fallback={null}>
       <Timeline
         visibleTrackIds={tracksForScreen(screen, session.project)}
         project={session.project}
@@ -2032,6 +2033,7 @@ export function App() {
         onLoopMoveLive={onLoopMoveLive}
         onLoopCommit={onLoopCommit}
       />
+      </Suspense>
       {directorMasterOnly ? (
         <DirectorMasterVolume
           volume={session.project.masterVolume}
@@ -2071,6 +2073,7 @@ export function App() {
       </div>
       </div>
 
+      <Suspense fallback={null}>
       <ExportDialog
         state={exportDialog}
         onCancel={cancelExport}
@@ -2078,6 +2081,7 @@ export function App() {
         onChange={setExportDialog}
         onStart={() => startExport("mp4")}
       />
+      </Suspense>
 
       <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 

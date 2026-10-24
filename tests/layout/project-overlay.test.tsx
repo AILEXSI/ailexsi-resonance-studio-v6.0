@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/app/App";
+import { settleTimeline } from "../settle-timeline";
 import "../../src/styles.css";
 
 describe("Projekt overlay", () => {
@@ -24,6 +25,7 @@ describe("Projekt overlay", () => {
     await act(async () => {
       root!.render(<App />);
     });
+    await settleTimeline(host);
   }
 
   it("is closed by default; File toggles it; Esc and Close dismiss; Arrange stays reachable", async () => {

@@ -40,6 +40,7 @@ import {
   type MixPcm,
 } from "../../core/visualizer";
 import { createPlaybackTap, type PlaybackTap } from "../../core/visualz/playback-tap";
+import { ensureLexiScenes } from "../../core/visualz/scenes";
 import { decodeAudio, isPlayableSource } from "../../core/exporter/media";
 import { loadStill, paintStill } from "../../core/still";
 
@@ -364,11 +365,18 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     const dt = Math.max(0, (project.playheadMs - lastPlayheadRef.current) / 1000);
     lastPlayheadRef.current = project.playheadMs;
     paint(dt);
+    let cancelled = false;
+    void ensureLexiScenes().then(() => {
+      if (!cancelled) paint(0);
+    });
 
     const target = canvas.parentElement ?? canvas;
     const ro = new ResizeObserver(() => paint(0));
     ro.observe(target);
-    return () => ro.disconnect();
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+    };
   }, [showViz, project, mixReady, analysisClip, audioLoaded, hasClipAtPlayhead]);
 
   const activeLabel = formatResolvedSource(picture);

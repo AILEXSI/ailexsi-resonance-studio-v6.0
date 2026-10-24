@@ -1,4 +1,4 @@
-import { drawContain } from "./exporter/frame-source";
+import { drawContain } from "./exporter/draw-contain";
 import { isPlayableSource } from "./exporter/media";
 
 /** Default still-image clip length. User can trim/stretch like video. */

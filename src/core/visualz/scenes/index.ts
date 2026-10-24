@@ -1,6 +1,7 @@
 /**
  * AILEXSI Visualz — Built-in scenes (ported from b67410c) plus V5 Canvas-2D additions.
  * Cycle order matches VISUALIZER_SCENE_IDS / SCENE_CATALOG.
+ * Lexi scenes load on demand so the app chunk stays smaller.
  */
 
 import type { Scene } from "../types";
@@ -20,15 +21,8 @@ import { voidLatticeScene } from "./void-lattice";
 import { nebulaHelixScene } from "./nebula-helix";
 import { accretionDiskScene } from "./accretion-disk";
 import { crystalStormScene } from "./crystal-storm";
-import { lexiScene } from "./lexi";
-import { lexiRefScene } from "./lexi-ref";
-import { lexi2036Scene } from "./lexi-2036";
-import { lexiV3Scene } from "./lexi-v3";
-import { lexiV2Scene } from "./lexi-v2";
-import { lexiMinimalScene } from "./lexi-minimal";
-import { lexiV1Scene } from "./lexi-v1";
 
-export const builtinScenes: Scene[] = [
+const classicScenes: Scene[] = [
   spectrumBarsScene,
   pulseOrbScene,
   auroraVeilScene,
@@ -45,14 +39,40 @@ export const builtinScenes: Scene[] = [
   nebulaHelixScene,
   accretionDiskScene,
   crystalStormScene,
-  lexiScene,
-  lexiRefScene,
-  lexi2036Scene,
-  lexiV3Scene,
-  lexiV2Scene,
-  lexiMinimalScene,
-  lexiV1Scene,
 ];
+
+const lexiLoaders = [
+  () => import("./lexi").then((mod) => mod.lexiScene),
+  () => import("./lexi-ref").then((mod) => mod.lexiRefScene),
+  () => import("./lexi-2036").then((mod) => mod.lexi2036Scene),
+  () => import("./lexi-v3").then((mod) => mod.lexiV3Scene),
+  () => import("./lexi-v2").then((mod) => mod.lexiV2Scene),
+  () => import("./lexi-minimal").then((mod) => mod.lexiMinimalScene),
+  () => import("./lexi-v1").then((mod) => mod.lexiV1Scene),
+];
+
+/** Classics are present immediately. Lexi scenes are appended by `ensureLexiScenes`. */
+export const builtinScenes: Scene[] = [...classicScenes];
+
+let lexiLoad: Promise<void> | null = null;
+
+/** Load Lexi scene modules once. Safe to call from preview and from export. */
+export function ensureLexiScenes(): Promise<void> {
+  if (builtinScenes.some((scene) => scene.id === "lexi")) return Promise.resolve();
+  if (!lexiLoad) {
+    lexiLoad = Promise.all(lexiLoaders.map((load) => load()))
+      .then((scenes) => {
+        for (const scene of scenes) {
+          if (!builtinScenes.some((existing) => existing.id === scene.id)) builtinScenes.push(scene);
+        }
+      })
+      .catch((error: unknown) => {
+        lexiLoad = null;
+        throw error;
+      });
+  }
+  return lexiLoad;
+}
 
 export {
   spectrumBarsScene,
@@ -71,11 +91,4 @@ export {
   nebulaHelixScene,
   accretionDiskScene,
   crystalStormScene,
-  lexiScene,
-  lexiRefScene,
-  lexi2036Scene,
-  lexiV3Scene,
-  lexiV2Scene,
-  lexiMinimalScene,
-  lexiV1Scene,
 };

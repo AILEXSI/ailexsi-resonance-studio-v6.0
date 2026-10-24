@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/app/App";
+import { settleTimeline } from "../settle-timeline";
 import { ScreenNav } from "../../src/ui/screens/ScreenNav";
 import "../../src/styles.css";
 
@@ -25,6 +26,7 @@ describe("ScreenNav click + TAB", () => {
     await act(async () => {
       root!.render(<App />);
     });
+    await settleTimeline(host);
     const cutterBtn = host.querySelector<HTMLButtonElement>('[data-testid="screen-nav-cutter"]');
     const arrangeBtn = host.querySelector<HTMLButtonElement>('[data-testid="screen-nav-arrange"]');
     expect(cutterBtn?.tagName).toBe("BUTTON");
@@ -78,6 +80,7 @@ describe("ScreenNav click + TAB", () => {
     await act(async () => {
       root!.render(<App />);
     });
+    await settleTimeline(host);
     await act(async () => {
       host!.querySelector<HTMLButtonElement>('[data-testid="screen-nav-cutter"]')!.click();
     });

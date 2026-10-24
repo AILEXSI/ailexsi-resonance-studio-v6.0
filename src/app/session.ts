@@ -77,7 +77,6 @@ import {
   moveInOut,
   lastClipEndMsOnTrack,
   placeAsset,
-  pushHistory,
   redo as redoHistory,
   setInPoint,
   setOutPoint,
@@ -168,6 +167,9 @@ import {
   scrollKeepPlayheadInView,
   scrollZoomAroundPlayhead,
 } from "../core/zoom";
+import { commitPreparedProject, withHistory } from "./session-history";
+
+export { commitPreparedProject };
 
 export interface Session {
   project: Project;
@@ -346,38 +348,6 @@ export function withClipSelection(session: Session, ids: string[]): Session {
   };
 }
 
-function withHistory(session: Session, nextProject: Project, status: string): Session {
-  return {
-    ...session,
-    history: pushHistory(session.history, session.project),
-    project: nextProject,
-    status,
-    error: null,
-  };
-}
-
-/**
- * One undo step for a project already produced by `applyCommand` on a
- * scratch session. The scratch history is not copied.
- */
-export function commitPreparedProject(session: Session, prepared: Session, status: string): Session {
-  if (prepared.project === session.project) return session;
-  const committed = withHistory(session, prepared.project, status);
-  return {
-    ...committed,
-    selectedClipId: prepared.selectedClipId,
-    selectedClipIds: prepared.selectedClipIds,
-    selectionAnchorClipId: prepared.selectionAnchorClipId,
-    selectedMarkerId: prepared.selectedMarkerId,
-    selectedVis: prepared.selectedVis,
-    selectedVisEventId: prepared.selectedVisEventId,
-    selectedVisEventIds: prepared.selectedVisEventIds,
-    selectedVolumeAutomation: prepared.selectedVolumeAutomation,
-    targetTrackId: prepared.targetTrackId,
-    selectedTrackIds: prepared.selectedTrackIds,
-    error: null,
-  };
-}
 
 export function newProject(session: Session): Session {
   return {

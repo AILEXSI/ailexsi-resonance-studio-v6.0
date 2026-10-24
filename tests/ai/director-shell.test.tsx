@@ -79,6 +79,16 @@ describe("AI-1 Director flag in the app shell", () => {
     localStorage.removeItem(AI_DIRECTOR_FLAG_KEY);
   });
 
+  async function flushLazy() {
+    if (localStorage.getItem(AI_DIRECTOR_FLAG_KEY) !== "1") return;
+    for (let i = 0; i < 25; i += 1) {
+      if (host?.querySelector('[data-testid="ai-director"]')) return;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    }
+  }
+
   async function mountApp() {
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -86,6 +96,7 @@ describe("AI-1 Director flag in the app shell", () => {
     await act(async () => {
       root!.render(<App />);
     });
+    await flushLazy();
   }
 
   it("keeps the director out of the inspector until the flag is turned on", async () => {
@@ -95,6 +106,7 @@ describe("AI-1 Director flag in the app shell", () => {
     await act(async () => {
       (host!.querySelector('[data-testid="ai-director-toggle"]') as HTMLButtonElement).click();
     });
+    await flushLazy();
     expect(localStorage.getItem(AI_DIRECTOR_FLAG_KEY)).toBe("1");
     expect(host!.querySelector('[data-testid="ai-director"]')).toBeTruthy();
     expect(host!.querySelector('[data-testid="ai-director-empty"]')?.textContent).toMatch(/No proposals/);

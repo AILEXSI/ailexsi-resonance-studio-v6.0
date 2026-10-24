@@ -7,7 +7,11 @@ import { createMockProvider } from "../../app/ai/providers/mock";
 import { buildSendContext } from "../../app/ai/context";
 import { BROWSER_KEYCHAIN_REASON, detectOsKeychain, memoryKeychain, type OsKeychain } from "../../app/ai/providers/keychain";
 import { readAiPrefs, writeAiPrefs, type AiPrefs } from "../../app/ai/providers/prefs";
-import { acceptTransaction, rejectTransaction, type AITransaction } from "../../app/ai/transactions";
+import { acceptLyricSidecar, acceptTransaction, rejectTransaction, type AITransaction } from "../../app/ai/transactions";
+import { alignLyrics, localAudioPath } from "../../app/ai/lyrics/align";
+import { createLyricSidecar, lyricTextOf, readLyricSidecar, writeLyricSidecar } from "../../app/ai/lyrics/sidecar";
+import { readWhisperConfig, writeWhisperConfig, type WhisperConfig } from "../../app/ai/lyrics/whisper-config";
+import { DirectorLyrics } from "./DirectorLyrics";
 import { DirectorPanel, type DirectorLine, type DirectorProposalCard } from "./DirectorPanel";
 import { DirectorSettings } from "./DirectorSettings";
 
@@ -31,7 +35,18 @@ function cardOf(txn: AITransaction): DirectorProposalCard {
     status: txn.status,
     tool: txn.tool,
     summary: txn.summary,
-    commandJson: JSON.stringify(txn.command, null, 2),
+    commandJson: txn.lyricSidecar
+      ? JSON.stringify(
+          txn.lyricSidecar.lines.map((line) => ({
+            text: line.text,
+            sceneId: line.sceneId,
+            imagePrompt: line.imagePrompt,
+            reason: line.reason,
+          })),
+          null,
+          2,
+        )
+      : JSON.stringify(txn.command, null, 2),
     error: txn.error,
   };
 }
@@ -52,6 +67,11 @@ export function DirectorController({ session, applySession, offer, expanded, onT
   const [transactions, setTransactions] = useState<AITransaction[]>([]);
   const [busy, setBusy] = useState(false);
   const [prefs, setPrefs] = useState<AiPrefs>(() => readAiPrefs(storageOrNull()));
+  const [lyricText, setLyricText] = useState(() => lyricTextOf(readLyricSidecar(session.project.id, storageOrNull())));
+  const [lyricStatus, setLyricStatus] = useState(
+    "Lyrics are stored beside the project. They are not part of the project file.",
+  );
+  const [whisper, setWhisper] = useState<WhisperConfig>(() => readWhisperConfig(storageOrNull()));
   const [apiKey, setApiKey] = useState("");
   const [keychain, setKeychain] = useState<OsKeychain>(() => memoryKeychain(BROWSER_KEYCHAIN_REASON));
   const abortRef = useRef<AbortController | null>(null);
@@ -66,6 +86,16 @@ export function DirectorController({ session, applySession, offer, expanded, onT
   useEffect(() => {
     writeAiPrefs(prefs, storageOrNull());
   }, [prefs]);
+
+  useEffect(() => {
+    writeWhisperConfig(whisper, storageOrNull());
+  }, [whisper]);
+
+  useEffect(() => {
+    const stored = readLyricSidecar(session.project.id, storageOrNull());
+    setLyricText(lyricTextOf(stored));
+    if (stored?.alignment.message) setLyricStatus(stored.alignment.message);
+  }, [session.project.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +137,14 @@ export function DirectorController({ session, applySession, offer, expanded, onT
               model: prefs.model,
               apiKey: prefs.provider === "cloud" ? apiKey : undefined,
             });
-      const turn = await runDirectorTurn({ session, prompt: text, provider, signal: abort.signal });
+      const turn = await runDirectorTurn({
+        session,
+        prompt: text,
+        provider,
+        signal: abort.signal,
+        lyricText,
+        lyricSidecar: readLyricSidecar(session.project.id, storageOrNull()),
+      });
       if (turn.transaction) {
         setTransactions((current) => [...current, turn.transaction!]);
       }
@@ -126,6 +163,24 @@ export function DirectorController({ session, applySession, offer, expanded, onT
     if (!txn) return;
     let outcomeError: string | undefined;
     let outcomeTxn: AITransaction | undefined;
+    if (txn.tool === "lyrics.suggest_scenes") {
+      applySession((current) => {
+        const outcome = acceptLyricSidecar(current, txn);
+        outcomeError = outcome.error;
+        outcomeTxn = outcome.transaction;
+        if (!outcome.error && outcome.transaction.lyricSidecar) {
+          writeLyricSidecar(outcome.transaction.lyricSidecar, storageOrNull());
+        }
+        return outcome.session;
+      });
+      if (outcomeTxn) replaceTxn(outcomeTxn);
+      if (outcomeError) {
+        say("assistant", outcomeError);
+        return;
+      }
+      say("assistant", "Accepted. Scene ideas were stored beside the project. The timeline was not changed.");
+      return;
+    }
     applySession((current) => {
       const outcome = acceptTransaction(current, txn);
       outcomeError = outcome.error;
@@ -168,6 +223,52 @@ export function DirectorController({ session, applySession, offer, expanded, onT
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}
       extra={
+        <>
+        <DirectorLyrics
+          text={lyricText}
+          status={lyricStatus}
+          whisper={whisper}
+          busy={busy}
+          onText={setLyricText}
+          onWhisper={setWhisper}
+          onSave={() => {
+            const sidecar = createLyricSidecar(
+              session.project.id,
+              lyricText,
+              readLyricSidecar(session.project.id, storageOrNull()),
+            );
+            writeLyricSidecar(sidecar, storageOrNull());
+            setLyricStatus(`Saved ${sidecar.lines.length} line${sidecar.lines.length === 1 ? "" : "s"} beside the project.`);
+          }}
+          onAlign={() => {
+            void (async () => {
+              const audio = localAudioPath(session);
+              if ("error" in audio) {
+                setLyricStatus(audio.error);
+                return;
+              }
+              const saved = createLyricSidecar(
+                session.project.id,
+                lyricText,
+                readLyricSidecar(session.project.id, storageOrNull()),
+              );
+              const aligned = await alignLyrics({
+                lines: saved.lines,
+                executable: whisper.executable,
+                model: whisper.model,
+                audioPath: "path" in audio ? audio.path : null,
+              });
+              const next = {
+                ...saved,
+                lines: aligned.lines,
+                alignment: aligned.alignment,
+              };
+              writeLyricSidecar(next, storageOrNull());
+              const note = "path" in audio && audio.note ? `${audio.note} ${aligned.alignment.message}` : aligned.alignment.message;
+              setLyricStatus(note);
+            })();
+          }}
+        />
         <DirectorSettings
           prefs={prefs}
           apiKey={apiKey}
@@ -198,6 +299,7 @@ export function DirectorController({ session, applySession, offer, expanded, onT
           keychainAvailable={keychain.available}
           keychainReason={keychain.reason}
         />
+        </>
       }
     />
   );

@@ -4,6 +4,7 @@ import { commitPreparedProject, type Session } from "../session";
 import { previewPlan, type PlanStep, type PreviewOptions } from "./preview";
 import { projectStandIn } from "./stand-in";
 import type { MutationProposal } from "./tools/mutate";
+import type { LyricSidecar } from "./lyrics/sidecar";
 
 export type AiTxnStatus = "proposed" | "accepted" | "rejected" | "executed";
 
@@ -18,6 +19,8 @@ export interface AITransaction {
   command: EditorCommand;
   exactMarkerTimes?: boolean;
   preserveSelection?: boolean;
+  /** Scene ideas stored beside the project. Accept does not push history. */
+  lyricSidecar?: LyricSidecar;
   baseStandIn: string;
   basePastLength: number;
   prompt: string;
@@ -96,6 +99,26 @@ export function acceptTransaction(session: Session, txn: AITransaction): Transac
     session: next,
     transaction: withStatus(accepted, "executed"),
   };
+}
+
+/**
+ * Accept a lyric scene proposal. The project and its undo stack stay as they are.
+ * The caller stores `lyricSidecar` beside the project.
+ */
+export function acceptLyricSidecar(session: Session, txn: AITransaction): TransactionOutcome {
+  if (txn.tool !== "lyrics.suggest_scenes" || !txn.lyricSidecar) {
+    return { session, transaction: txn, error: "Not a lyric proposal" };
+  }
+  if (txn.status !== "proposed") {
+    return { session, transaction: txn, error: "Proposal is not open" };
+  }
+  if (
+    session.history.past.length !== txn.basePastLength ||
+    projectStandIn(session.project) !== txn.baseStandIn
+  ) {
+    return { session, transaction: txn, error: "TRANSACTION_CONFLICT" };
+  }
+  return { session, transaction: withStatus(withStatus(txn, "accepted"), "executed") };
 }
 
 /** Human Reject. The session is not modified. */

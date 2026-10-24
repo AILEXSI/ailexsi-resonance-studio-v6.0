@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/app/App";
+import { settleTimeline } from "../settle-timeline";
 import { MIXER_WIDTH_KEY } from "../../src/core/layout-prefs";
 import "../../src/styles.css";
 
@@ -28,6 +29,7 @@ describe("App arrange layout", () => {
     await act(async () => {
       root!.render(<App />);
     });
+    await settleTimeline(host);
     const row = host.querySelector('[data-testid="arrange-row"]');
     const timeline = host.querySelector('[data-testid="timeline"]');
     const mixer = host.querySelector('[data-testid="mixer"]');

@@ -8,7 +8,8 @@ pub fn run() {
             ai_keychain_status,
             ai_keychain_get,
             ai_keychain_set,
-            ai_keychain_delete
+            ai_keychain_delete,
+            lyrics_whisper_align
         ])
         .setup(|app| {
             allow_last_project_file(app);
@@ -68,6 +69,76 @@ fn ai_keychain_delete() -> Result<(), String> {
         Err(err) if is_missing(&err) => Ok(()),
         Err(err) => Err(err.to_string()),
     }
+}
+
+/// Run a local whisper.cpp binary the user configured. No download and no network.
+#[tauri::command]
+fn lyrics_whisper_align(executable: String, model: String, audio_path: String) -> Result<String, String> {
+    let executable = executable.trim().to_string();
+    let model = model.trim().to_string();
+    let audio = audio_path.trim().to_string();
+    if executable.is_empty() || model.is_empty() {
+        return Err("whisper.cpp is not configured. Nothing was sent.".into());
+    }
+    if audio.is_empty() {
+        return Err("No local audio file is available for alignment. Nothing was sent.".into());
+    }
+    if executable.contains('\n') || executable.contains('\r') || model.contains('\n') || audio.contains('\n') {
+        return Err("whisper.cpp paths are invalid. Nothing was sent.".into());
+    }
+    if !std::path::Path::new(&executable).is_file() {
+        return Err("whisper.cpp executable was not found. Nothing was sent.".into());
+    }
+    if !std::path::Path::new(&model).is_file() {
+        return Err("whisper.cpp model file was not found. Nothing was sent.".into());
+    }
+    if !std::path::Path::new(&audio).is_file() {
+        return Err("Audio file was not found. Nothing was sent.".into());
+    }
+    let dir = std::env::temp_dir().join(format!("ailexsi-whisper-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|_| {
+        "Could not prepare a temporary folder for whisper.cpp. Nothing was sent.".to_string()
+    })?;
+    let stem = dir.join("align");
+    let output = std::process::Command::new(&executable)
+        .arg("-m")
+        .arg(&model)
+        .arg("-f")
+        .arg(&audio)
+        .arg("-oj")
+        .arg("-of")
+        .arg(&stem)
+        .output()
+        .map_err(|_| "whisper.cpp could not start. Nothing was sent.".to_string())?;
+    let json = read_whisper_json(&dir, &output.stdout);
+    let _ = std::fs::remove_dir_all(&dir);
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        let short: String = err.chars().take(400).collect();
+        return Err(format!("whisper.cpp failed. {short} Nothing was changed."));
+    }
+    json.filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| "whisper.cpp returned no JSON. Nothing was changed.".to_string())
+}
+
+fn read_whisper_json(dir: &std::path::Path, stdout: &[u8]) -> Option<String> {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    if text.len() <= 2_000_000 {
+                        return Some(text);
+                    }
+                }
+            }
+        }
+    }
+    let text = String::from_utf8_lossy(stdout).trim().to_string();
+    if text.starts_with('{') && text.len() <= 2_000_000 {
+        return Some(text);
+    }
+    None
 }
 
 /// User-picked / remembered paths only. Does not allow C:\ wholesale.

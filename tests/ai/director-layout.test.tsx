@@ -37,6 +37,16 @@ describe("AI Director layout", () => {
     localStorage.removeItem(MIXER_WIDTH_KEY);
   });
 
+  async function flushLazy() {
+    if (localStorage.getItem(AI_DIRECTOR_FLAG_KEY) !== "1") return;
+    for (let i = 0; i < 25; i += 1) {
+      if (q("ai-director")) return;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    }
+  }
+
   async function mountApp() {
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -44,6 +54,7 @@ describe("AI Director layout", () => {
     await act(async () => {
       root!.render(<App />);
     });
+    await flushLazy();
   }
 
   function q(id: string) {
@@ -54,6 +65,7 @@ describe("AI Director layout", () => {
     await act(async () => {
       (q(id) as HTMLButtonElement).click();
     });
+    await flushLazy();
   }
 
   it("keeps the normal mixer when the flag is off, even if expand was saved", async () => {

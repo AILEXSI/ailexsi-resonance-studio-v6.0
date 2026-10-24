@@ -18,8 +18,16 @@ import {
 import type { ExportClip } from "./types";
 import { isPlayableSource } from "./media";
 import { captureThrownValue, isStackOverflowThrown } from "./export-fail-dump";
+import { getFrameSourceBackend } from "./frame-backend";
 
 export type { DrawableFrame, FrameSourceBackendId };
+export {
+  exportFrameEngineLabel,
+  getFrameSourceBackend,
+  resetFrameSourceBackend,
+  setFrameSourceBackend,
+} from "./frame-backend";
+export { drawContain } from "./draw-contain";
 
 export type OpenedDecoder = {
   identity: FrameSourceBackendId;
@@ -32,26 +40,6 @@ export type OpenedDecoder = {
   stallSnapshot(extra?: Partial<AfeStallSnapshot>): AfeStallSnapshot | null;
   setExportStallExtra(extra: Partial<AfeStallSnapshot>): void;
 };
-
-let frameSourceBackend: FrameSourceBackendId = "ailexsi";
-
-export function getFrameSourceBackend(): FrameSourceBackendId {
-  return frameSourceBackend;
-}
-
-/** Testing / internal only. Production default is AILEXSI. */
-export function setFrameSourceBackend(next: FrameSourceBackendId): void {
-  frameSourceBackend = next === "htmlvideo" ? "htmlvideo" : "ailexsi";
-}
-
-export function resetFrameSourceBackend(): void {
-  frameSourceBackend = "ailexsi";
-}
-
-/** User-facing Export label from the live backend id. */
-export function exportFrameEngineLabel(): string {
-  return getFrameSourceBackend() === "ailexsi" ? "AILEXSI" : getFrameSourceBackend().toUpperCase();
-}
 
 const decoderCache = new Map<string, Promise<OpenedDecoder>>();
 
@@ -87,7 +75,7 @@ function wrapOpened(source: OpenedFrameSource): OpenedDecoder {
 
 async function openPreferred(src: string, signal?: AbortSignal): Promise<OpenedDecoder> {
   markStage("OPEN_PREFERRED_BEGIN");
-  if (frameSourceBackend === "htmlvideo") {
+  if (getFrameSourceBackend() === "htmlvideo") {
     throw new AfeError("AFE_UNSUPPORTED_CONTAINER", "HTMLVideo is not an export frame source");
   }
   if (!isPlayableSource(src)) {
@@ -105,7 +93,7 @@ async function openPreferred(src: string, signal?: AbortSignal): Promise<OpenedD
 }
 
 export function evictFrameSource(src: string): void {
-  const key = `${frameSourceBackend}:${src}`;
+  const key = `${getFrameSourceBackend()}:${src}`;
   const hit = decoderCache.get(key);
   if (!hit) return;
   decoderCache.delete(key);
@@ -127,14 +115,14 @@ export function getDecoder(
   signal?: AbortSignal,
   opts?: { fresh?: boolean },
 ): Promise<OpenedDecoder> {
-  if (frameSourceBackend === "htmlvideo") {
+  if (getFrameSourceBackend() === "htmlvideo") {
     return Promise.reject(new AfeError("AFE_UNSUPPORTED_CONTAINER", "HTMLVideo is not an export frame source"));
   }
   if (!isPlayableSource(src)) {
     return Promise.reject(new AfeError("AFE_UNSUPPORTED_CONTAINER", "blocked or unreadable source"));
   }
   if (opts?.fresh) evictFrameSource(src);
-  const key = `${frameSourceBackend}:${src}`;
+  const key = `${getFrameSourceBackend()}:${src}`;
   const hit = decoderCache.get(key);
   if (hit) return hit;
   const opened = openPreferred(src, signal);
@@ -143,20 +131,6 @@ export function getDecoder(
     decoderCache.delete(key);
   });
   return opened;
-}
-
-export function drawContain(
-  _ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  srcW: number,
-  srcH: number,
-  draw: (dx: number, dy: number, dw: number, dh: number) => void,
-): void {
-  if (srcW < 2 || srcH < 2) return;
-  const scale = Math.min(canvas.width / srcW, canvas.height / srcH);
-  const w = srcW * scale;
-  const h = srcH * scale;
-  draw((canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
 }
 
 export function clearFrameSources(): void {
