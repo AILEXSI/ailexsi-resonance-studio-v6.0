@@ -9,7 +9,11 @@ type Item = {
   command: EditorCommand;
 };
 
-const ITEMS: Item[] = [
+export const EDIT_MENU_ITEMS: Item[] = [
+  { id: "copy", label: "Copy", shortcut: CLIP_MENU_SHORTCUTS.copy, command: { type: "copy" } },
+  { id: "paste", label: "Paste", shortcut: CLIP_MENU_SHORTCUTS.paste, command: { type: "paste" } },
+  { id: "duplicate", label: "Duplicate", shortcut: CLIP_MENU_SHORTCUTS.duplicate, command: { type: "duplicate" } },
+  { id: "select-all", label: "Select all", shortcut: CLIP_MENU_SHORTCUTS.selectAll, command: { type: "selectAll" } },
   { id: "trim-in", label: "Trim in to playhead", shortcut: CLIP_MENU_SHORTCUTS.trimInToPlayhead, command: { type: "trimToPlayhead", edge: "in" } },
   { id: "trim-out", label: "Trim out to playhead", shortcut: CLIP_MENU_SHORTCUTS.trimOutToPlayhead, command: { type: "trimToPlayhead", edge: "out" } },
   { id: "ripple-trim-in", label: "Ripple trim in to playhead", shortcut: CLIP_MENU_SHORTCUTS.rippleTrimInToPlayhead, command: { type: "rippleTrimToPlayhead", edge: "in" } },
@@ -33,7 +37,7 @@ export function EditMenu({ onCommand }: { onCommand: (command: EditorCommand) =>
       </button>
       {open ? (
         <div className="clip-menu edit-menu" data-testid="edit-menu" role="menu">
-          {ITEMS.map((item) => (
+          {EDIT_MENU_ITEMS.map((item) => (
             <button
               key={item.id}
               type="button"

@@ -35,6 +35,8 @@ export const SHORTCUT_ROWS: { key: string; action: string }[] = [
   { key: CLIP_MENU_SHORTCUTS.rippleDelete, action: "Ripple delete selected clip(s)" },
   { key: CLIP_MENU_SHORTCUTS.liftRange, action: "Lift range (IN/OUT)" },
   { key: CLIP_MENU_SHORTCUTS.extractRange, action: "Extract range (IN/OUT)" },
+  { key: "Shift+click clip", action: "Select the range of clips on that track" },
+  { key: "Drag empty lane", action: "Marquee-select clips" },
   { key: "Ctrl+click clip", action: "Toggle clip in selection" },
   { key: CLIP_MENU_SHORTCUTS.selectAll, action: "Select all clips (or all VIS events if a VIS event is focused)" },
   { key: CLIP_MENU_SHORTCUTS.selectAllOnTrack, action: "Select all clips on the primary clip’s track" },
