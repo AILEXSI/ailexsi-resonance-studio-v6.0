@@ -1,10 +1,11 @@
 @echo off
 setlocal
 title AILEXSI Resonance Studio V6.0 - Build and Run
-cd /d "%~dp0"
+set "ROOT=%~dp0.."
+cd /d "%ROOT%"
 
-if not exist "%~dp0package.json" (
-  echo Fehler: package.json fehlt. BUILD_AND_RUN_V5.5.cmd muss im V5.5-Repo-Wurzelordner liegen.
+if not exist "%ROOT%\package.json" (
+  echo Fehler: package.json fehlt. BUILD_AND_RUN_V5.5.cmd liegt in legacy und startet das Repo eine Ebene darueber.
   pause
   exit /b 1
 )
@@ -32,7 +33,7 @@ if not defined NPM_CMD (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build-v5.5-windows.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\build-v5.5-windows.ps1"
 if errorlevel 1 (
   echo.
   pause
@@ -40,7 +41,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-v5.5.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\run-v5.5.ps1"
 set "ERR=%ERRORLEVEL%"
 if not "%ERR%"=="0" if not "%ERR%"=="10" pause
 endlocal

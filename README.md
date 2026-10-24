@@ -35,7 +35,7 @@ INSTALL_BUILD_RUN_V6.0.cmd
 BUILD_AND_RUN_V6.0.cmd
 ```
 
-(`INSTALL_BUILD_RUN_V5.5.cmd` / `BUILD_AND_RUN_V5.5.cmd` still call the same helpers.)
+V5 and V5.5 launchers now live in `legacy/` and call the same helpers one directory up. Use the V6 launchers above.
 
 Standalone EXE (MODE B, Windows host):
 
