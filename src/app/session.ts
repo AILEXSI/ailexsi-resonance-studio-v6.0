@@ -1,4 +1,5 @@
 import { editableLinkedMate, unlinkClips } from "../core/link";
+import { addClipKeyPoint, keyFactorAt, laneWithPoint, laneWithoutPoint, setClipKeyLane, setVisOpacityKeys } from "../core/clip-keys";
 import { DEFAULT_FADE_MS, normalizeClipFades } from "../core/fades";
 import {
   editPairAtProbe,
@@ -1380,6 +1381,78 @@ export function applyFreezeFrame(session: Session): Session {
   const result = freezeFrameAtPlayhead(session.project, selectionOf(session));
   if (result.error) return { ...session, error: result.error };
   return withHistory(session, result.project, "Freeze frame");
+}
+
+export function applyAddKeyframe(session: Session): Session {
+  const vis = selectedVisEvent(session);
+  if (vis) {
+    const local = session.project.playheadMs - vis.startMs;
+    if (local < 0 || local > vis.durationMs) return { ...session, error: "Playhead is outside the VIS event" };
+    const lane = laneWithPoint(vis.opacityKeys, Math.round(local), keyFactorAt(vis.opacityKeys, local));
+    const result = setVisOpacityKeys(session.project, vis.id, lane);
+    if (result.error) return { ...session, error: result.error };
+    return withHistory(session, result.project, "Opacity keyframe");
+  }
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  let changed = false;
+  for (const id of ids) {
+    const clip = clipById(project, id);
+    if (!clip || clipIsLocked(clip)) continue;
+    const local = session.project.playheadMs - clip.startMs;
+    if (local < 0 || local > clip.durationMs) continue;
+    const kind = kindOfTrack(clip.trackId) === "audio" ? "gain" : "opacity";
+    const result = addClipKeyPoint(project, id, kind, local, 1);
+    if (result.error) return { ...session, error: result.error };
+    project = result.project;
+    changed = true;
+  }
+  if (!changed) return { ...session, error: "Playhead is outside the clip" };
+  return withHistory(session, project, "Keyframe");
+}
+
+export function applyAddClipKeyframe(
+  session: Session,
+  clipId: string,
+  kind: "gain" | "opacity",
+  localMs: number,
+): Session {
+  const result = addClipKeyPoint(session.project, clipId, kind, localMs, 1);
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, kind === "gain" ? "Volume keyframe" : "Opacity keyframe");
+}
+
+export function applyRemoveClipKeyframe(
+  session: Session,
+  clipId: string,
+  kind: "gain" | "opacity",
+  timeMs: number,
+): Session {
+  const clip = clipById(session.project, clipId);
+  if (!clip) return { ...session, error: "Clip not found" };
+  const current = kind === "gain" ? clip.gainKeys : clip.opacityKeys;
+  const result = setClipKeyLane(session.project, clipId, kind, laneWithoutPoint(current, timeMs));
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Keyframe removed");
+}
+
+export function applyAddVisKeyframe(session: Session, eventId: string, localMs: number): Session {
+  const event = (session.project.visualizer.events ?? []).find((item) => item.id === eventId);
+  if (!event) return { ...session, error: "VIS event not found" };
+  if (localMs < 0 || localMs > event.durationMs) return { ...session, error: "Playhead is outside the VIS event" };
+  const lane = laneWithPoint(event.opacityKeys, Math.round(localMs), 1);
+  const result = setVisOpacityKeys(session.project, eventId, lane);
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Opacity keyframe");
+}
+
+export function applyRemoveVisKeyframe(session: Session, eventId: string, timeMs: number): Session {
+  const event = (session.project.visualizer.events ?? []).find((item) => item.id === eventId);
+  if (!event) return { ...session, error: "VIS event not found" };
+  const result = setVisOpacityKeys(session.project, eventId, laneWithoutPoint(event.opacityKeys, timeMs));
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Keyframe removed");
 }
 
 export function applySetTransition(

@@ -32,6 +32,7 @@ import { clearMediaCache, isPlayableSource } from "./media";
 import { clearStillCache, paintStillUrl } from "../still";
 import { mp4HasAudioTrack, muxAvcToMp4, type AvcSample } from "./mp4";
 import type { ExportClip, ExportHooks, ExportJob, ExportResult } from "./types";
+import { visOpacityAt } from "../clip-keys";
 import { videoAlphaAtClipTime } from "../fades";
 import {
   compositeVideoAt,
@@ -207,11 +208,19 @@ function paintVisualizer(
       ? job.visualizer.sceneId
       : undefined;
   if (!sceneId) return;
+  const opacity = covering ? visOpacityAt(covering, timeMs) : 1;
+  if (opacity <= 0) return;
+  const prevAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = prevAlpha * opacity;
   const features = visFeaturesForExport(timeMs, job.durationMs, mix, {
     timelineOriginMs: job.startMs,
     extractor: session ?? undefined,
   });
-  renderVisualizerScene(ctx, job.width, job.height, sceneId, features, dt);
+  try {
+    renderVisualizerScene(ctx, job.width, job.height, sceneId, features, dt);
+  } finally {
+    ctx.globalAlpha = prevAlpha;
+  }
 }
 
 export type FrameRun = {
@@ -288,6 +297,7 @@ function exportClipVideoAlpha(clip: ExportClip, timeMs: number): number {
       fadeOutMs: clip.fadeOutMs,
       fadeInFrom: clip.fadeInFrom,
       fadeOutTo: clip.fadeOutTo,
+      opacityKeys: clip.opacityKeys,
     },
     exportClipLocalMs(clip, timeMs),
   );

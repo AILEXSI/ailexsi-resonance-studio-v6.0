@@ -1,4 +1,5 @@
 import { createId } from "./ids";
+import { presentClipKeys } from "./clip-keys";
 import { normalizeClipFades } from "./fades";
 import { sanitizeTransitions } from "./transition";
 import { ZOOM_MAX_PX_PER_SEC } from "./zoom";
@@ -138,6 +139,8 @@ function sanitizeClip(raw: unknown): Clip | null {
     reversed: c.reversed === true ? true : undefined,
     holdSourceMs:
       typeof c.holdSourceMs === "number" && Number.isFinite(c.holdSourceMs) ? c.holdSourceMs : undefined,
+    ...(presentClipKeys(c.gainKeys) ? { gainKeys: presentClipKeys(c.gainKeys) } : {}),
+    ...(presentClipKeys(c.opacityKeys) ? { opacityKeys: presentClipKeys(c.opacityKeys) } : {}),
   };
 }
 
@@ -216,11 +219,13 @@ function sanitizeVisualizerEvent(raw: unknown): VisualizerEvent | null {
   if (typeof rec.sceneId !== "string" || !isVisualizerSceneId(rec.sceneId)) return null;
   if (typeof rec.startMs !== "number" || !Number.isFinite(rec.startMs)) return null;
   if (typeof rec.durationMs !== "number" || !Number.isFinite(rec.durationMs)) return null;
+  const opacityKeys = presentClipKeys(rec.opacityKeys);
   return {
     id: rec.id,
     sceneId: rec.sceneId,
     startMs: Math.max(0, roundVisMs(rec.startMs)),
     durationMs: Math.max(1, roundVisMs(rec.durationMs)),
+    ...(opacityKeys ? { opacityKeys } : {}),
   };
 }
 

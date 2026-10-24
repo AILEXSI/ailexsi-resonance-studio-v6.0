@@ -78,6 +78,7 @@ function commandFromKey(
     if (e.code === "Digit3") return { type: "setSelectionRate", rate: 2 };
   }
   if (letter === "r") return e.shiftKey ? { type: "freezeFrame" } : { type: "toggleReverse" };
+  if (!e.altKey && letter === "v") return { type: "addKeyframe" };
   if (letter === "s") return { type: "split" };
   if (letter === "g") return { type: "closeGap" };
   if (letter === "q") return { type: "rippleTrimToPlayhead", edge: "in" };
@@ -212,6 +213,7 @@ export function dispatchEditorKey(
     command.type === "setSelectionRate" ||
     command.type === "toggleReverse" ||
     command.type === "freezeFrame" ||
+    command.type === "addKeyframe" ||
     command.type === "toggleVolumeWriteArm" ||
     command.type === "selectAll" ||
     command.type === "selectAllOnTrack";

@@ -290,13 +290,32 @@ export async function mixJobAudio(
         { startFactor: clip.fadeInFrom, endFactor: clip.fadeOutTo },
       );
       src.connect(gain);
+      let tail: AudioNode = gain;
+      if (volumeAutomationIsActive(clip.gainKeys)) {
+        const keyGain = ctx.createGain();
+        keyGain.gain.value = 1;
+        scheduleVolumeAutomation(
+          keyGain.gain,
+          {
+            enabled: true,
+            points: clip.gainKeys!.points.map((point) => ({
+              timeMs: clip.startMs + point.timeMs,
+              value: point.value,
+            })),
+          },
+          clip.startMs,
+          clip.endMs,
+        );
+        tail.connect(keyGain);
+        tail = keyGain;
+      }
       const trackAuto = job.tracks.find((t) => t.id === clip.trackId)?.volumeAutomation;
-      let mixOut: AudioNode = gain;
+      let mixOut: AudioNode = tail;
       if (volumeAutomationIsActive(trackAuto)) {
         const autoGain = ctx.createGain();
         autoGain.gain.value = 1;
         scheduleVolumeAutomation(autoGain.gain, trackAuto, clip.startMs, clip.endMs);
-        gain.connect(autoGain);
+        tail.connect(autoGain);
         mixOut = autoGain;
       }
       const transitions = job.transitions ?? [];

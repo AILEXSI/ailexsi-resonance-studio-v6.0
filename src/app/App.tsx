@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { setClipKeyLane, setVisOpacityKeys } from "../core/clip-keys";
 import { DEFAULT_FADE_MS } from "../core/fades";
+import { withHistory } from "./session-history";
 import { assetById, clipById, type TrackId } from "../core/models";
 import { DEFAULT_CROSSFADE_MS } from "../core/transition";
 import { canAddAudioTrack, canRemoveAudioTrack } from "../core/audio-tracks";
@@ -1992,6 +1994,51 @@ export function App() {
         onToggleReverse={() => runCommand({ type: "toggleReverse" })}
         onFreezeFrame={() => runCommand({ type: "freezeFrame" })}
         onSetRate={(rate) => runCommand({ type: "setSelectionRate", rate })}
+        onAddClipKeyframe={(clipId, kind, localMs) =>
+          runCommand({ type: "addClipKeyframe", clipId, kind, localMs })
+        }
+        onRemoveClipKeyframe={(clipId, kind, timeMs) =>
+          runCommand({ type: "removeClipKeyframe", clipId, kind, timeMs })
+        }
+        onClipKeysLive={(clipId, kind, lane) => {
+          setSession((s) => {
+            if (!dragBaseRef.current) dragBaseRef.current = s;
+            const result = setClipKeyLane(dragBaseRef.current.project, clipId, kind, lane);
+            return { ...s, project: result.project, error: result.error ?? null };
+          });
+        }}
+        onClipKeysCommit={() => {
+          const base = dragBaseRef.current;
+          dragBaseRef.current = null;
+          if (!base) return;
+          setSession((s) => {
+            if (s.project === base.project) return s;
+            const committed = withHistory(base, s.project, "Clip keyframes");
+            return {
+              ...committed,
+              selectedClipId: s.selectedClipId,
+              selectedClipIds: s.selectedClipIds,
+            };
+          });
+        }}
+        onAddVisKeyframe={(eventId, localMs) => runCommand({ type: "addVisKeyframe", eventId, localMs })}
+        onRemoveVisKeyframe={(eventId, timeMs) => runCommand({ type: "removeVisKeyframe", eventId, timeMs })}
+        onVisKeysLive={(eventId, lane) => {
+          setSession((s) => {
+            if (!dragBaseRef.current) dragBaseRef.current = s;
+            const result = setVisOpacityKeys(dragBaseRef.current.project, eventId, lane);
+            return { ...s, project: result.project, error: result.error ?? null };
+          });
+        }}
+        onVisKeysCommit={() => {
+          const base = dragBaseRef.current;
+          dragBaseRef.current = null;
+          if (!base) return;
+          setSession((s) => {
+            if (s.project === base.project) return s;
+            return withHistory(base, s.project, "Opacity keyframes");
+          });
+        }}
         onTrimToPlayhead={(edge, timeMs) => {
           setSession((s) => {
             const parked =

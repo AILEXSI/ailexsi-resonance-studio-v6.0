@@ -18,6 +18,7 @@ import {
   type TrackId,
 } from "../../core/models";
 import { vClipMixesOwnAudio } from "../../core/link";
+import { visOpacityAt } from "../../core/clip-keys";
 import { gainAtClipTime, videoAlphaAtClipTime } from "../../core/fades";
 import {
   compositeVideoAt,
@@ -38,6 +39,7 @@ import {
   renderVisualizerScene,
   sceneAt,
   shouldShowVisualizer,
+  visualizerEventAt,
   visFeaturesForPreview,
   type MixPcm,
 } from "../../core/visualizer";
@@ -160,6 +162,8 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
   const isStill = videoAsset?.kind === "image";
   const mixClips = mixClipsAt(project, project.playheadMs);
   const showViz = shouldShowVisualizer(project, project.playheadMs);
+  const visEvent = visualizerEventAt(project, project.playheadMs);
+  const visOpacity = visEvent ? visOpacityAt(visEvent, project.playheadMs) : 1;
   const analysisClip = analysisAudioClipAt(project, project.playheadMs) ?? mixClips[0];
   const analysisAsset = analysisClip
     ? project.assets.find((a) => a.id === analysisClip.assetId)
@@ -577,7 +581,10 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
           <canvas
             ref={canvasRef}
             data-testid="visualizer-canvas"
-            style={videoAsset?.objectUrl && videoClip ? { position: "absolute", inset: 0 } : undefined}
+            style={{
+              ...(videoAsset?.objectUrl && videoClip ? { position: "absolute" as const, inset: 0 } : {}),
+              opacity: visOpacity,
+            }}
           />
         ) : !videoAsset?.objectUrl || !videoClip ? (
           <div className="preview-empty">

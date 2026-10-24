@@ -47,6 +47,11 @@ import {
   applySetSelectionRate,
   applyToggleReverse,
   applyFreezeFrame,
+  applyAddKeyframe,
+  applyAddClipKeyframe,
+  applyRemoveClipKeyframe,
+  applyAddVisKeyframe,
+  applyRemoveVisKeyframe,
   applySetTrackPan,
   applySetTransition,
   applySetTransitionAudio,
@@ -152,6 +157,11 @@ export type EditorCommand =
   | { type: "setSelectionRate"; rate: number }
   | { type: "toggleReverse" }
   | { type: "freezeFrame" }
+  | { type: "addKeyframe" }
+  | { type: "addClipKeyframe"; clipId: string; kind: "gain" | "opacity"; localMs: number }
+  | { type: "removeClipKeyframe"; clipId: string; kind: "gain" | "opacity"; timeMs: number }
+  | { type: "addVisKeyframe"; eventId: string; localMs: number }
+  | { type: "removeVisKeyframe"; eventId: string; timeMs: number }
   | { type: "setTrackPan"; trackId: TrackId; pan: number }
   | { type: "unlinkClips"; clipId: string }
   | { type: "relinkClips"; clipIds: readonly string[]; assetId: string }
@@ -309,6 +319,16 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyToggleReverse(session);
     case "freezeFrame":
       return applyFreezeFrame(session);
+    case "addKeyframe":
+      return applyAddKeyframe(session);
+    case "addClipKeyframe":
+      return applyAddClipKeyframe(session, command.clipId, command.kind, command.localMs);
+    case "removeClipKeyframe":
+      return applyRemoveClipKeyframe(session, command.clipId, command.kind, command.timeMs);
+    case "addVisKeyframe":
+      return applyAddVisKeyframe(session, command.eventId, command.localMs);
+    case "removeVisKeyframe":
+      return applyRemoveVisKeyframe(session, command.eventId, command.timeMs);
     case "setTrackPan":
       return applySetTrackPan(session, command.trackId, command.pan);
     case "unlinkClips":

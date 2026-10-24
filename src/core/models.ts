@@ -32,6 +32,8 @@ export interface VisualizerEvent {
   sceneId: VisualizerSceneId;
   startMs: number;
   durationMs: number;
+  /** Clip-local opacity. Missing = fully opaque. */
+  opacityKeys?: VolumeAutomation;
 }
 
 /** In-song mode change. Last cue with startMs <= t wins until the next cue. */
@@ -177,6 +179,10 @@ export interface Clip {
   reversed?: boolean;
   /** When set, every output frame samples this source time (freeze). Missing = normal playback. */
   holdSourceMs?: number;
+  /** Clip-local volume keys. Missing or empty = the static gain. */
+  gainKeys?: VolumeAutomation;
+  /** Clip-local opacity keys. Missing or empty = the fade only. */
+  opacityKeys?: VolumeAutomation;
   /** Shared id for a linked A/V pair. Missing = unlinked (legacy). */
   linkId?: string;
   /** False = skip picture and mix. Missing = enabled. */

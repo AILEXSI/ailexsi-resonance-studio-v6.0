@@ -28,6 +28,7 @@ export const EDIT_MENU_ITEMS: Item[] = [
   { id: "speed-double", label: "Speed 2x", shortcut: CLIP_MENU_SHORTCUTS.speedDouble, command: { type: "setSelectionRate", rate: 2 } },
   { id: "reverse", label: "Reverse", shortcut: CLIP_MENU_SHORTCUTS.reverse, command: { type: "toggleReverse" } },
   { id: "freeze", label: "Freeze frame", shortcut: CLIP_MENU_SHORTCUTS.freeze, command: { type: "freezeFrame" } },
+  { id: "keyframe", label: "Add keyframe", shortcut: CLIP_MENU_SHORTCUTS.keyframe, command: { type: "addKeyframe" } },
   { id: "ripple-delete", label: "Ripple delete", shortcut: CLIP_MENU_SHORTCUTS.rippleDelete, command: { type: "rippleDelete" } },
   { id: "lift-delete", label: "Lift delete", shortcut: CLIP_MENU_SHORTCUTS.delete, command: { type: "liftDelete" } },
 ];

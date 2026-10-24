@@ -14,8 +14,10 @@ import {
   type TrackId,
   type VisualizerEvent,
   type VisualizerSceneId,
+  type VolumeAutomation,
 } from "../../core/models";
 import { fadeHandlesVisible, fadesFromHandleDrag } from "../../core/fade-handles";
+import { ClipKeyframeOverlay } from "./ClipKeyframeOverlay";
 import { durationMsFromHandleDrag, transitionDurationSnapTargets } from "../../core/transition-handles";
 import { listStackedEditPairs, type StackedOverlapMark } from "../../core/transition";
 import { normalizeClipFades } from "../../core/fades";
@@ -174,6 +176,14 @@ interface Props {
   onToggleReverse?: () => void;
   onFreezeFrame?: () => void;
   onSetRate?: (rate: number) => void;
+  onAddClipKeyframe?: (clipId: string, kind: "gain" | "opacity", localMs: number) => void;
+  onClipKeysLive?: (clipId: string, kind: "gain" | "opacity", lane: VolumeAutomation) => void;
+  onClipKeysCommit?: () => void;
+  onRemoveClipKeyframe?: (clipId: string, kind: "gain" | "opacity", timeMs: number) => void;
+  onAddVisKeyframe?: (eventId: string, localMs: number) => void;
+  onVisKeysLive?: (eventId: string, lane: VolumeAutomation) => void;
+  onVisKeysCommit?: () => void;
+  onRemoveVisKeyframe?: (eventId: string, timeMs: number) => void;
   onSelectAll?: () => void;
   onSelectAllOnTrack?: () => void;
   onSetClipsEnabled?: (enabled: boolean) => void;
@@ -302,6 +312,14 @@ export function Timeline({
   onToggleReverse,
   onFreezeFrame,
   onSetRate,
+  onAddClipKeyframe,
+  onClipKeysLive,
+  onClipKeysCommit,
+  onRemoveClipKeyframe,
+  onAddVisKeyframe,
+  onVisKeysLive,
+  onVisKeysCommit,
+  onRemoveVisKeyframe,
   onSelectAll,
   onSelectAllOnTrack,
   onSetClipsEnabled,
@@ -1569,6 +1587,14 @@ export function Timeline({
                     width: Math.max(28, msToWidth(event.durationMs, project.zoomPxPerSec)),
                   }}
                   onPointerDown={(e) => onVisEventPointerDown(e, event)}
+                  onDoubleClick={(e) => {
+                    if (!onAddVisKeyframe) return;
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                    const localMs = rect.width <= 0 ? 0 : (x / rect.width) * event.durationMs;
+                    onAddVisKeyframe(event.id, localMs);
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1579,6 +1605,16 @@ export function Timeline({
                   }}
                 >
                   <span className="vis-span-label">{formatVisEventLabel(event)}</span>
+                  {onVisKeysLive && onVisKeysCommit && onRemoveVisKeyframe ? (
+                    <ClipKeyframeOverlay
+                      durationMs={event.durationMs}
+                      lane={event.opacityKeys}
+                      testId={`vis-keys-${event.id}`}
+                      onChange={(lane) => onVisKeysLive(event.id, lane)}
+                      onCommit={onVisKeysCommit}
+                      onRemove={(timeMs) => onRemoveVisKeyframe(event.id, timeMs)}
+                    />
+                  ) : null}
                   <div
                     className="trim-handle in"
                     data-testid={`vis-event-in-${event.id}`}
@@ -2018,6 +2054,14 @@ export function Timeline({
                       }}
                       title={label}
                       onPointerDown={(e) => onClipPointerDown(e, clip)}
+                      onDoubleClick={(e) => {
+                        if (!onAddClipKeyframe) return;
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                        const localMs = rect.width <= 0 ? 0 : (x / rect.width) * clip.durationMs;
+                        onAddClipKeyframe(clip.id, kind === "audio" ? "gain" : "opacity", localMs);
+                      }}
                       onContextMenu={(e) => onClipContext(e, clip)}
                     >
                       {asset && kind === "audio" && !asset.missing ? (
@@ -2069,6 +2113,18 @@ export function Timeline({
                           </>
                         );
                       })()}
+                      {onClipKeysLive && onClipKeysCommit && onRemoveClipKeyframe ? (
+                        <ClipKeyframeOverlay
+                          durationMs={clip.durationMs}
+                          lane={kind === "audio" ? clip.gainKeys : clip.opacityKeys}
+                          testId={`clip-keys-${clip.id}`}
+                          onChange={(lane) => onClipKeysLive(clip.id, kind === "audio" ? "gain" : "opacity", lane)}
+                          onCommit={onClipKeysCommit}
+                          onRemove={(timeMs) =>
+                            onRemoveClipKeyframe(clip.id, kind === "audio" ? "gain" : "opacity", timeMs)
+                          }
+                        />
+                      ) : null}
                       <span className="clip-name">{label}</span>
                       {primary ? (
                         <>
@@ -2497,6 +2553,26 @@ export function Timeline({
             >
               <span>Freeze frame</span>
               <kbd>{CLIP_MENU_SHORTCUTS.freeze}</kbd>
+            </button>
+          ) : null}
+          {onAddClipKeyframe ? (
+            <button
+              type="button"
+              data-testid="clip-menu-keyframe"
+              onClick={() => {
+                const target = project.clips.find((c) => c.id === menu.clipId);
+                if (!target) return;
+                const localMs = Math.max(0, Math.min(target.durationMs, menu.timeMs - target.startMs));
+                onAddClipKeyframe(
+                  target.id,
+                  kindOfTrack(target.trackId) === "audio" ? "gain" : "opacity",
+                  localMs,
+                );
+                setMenu(null);
+              }}
+            >
+              <span>Add keyframe</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.keyframe}</kbd>
             </button>
           ) : null}
           {onSetRate ? (

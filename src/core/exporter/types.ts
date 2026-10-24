@@ -1,4 +1,4 @@
-import type { FrontVideoTrackId, MediaKind, TrackId, VisualizerEvent, VisualizerSceneId } from "../models";
+import type { FrontVideoTrackId, MediaKind, TrackId, VisualizerEvent, VisualizerSceneId, VolumeAutomation } from "../models";
 import type { Transition } from "../transition";
 
 export interface ExportClip {
@@ -24,6 +24,10 @@ export interface ExportClip {
   reversed?: boolean;
   /** Missing = play the window. Set = sample this source time for every frame. */
   holdSourceMs?: number;
+  /** Visible-window local volume keys. Missing = static gain. */
+  gainKeys?: VolumeAutomation;
+  /** Visible-window local opacity keys. Missing = fade only. */
+  opacityKeys?: VolumeAutomation;
   missing: boolean;
   label: string;
   linkId?: string;
