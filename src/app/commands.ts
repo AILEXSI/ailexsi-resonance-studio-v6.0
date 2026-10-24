@@ -40,8 +40,18 @@ import {
   applyInsertVisEvent,
   applyMoveVisEvent,
   applyStretchVisEvent,
+  applyAddCrossfade,
   applySetClipFades,
+  applySetSelectionFades,
   applySetClipRate,
+  applySetSelectionRate,
+  applyToggleReverse,
+  applyFreezeFrame,
+  applyAddKeyframe,
+  applyAddClipKeyframe,
+  applyRemoveClipKeyframe,
+  applyAddVisKeyframe,
+  applyRemoveVisKeyframe,
   applySetTrackPan,
   applySetTransition,
   applySetTransitionAudio,
@@ -66,7 +76,11 @@ import {
   applyToggleMute,
   applyToggleSolo,
   applyTrim,
+  applyTrimToPlayhead,
   applyUndo,
+  applyRazorAll,
+  applyLinkClips,
+  applyUnlinkSelection,
   applyUnlinkClips,
   revertToLastSave,
   type Session,
@@ -85,7 +99,7 @@ export type EditorCommand =
   | { type: "paste" }
   | { type: "duplicate" }
   | { type: "split" }
-  | { type: "addMarker" }
+  | { type: "addMarker"; label?: string }
   | { type: "renameMarker"; markerId: string; label: string }
   | { type: "renameProject"; name: string }
   | { type: "clearInOut" }
@@ -94,6 +108,7 @@ export type EditorCommand =
   | { type: "liftDelete" }
   | { type: "rippleDelete" }
   | { type: "closeGap" }
+  | { type: "trimToPlayhead"; edge: "in" | "out" }
   | { type: "rippleTrimToPlayhead"; edge: "in" | "out" }
   | { type: "nudgeClip"; deltaMs: number }
   | { type: "nudgePlayhead"; deltaMs: number }
@@ -139,8 +154,21 @@ export type EditorCommand =
   | { type: "liftRange" }
   | { type: "extractRange" }
   | { type: "setClipFades"; clipId: string; fadeInMs: number; fadeOutMs: number }
+  | { type: "setSelectionFades"; fadeInMs?: number; fadeOutMs?: number }
+  | { type: "addCrossfade"; durationMs?: number }
   | { type: "setClipRate"; clipId: string; rate: number }
+  | { type: "setSelectionRate"; rate: number }
+  | { type: "toggleReverse" }
+  | { type: "freezeFrame" }
+  | { type: "addKeyframe" }
+  | { type: "addClipKeyframe"; clipId: string; kind: "gain" | "opacity"; localMs: number }
+  | { type: "removeClipKeyframe"; clipId: string; kind: "gain" | "opacity"; timeMs: number }
+  | { type: "addVisKeyframe"; eventId: string; localMs: number }
+  | { type: "removeVisKeyframe"; eventId: string; timeMs: number }
   | { type: "setTrackPan"; trackId: TrackId; pan: number }
+  | { type: "razorAll" }
+  | { type: "linkClips" }
+  | { type: "unlinkSelection" }
   | { type: "unlinkClips"; clipId: string }
   | { type: "relinkClips"; clipIds: readonly string[]; assetId: string }
   | {
@@ -179,7 +207,7 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
     case "split":
       return applySplit(session);
     case "addMarker":
-      return applyMarker(session);
+      return applyMarker(session, command.label);
     case "renameMarker":
       return applyRenameMarker(session, command.markerId, command.label);
     case "renameProject":
@@ -257,6 +285,8 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyTrim(session, command.clipId, command.edge, command.nextEdgeMs);
     case "rippleTrim":
       return applyRippleTrim(session, command.clipId, command.edge, command.nextEdgeMs);
+    case "trimToPlayhead":
+      return applyTrimToPlayhead(session, command.edge);
     case "rollEdit":
       return applyRoll(session, command.clipId, command.edge, command.nextEdgeMs);
     case "select":
@@ -283,10 +313,36 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyExtractRange(session);
     case "setClipFades":
       return applySetClipFades(session, command.clipId, command.fadeInMs, command.fadeOutMs);
+    case "setSelectionFades":
+      return applySetSelectionFades(session, command.fadeInMs, command.fadeOutMs);
+    case "addCrossfade":
+      return applyAddCrossfade(session, command.durationMs);
     case "setClipRate":
       return applySetClipRate(session, command.clipId, command.rate);
+    case "setSelectionRate":
+      return applySetSelectionRate(session, command.rate);
+    case "toggleReverse":
+      return applyToggleReverse(session);
+    case "freezeFrame":
+      return applyFreezeFrame(session);
+    case "addKeyframe":
+      return applyAddKeyframe(session);
+    case "addClipKeyframe":
+      return applyAddClipKeyframe(session, command.clipId, command.kind, command.localMs);
+    case "removeClipKeyframe":
+      return applyRemoveClipKeyframe(session, command.clipId, command.kind, command.timeMs);
+    case "addVisKeyframe":
+      return applyAddVisKeyframe(session, command.eventId, command.localMs);
+    case "removeVisKeyframe":
+      return applyRemoveVisKeyframe(session, command.eventId, command.timeMs);
     case "setTrackPan":
       return applySetTrackPan(session, command.trackId, command.pan);
+    case "razorAll":
+      return applyRazorAll(session);
+    case "linkClips":
+      return applyLinkClips(session);
+    case "unlinkSelection":
+      return applyUnlinkSelection(session);
     case "unlinkClips":
       return applyUnlinkClips(session, command.clipId);
     case "relinkClips":

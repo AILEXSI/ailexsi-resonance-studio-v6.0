@@ -1,0 +1,39 @@
+# Typecheck and unit tests. The Windows EXE stays in windows-exe.yml.
+# Missing STRESS-03 / AFE-15 media is skipped inside the tests, so this job can pass
+# on a checkout that does not carry those files.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - cursor/ai-director-d706
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tsc and vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npx vitest run

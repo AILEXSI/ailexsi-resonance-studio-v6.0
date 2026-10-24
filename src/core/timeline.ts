@@ -648,6 +648,33 @@ function splitOneClip(
     return { error: "Split too close to clip edge" };
   }
   const cutSource = sourceTimeAt(clip, timeMs);
+  if (clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs)) {
+    const left: Clip = applyNormalizedFades({ ...clip, durationMs: offset });
+    const right: Clip = applyNormalizedFades({
+      ...clip,
+      id: createId("clip"),
+      startMs: timeMs,
+      durationMs: clip.durationMs - offset,
+    });
+    return { left, right };
+  }
+  if (clip.reversed) {
+    const left: Clip = applyNormalizedFades({
+      ...clip,
+      durationMs: offset,
+      sourceInMs: cutSource,
+      sourceOutMs: clip.sourceOutMs,
+    });
+    const right: Clip = applyNormalizedFades({
+      ...clip,
+      id: createId("clip"),
+      startMs: timeMs,
+      durationMs: clip.durationMs - offset,
+      sourceInMs: clip.sourceInMs,
+      sourceOutMs: cutSource,
+    });
+    return { left, right };
+  }
   const left: Clip = applyNormalizedFades({
     ...clip,
     durationMs: offset,
@@ -1793,6 +1820,155 @@ export function setClipRate(
       }),
       updatedAt: new Date().toISOString(),
     },
+  };
+}
+
+export const FREEZE_HOLD_MS = 2000;
+
+/** Split one clip and leave its linked mate untouched. The right half is unlinked. */
+function splitClipSolo(
+  project: Project,
+  clipId: string,
+  timeMs: number,
+): { project: Project; error?: string } {
+  const clip = clipById(project, clipId);
+  if (!clip) return { project, error: "Clip not found" };
+  if (clipIsLocked(clip)) return { project, error: "Clip is locked" };
+  const parts = splitOneClip(clip, timeMs, SPLIT_EDGE_GUARD_MS);
+  if ("error" in parts) return { project, error: parts.error };
+  const right = { ...parts.right, linkId: undefined };
+  return {
+    project: {
+      ...project,
+      updatedAt: new Date().toISOString(),
+      clips: project.clips.flatMap((c) => (c.id === clipId ? [parts.left, right] : [c])),
+    },
+  };
+}
+
+function coversInsert(clip: Clip, timeMs: number): boolean {
+  return timeMs - clip.startMs >= SPLIT_EDGE_GUARD_MS && clipEndMs(clip) - timeMs >= SPLIT_EDGE_GUARD_MS;
+}
+
+/** Toggle reversed on the selection and each editable linked mate. Duration stays. One project. */
+export function toggleClipReversed(
+  project: Project,
+  clipIds: readonly string[],
+): { project: Project; error?: string } {
+  const ids = new Set<string>();
+  for (const id of clipIds) {
+    if (!clipById(project, id)) continue;
+    ids.add(id);
+    const mate = editableLinkedMate(project, id);
+    if (mate) ids.add(mate.id);
+  }
+  if (ids.size === 0) return { project, error: "No clip selected" };
+  const targets = project.clips.filter((c) => ids.has(c.id));
+  if (targets.every(clipIsLocked)) return { project, error: "Clip is locked" };
+  let changed = false;
+  const clips = project.clips.map((c) => {
+    if (!ids.has(c.id) || clipIsLocked(c)) return c;
+    changed = true;
+    return c.reversed ? { ...c, reversed: undefined } : { ...c, reversed: true };
+  });
+  if (!changed) return { project };
+  return { project: { ...project, clips, updatedAt: new Date().toISOString() } };
+}
+
+function videoUnderPlayhead(project: Project, selectedIds: readonly string[]): Clip | undefined {
+  const timeMs = project.playheadMs;
+  const covers = (c: Clip | undefined): c is Clip =>
+    Boolean(
+      c &&
+        clipIsEnabled(c) &&
+        !clipIsLocked(c) &&
+        kindOfTrack(c.trackId) === "video" &&
+        timeMs >= c.startMs &&
+        timeMs < clipEndMs(c),
+    );
+  for (const id of selectedIds) {
+    const clip = clipById(project, id);
+    if (covers(clip)) return clip;
+  }
+  for (const id of trackIdsOf(project)) {
+    if (kindOfTrack(id) !== "video") continue;
+    const hit = clipOnTrackAt(project, id, timeMs);
+    if (covers(hit)) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * Insert a 2s freeze of the video frame under the playhead.
+ * Later clips on that video track shift right. The linked audio track
+ * gets the same gap: sound pauses for 2s, then the rest stays in sync.
+ * One returned project, so the session records one undo step.
+ */
+export function freezeFrameAtPlayhead(
+  project: Project,
+  selectedIds: readonly string[],
+): { project: Project; error?: string } {
+  const clip = videoUnderPlayhead(project, selectedIds);
+  if (!clip) return { project, error: "No video clip under playhead" };
+  const playhead = project.playheadMs;
+  const hold = sourceTimeAt(clip, playhead);
+  const distIn = playhead - clip.startMs;
+  const distOut = clipEndMs(clip) - playhead;
+  const mate = editableLinkedMate(project, clip.id);
+  const lockedMate = livingLinkedMate(project, clip.id);
+  let insertAt = playhead;
+  if (distIn < SPLIT_EDGE_GUARD_MS) insertAt = clip.startMs;
+  else if (distOut < SPLIT_EDGE_GUARD_MS) insertAt = clipEndMs(clip);
+  if (
+    lockedMate &&
+    clipIsLocked(lockedMate) &&
+    (lockedMate.startMs >= insertAt - 0.001 || clipEndMs(lockedMate) > insertAt + 0.001)
+  ) {
+    return { project, error: "Clip is locked" };
+  }
+  let working = project;
+  if (distIn >= SPLIT_EDGE_GUARD_MS && distOut >= SPLIT_EDGE_GUARD_MS) {
+    const split = splitClipAt(working, clip.id, playhead, SPLIT_EDGE_GUARD_MS, {
+      includeLinkedMate: Boolean(mate && coversInsert(mate, playhead)),
+    });
+    if (split.error) return { project, error: split.error };
+    working = split.project;
+  }
+  if (mate) {
+    const current = clipById(working, mate.id);
+    if (current && coversInsert(current, insertAt)) {
+      const splitMate = splitClipSolo(working, current.id, insertAt);
+      if (splitMate.error) return { project, error: splitMate.error };
+      working = splitMate.project;
+    }
+  }
+  const asset = working.assets.find((a) => a.id === clip.assetId);
+  const cap = asset?.durationMs;
+  const sourceOutMs = cap != null && cap > hold ? Math.min(cap, hold + 1) : hold + 1;
+  const freeze: Clip = {
+    id: createId("clip"),
+    assetId: clip.assetId,
+    trackId: clip.trackId,
+    startMs: insertAt,
+    durationMs: FREEZE_HOLD_MS,
+    sourceInMs: hold,
+    sourceOutMs,
+    gain: clip.gain,
+    fadeInMs: 0,
+    fadeOutMs: 0,
+    rate: 1,
+    holdSourceMs: hold,
+  };
+  const shiftTracks = new Set<string>([clip.trackId]);
+  if (mate) shiftTracks.add(mate.trackId);
+  const clips = working.clips.map((c) =>
+    shiftTracks.has(c.trackId) && c.startMs >= insertAt - 0.001
+      ? { ...c, startMs: c.startMs + FREEZE_HOLD_MS }
+      : c,
+  );
+  clips.push(freeze);
+  return {
+    project: { ...working, clips, updatedAt: new Date().toISOString() },
   };
 }
 

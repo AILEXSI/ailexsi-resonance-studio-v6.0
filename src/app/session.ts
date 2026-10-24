@@ -1,4 +1,6 @@
-import { unlinkClips } from "../core/link";
+import { editableLinkedMate, linkClipPair, unlinkClips } from "../core/link";
+import { addClipKeyPoint, keyFactorAt, laneWithPoint, laneWithoutPoint, setClipKeyLane, setVisOpacityKeys } from "../core/clip-keys";
+import { DEFAULT_FADE_MS, normalizeClipFades } from "../core/fades";
 import {
   editPairAtProbe,
   findTransitionForPair,
@@ -8,6 +10,8 @@ import {
   transitionAudioDurationMs,
   transitionAudioOf,
   transitionSourceOf,
+  addSameTrackCrossfade,
+  DEFAULT_CROSSFADE_MS,
   upsertTransition,
   type Transition,
   type TransitionAudioMode,
@@ -70,6 +74,8 @@ import {
   slideClips,
   setClipRate,
   setClipFades,
+  freezeFrameAtPlayhead,
+  toggleClipReversed,
   maybeScrollToOrigin,
   moveClip,
   moveClipsByDelta,
@@ -77,7 +83,6 @@ import {
   moveInOut,
   lastClipEndMsOnTrack,
   placeAsset,
-  pushHistory,
   redo as redoHistory,
   setInPoint,
   setOutPoint,
@@ -130,6 +135,7 @@ import {
   pasteVisualizerEvent,
   setVisualizer,
   splitVisualizerAtPlayhead,
+  splitVisualizerEventAt,
   stretchVisualizerEvent,
   toggleVisualizerMute,
   updateVisualizerEvent,
@@ -167,6 +173,9 @@ import {
   scrollKeepPlayheadInView,
   scrollZoomAroundPlayhead,
 } from "../core/zoom";
+import { commitPreparedProject, withHistory } from "./session-history";
+
+export { commitPreparedProject };
 
 export interface Session {
   project: Project;
@@ -345,15 +354,6 @@ export function withClipSelection(session: Session, ids: string[]): Session {
   };
 }
 
-function withHistory(session: Session, nextProject: Project, status: string): Session {
-  return {
-    ...session,
-    history: pushHistory(session.history, session.project),
-    project: nextProject,
-    status,
-    error: null,
-  };
-}
 
 export function newProject(session: Session): Session {
   return {
@@ -784,6 +784,30 @@ export function applyRippleTrim(
   return withHistory(session, result.project, "Ripple trimmed");
 }
 
+export function applyTrimToPlayhead(session: Session, edge: "in" | "out"): Session {
+  const clip = resolveRippleTrimToPlayheadClip(session.project, {
+    selectedClipId: session.selectedClipId,
+    selectedVis: session.selectedVis,
+  });
+  if (!clip) return session;
+  const playheadMs = session.project.playheadMs;
+  if (!playheadStrictlyInsideClip(clip, playheadMs)) return session;
+  let next = applyTrim(session, clip.id, edge, playheadMs);
+  if (next.project.playheadMs !== playheadMs) {
+    next = { ...next, project: { ...next.project, playheadMs } };
+  }
+  if (clipById(next.project, clip.id) && next.selectedClipId !== clip.id) {
+    return {
+      ...next,
+      selectedClipId: clip.id,
+      selectedClipIds: [clip.id],
+      selectedVis: false,
+      selectedVisEventId: null,
+    };
+  }
+  return next;
+}
+
 export function applyRippleTrimToPlayhead(session: Session, edge: "in" | "out"): Session {
   const clip = resolveRippleTrimToPlayheadClip(session.project, {
     selectedClipId: session.selectedClipId,
@@ -979,9 +1003,9 @@ export function applyClearInOut(session: Session): Session {
   return { ...session, project: clearInOut(session.project), status: "IN/OUT cleared", error: null };
 }
 
-export function applyMarker(session: Session): Session {
+export function applyMarker(session: Session, label?: string): Session {
   const at = snapPlayheadSeek(session.project, session.project.playheadMs);
-  const next = addMarker(session.project, at);
+  const next = addMarker(session.project, at, label);
   const added = next.markers[next.markers.length - 1];
   return {
     ...withClipSelection(withHistory(session, next, "Marker added"), []),
@@ -1028,10 +1052,39 @@ export function applyCopy(session: Session): Session {
   };
 }
 
+/**
+ * Playhead strictly inside the event. The start edge is not inside, so a
+ * cut with the playhead parked on the event head still clipboard-deletes.
+ */
+function playheadInsideVisEvent(
+  event: { startMs: number; durationMs: number },
+  playheadMs: number,
+): boolean {
+  return playheadMs > event.startMs && playheadMs < event.startMs + Math.max(0, event.durationMs);
+}
+
 /** Copy then lift-delete the selection. One history entry. */
 export function applyCut(session: Session): Session {
   const vis = selectedVisEvent(session);
   if (vis) {
+    if (playheadInsideVisEvent(vis, session.project.playheadMs)) {
+      const result = splitVisualizerEventAt(session.project, vis.id, session.project.playheadMs);
+      if (result.error || !result.leftId || !result.rightId) {
+        return { ...session, error: result.error ?? "Cut rejected", status: "Cut rejected" };
+      }
+      const events = visualizerEventsOf(result.project);
+      const left = events.find((e) => e.id === result.leftId);
+      const right = events.find((e) => e.id === result.rightId);
+      if (!left || !right || left.durationMs <= 0 || right.durationMs <= 0) {
+        return { ...session, error: "Cut rejected", status: "Cut rejected" };
+      }
+      return {
+        ...withHistory(session, result.project, "Cut VIS event"),
+        selectedVis: true,
+        selectedVisEventId: result.leftId,
+        selectedVisEventIds: [result.leftId],
+      };
+    }
     const copied = applyCopy(session);
     const next = deleteVisualizerEvent(session.project, vis.id);
     return {
@@ -1166,6 +1219,41 @@ export function applyRelinkClips(
   return withHistory(session, result.project, sel.clipIds.length > 1 ? "Relinked clips" : "Relinked clip");
 }
 
+export function applyRazorAll(session: Session): Session {
+  const clips = splitAtPlayhead(session.project);
+  let project = clips.error ? session.project : clips.project;
+  const vis = splitVisualizerAtPlayhead(project);
+  if (!vis.error) project = vis.project;
+  if (project === session.project) return { ...session, error: "Nothing to cut at the playhead" };
+  return withHistory(session, project, "Razor all");
+}
+
+export function applyLinkClips(session: Session): Session {
+  const result = linkClipPair(session.project, selectionOf(session));
+  if (result.error) return { ...session, error: result.error };
+  if (result.project === session.project) return session;
+  return withHistory(session, result.project, "Linked clips");
+}
+
+export function applyUnlinkSelection(session: Session): Session {
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  const seen = new Set<string>();
+  let changed = false;
+  for (const id of ids) {
+    const clip = clipById(project, id);
+    if (!clip?.linkId || seen.has(clip.linkId)) continue;
+    seen.add(clip.linkId);
+    const result = unlinkClips(project, id);
+    if (result.error) return { ...session, error: result.error };
+    if (result.project !== project) changed = true;
+    project = result.project;
+  }
+  if (!changed) return { ...session, error: "No linked clip selected" };
+  return withHistory(session, project, "Unlinked clips");
+}
+
 export function applyUnlinkClips(session: Session, clipId: string): Session {
   const result = unlinkClips(session.project, clipId);
   if (result.error) return { ...session, error: result.error };
@@ -1243,11 +1331,163 @@ export function applySetClipFades(
   return withHistory(session, result.project, "Clip fades");
 }
 
+/** Fade in and/or out on the selection. An omitted side keeps each clip's current fade. One undo step. */
+export function applySetSelectionFades(
+  session: Session,
+  fadeInMs?: number,
+  fadeOutMs?: number,
+): Session {
+  if (fadeInMs == null && fadeOutMs == null) return session;
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  const seen = new Set<string>();
+  let changed = false;
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const clip = clipById(project, id);
+    if (!clip) continue;
+    seen.add(id);
+    const mate = editableLinkedMate(project, id);
+    if (mate) seen.add(mate.id);
+    const nextIn = fadeInMs ?? clip.fadeInMs;
+    const nextOut = fadeOutMs ?? clip.fadeOutMs;
+    const norm = normalizeClipFades(nextIn, nextOut, clip.durationMs);
+    const mateNorm = mate ? normalizeClipFades(nextIn, nextOut, mate.durationMs) : null;
+    const same =
+      norm.fadeInMs === clip.fadeInMs &&
+      norm.fadeOutMs === clip.fadeOutMs &&
+      (!mate || !mateNorm || (mateNorm.fadeInMs === mate.fadeInMs && mateNorm.fadeOutMs === mate.fadeOutMs));
+    if (same) continue;
+    const result = setClipFades(project, id, nextIn, nextOut);
+    if (result.error) return { ...session, error: result.error };
+    project = result.project;
+    changed = true;
+  }
+  if (!changed) return session;
+  return withHistory(session, project, "Clip fades");
+}
+
+export function applyAddCrossfade(session: Session, durationMs = DEFAULT_CROSSFADE_MS): Session {
+  const result = addSameTrackCrossfade(session.project, selectionOf(session), durationMs);
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Crossfade");
+}
+
+export { DEFAULT_FADE_MS };
+
 export function applySetClipRate(session: Session, clipId: string, rate: number): Session {
   const result = setClipRate(session.project, clipId, rate);
   if (result.error) return { ...session, error: result.error };
   if (result.project === session.project) return session;
   return withHistory(session, result.project, "Clip rate");
+}
+
+/** One rate for every selected clip. Linked mates follow inside setClipRate. One undo step. */
+export function applySetSelectionRate(session: Session, rate: number): Session {
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  const seen = new Set<string>();
+  let changed = false;
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const before = project;
+    const result = setClipRate(project, id, rate);
+    if (result.error) return { ...session, error: result.error };
+    seen.add(id);
+    const mate = editableLinkedMate(result.project, id);
+    if (mate) seen.add(mate.id);
+    if (result.project !== before) changed = true;
+    project = result.project;
+  }
+  if (!changed) return session;
+  return withHistory(session, project, "Clip rate");
+}
+
+export function applyToggleReverse(session: Session): Session {
+  const result = toggleClipReversed(session.project, selectionOf(session));
+  if (result.error) return { ...session, error: result.error };
+  if (result.project === session.project) return session;
+  return withHistory(session, result.project, "Reverse clip");
+}
+
+export function applyFreezeFrame(session: Session): Session {
+  const result = freezeFrameAtPlayhead(session.project, selectionOf(session));
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Freeze frame");
+}
+
+export function applyAddKeyframe(session: Session): Session {
+  const vis = selectedVisEvent(session);
+  if (vis) {
+    const local = session.project.playheadMs - vis.startMs;
+    if (local < 0 || local > vis.durationMs) return { ...session, error: "Playhead is outside the VIS event" };
+    const lane = laneWithPoint(vis.opacityKeys, Math.round(local), keyFactorAt(vis.opacityKeys, local));
+    const result = setVisOpacityKeys(session.project, vis.id, lane);
+    if (result.error) return { ...session, error: result.error };
+    return withHistory(session, result.project, "Opacity keyframe");
+  }
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  let changed = false;
+  for (const id of ids) {
+    const clip = clipById(project, id);
+    if (!clip || clipIsLocked(clip)) continue;
+    const local = session.project.playheadMs - clip.startMs;
+    if (local < 0 || local > clip.durationMs) continue;
+    const kind = kindOfTrack(clip.trackId) === "audio" ? "gain" : "opacity";
+    const result = addClipKeyPoint(project, id, kind, local, 1);
+    if (result.error) return { ...session, error: result.error };
+    project = result.project;
+    changed = true;
+  }
+  if (!changed) return { ...session, error: "Playhead is outside the clip" };
+  return withHistory(session, project, "Keyframe");
+}
+
+export function applyAddClipKeyframe(
+  session: Session,
+  clipId: string,
+  kind: "gain" | "opacity",
+  localMs: number,
+): Session {
+  const result = addClipKeyPoint(session.project, clipId, kind, localMs, 1);
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, kind === "gain" ? "Volume keyframe" : "Opacity keyframe");
+}
+
+export function applyRemoveClipKeyframe(
+  session: Session,
+  clipId: string,
+  kind: "gain" | "opacity",
+  timeMs: number,
+): Session {
+  const clip = clipById(session.project, clipId);
+  if (!clip) return { ...session, error: "Clip not found" };
+  const current = kind === "gain" ? clip.gainKeys : clip.opacityKeys;
+  const result = setClipKeyLane(session.project, clipId, kind, laneWithoutPoint(current, timeMs));
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Keyframe removed");
+}
+
+export function applyAddVisKeyframe(session: Session, eventId: string, localMs: number): Session {
+  const event = (session.project.visualizer.events ?? []).find((item) => item.id === eventId);
+  if (!event) return { ...session, error: "VIS event not found" };
+  if (localMs < 0 || localMs > event.durationMs) return { ...session, error: "Playhead is outside the VIS event" };
+  const lane = laneWithPoint(event.opacityKeys, Math.round(localMs), 1);
+  const result = setVisOpacityKeys(session.project, eventId, lane);
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Opacity keyframe");
+}
+
+export function applyRemoveVisKeyframe(session: Session, eventId: string, timeMs: number): Session {
+  const event = (session.project.visualizer.events ?? []).find((item) => item.id === eventId);
+  if (!event) return { ...session, error: "VIS event not found" };
+  const result = setVisOpacityKeys(session.project, eventId, laneWithoutPoint(event.opacityKeys, timeMs));
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Keyframe removed");
 }
 
 export function applySetTransition(

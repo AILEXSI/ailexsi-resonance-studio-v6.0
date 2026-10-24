@@ -1,0 +1,52 @@
+# Main-window commands. Granted only from capabilities/default.json.
+# The stored API key is not returned to the webview.
+
+[[permission]]
+identifier = "allow-ai-chat"
+description = "Lets the main window send a provider chat. The API key stays in this process."
+commands.allow = ["ai_chat"]
+
+[[permission]]
+identifier = "allow-ai-keychain-exists"
+description = "Lets the main window check whether an API key is stored. Does not return the key."
+commands.allow = ["ai_keychain_exists"]
+
+[[permission]]
+identifier = "allow-ai-keychain-status"
+description = "Lets the main window probe the OS keychain. Does not return the key."
+commands.allow = ["ai_keychain_status"]
+
+[[permission]]
+identifier = "allow-ai-keychain-set"
+description = "Lets the main window store an API key when the user opts in."
+commands.allow = ["ai_keychain_set"]
+
+[[permission]]
+identifier = "allow-ai-keychain-delete"
+description = "Lets the main window delete the stored API key."
+commands.allow = ["ai_keychain_delete"]
+
+[[permission]]
+identifier = "allow-allow-media-paths"
+description = "Lets the main window allow user-picked media paths."
+commands.allow = ["allow_media_paths"]
+
+[[permission]]
+identifier = "allow-whisper-status"
+description = "Lets the main window see whether whisper.cpp files were chosen. Does not return paths."
+commands.allow = ["whisper_status"]
+
+[[permission]]
+identifier = "allow-whisper-pick-executable"
+description = "Lets the main window open the native dialog for the whisper.cpp executable."
+commands.allow = ["whisper_pick_executable"]
+
+[[permission]]
+identifier = "allow-whisper-pick-model"
+description = "Lets the main window open the native dialog for the whisper.cpp model."
+commands.allow = ["whisper_pick_model"]
+
+[[permission]]
+identifier = "allow-lyrics-whisper-align"
+description = "Lets the main window run the whisper.cpp files stored by the native dialog."
+commands.allow = ["lyrics_whisper_align"]

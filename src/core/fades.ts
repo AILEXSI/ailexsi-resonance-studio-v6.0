@@ -1,7 +1,13 @@
+import { keyFactorAt } from "./clip-keys";
+import type { VolumeAutomation } from "./models";
+
 /**
  * Per-clip linear fade in/out. Shared by preview audio, export mix, and video opacity.
- * Fade factor is 0..1; gainAtClipTime multiplies that by clip.gain.
+ * Fade factor is 0..1; gainAtClipTime multiplies that by clip.gain and optional gain keys.
  */
+
+/** Menu, shortcut, and Director default when a fade length is omitted. */
+export const DEFAULT_FADE_MS = 500;
 
 export type Fadeable = {
   durationMs: number;
@@ -13,7 +19,11 @@ export type Fadeable = {
   fadeOutTo?: number;
 };
 
-export type GainFadeable = Fadeable & { gain: number };
+export type GainFadeable = Fadeable & {
+  gain: number;
+  gainKeys?: VolumeAutomation;
+  opacityKeys?: VolumeAutomation;
+};
 
 /** Clamp each fade to [0, duration]. If they would overlap, scale both so they meet in the middle. */
 export function normalizeClipFades(
@@ -112,14 +122,18 @@ export function remapClipFadesForWindow(
   };
 }
 
-/** Fade factor times existing clip gain. Mute/solo/track fader are applied by the caller. */
-export function gainAtClipTime(clip: GainFadeable, localMs: number): number {
+function staticGain(clip: GainFadeable, localMs: number): number {
   return fadeFactorAt(clip, localMs) * Math.max(0, Number.isFinite(clip.gain) ? clip.gain : 0);
 }
 
-/** Canvas/CSS alpha: same factor, clamped to 0..1 (clip gain may be > 1). */
+/** Fade factor times clip gain times optional volume keys. Mute/solo/track fader stay with the caller. */
+export function gainAtClipTime(clip: GainFadeable, localMs: number): number {
+  return staticGain(clip, localMs) * keyFactorAt(clip.gainKeys, localMs);
+}
+
+/** Picture alpha: fade and clip gain, then optional opacity keys. Volume keys stay on the mix. */
 export function videoAlphaAtClipTime(clip: GainFadeable, localMs: number): number {
-  return Math.min(1, gainAtClipTime(clip, localMs));
+  return Math.max(0, Math.min(1, staticGain(clip, localMs) * keyFactorAt(clip.opacityKeys, localMs)));
 }
 
 export type GainEnvelopePoint = { tMs: number; value: number };

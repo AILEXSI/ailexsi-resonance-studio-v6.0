@@ -3,6 +3,7 @@ import {
   analysisAudioClipAt,
   audioTracksOf,
   clipById,
+  clipEndMs,
   clipOnTrackAt,
   isTrackAudible,
   mixClipsAt,
@@ -17,10 +18,12 @@ import {
   type TrackId,
 } from "../../core/models";
 import { vClipMixesOwnAudio } from "../../core/link";
+import { visOpacityAt } from "../../core/clip-keys";
 import { gainAtClipTime, videoAlphaAtClipTime } from "../../core/fades";
 import {
   compositeVideoAt,
   contextFromProject,
+  crossfadePartnerClip,
   formatResolvedSource,
   primaryLayer,
   resolvePictureSource,
@@ -36,10 +39,12 @@ import {
   renderVisualizerScene,
   sceneAt,
   shouldShowVisualizer,
+  visualizerEventAt,
   visFeaturesForPreview,
   type MixPcm,
 } from "../../core/visualizer";
 import { createPlaybackTap, type PlaybackTap } from "../../core/visualz/playback-tap";
+import { ensureLexiScenes } from "../../core/visualz/scenes";
 import { decodeAudio, isPlayableSource } from "../../core/exporter/media";
 import { loadStill, paintStill } from "../../core/still";
 
@@ -69,8 +74,44 @@ export function previewMediaBindKey(input: {
   return `${input.audioGraphKey}|${input.playheadMs}|${input.playing ? 1 : 0}|${input.masterVolume}|${input.assetGen ?? 0}`;
 }
 
+function holdPitch(el: HTMLMediaElement): void {
+  el.preservesPitch = true;
+  (el as HTMLMediaElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = true;
+}
+
+/** Forward clips play at rate with pitch held. Reverse and freeze scrub the element. */
+function syncPreviewMedia(
+  el: HTMLMediaElement,
+  clip: {
+    startMs: number;
+    sourceInMs: number;
+    sourceOutMs: number;
+    rate?: number;
+    reversed?: boolean;
+    holdSourceMs?: number;
+  },
+  playheadMs: number,
+  playing: boolean,
+): void {
+  holdPitch(el);
+  const want = sourceTimeAt(clip, playheadMs) / 1000;
+  const scrub = clip.reversed === true || (clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs));
+  if (scrub) {
+    el.pause();
+    if (Number.isFinite(el.currentTime) && Math.abs(el.currentTime - want) > 0.04) el.currentTime = want;
+    return;
+  }
+  if (Number.isFinite(el.currentTime) && Math.abs(el.currentTime - want) > 0.08) el.currentTime = want;
+  el.playbackRate = clip.rate && clip.rate > 0 ? clip.rate : 1;
+  if (playing && el.paused) void el.play().catch(() => undefined);
+  if (!playing && !el.paused) el.pause();
+}
+
 export function Preview({ project, playing, liveWriteTrackId = null, liveWriteValue = null, onLevels }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const partnerVideoRef = useRef<HTMLVideoElement>(null);
+  const partnerStillRef = useRef<HTMLCanvasElement>(null);
+  const xfadeRef = useRef<HTMLAudioElement>(null);
   const liveWriteRef = useRef({ trackId: liveWriteTrackId, value: liveWriteValue });
   liveWriteRef.current = { trackId: liveWriteTrackId, value: liveWriteValue };
   const stillRef = useRef<HTMLCanvasElement>(null);
@@ -93,12 +134,36 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     : (primary ? clipById(project, primary.clipId) : undefined) ??
       topVideoClipAt(project, project.playheadMs);
   const layerA = primary && videoClip && primary.clipId === videoClip.id ? primary.alpha : 1;
+  const partnerLayer =
+    !hideVideo && videoClip
+      ? composite.layers.find((layer) => layer.clipId !== videoClip.id && layer.alpha > 0.001)
+      : undefined;
+  const partnerClip = partnerLayer ? clipById(project, partnerLayer.clipId) : undefined;
+  const partnerCovers =
+    partnerClip != null &&
+    project.playheadMs >= partnerClip.startMs &&
+    project.playheadMs < clipEndMs(partnerClip);
+  const partnerAsset = partnerCovers && partnerClip
+    ? project.assets.find((a) => a.id === partnerClip.assetId)
+    : undefined;
+  const partnerIsStill = partnerAsset?.kind === "image";
+  const partnerAlpha =
+    partnerLayer && partnerClip
+      ? partnerLayer.alpha * videoAlphaAtClipTime(partnerClip, project.playheadMs - partnerClip.startMs)
+      : 0;
+  const partnerBehind = partnerLayer
+    ? composite.layers.findIndex((layer) => layer.clipId === partnerLayer.clipId) <
+      composite.layers.findIndex((layer) => layer.clipId === videoClip?.id)
+    : true;
+  const audioPartner = crossfadePartnerClip(project, project.playheadMs);
   const videoAsset = videoClip
     ? project.assets.find((a) => a.id === videoClip.assetId)
     : undefined;
   const isStill = videoAsset?.kind === "image";
   const mixClips = mixClipsAt(project, project.playheadMs);
   const showViz = shouldShowVisualizer(project, project.playheadMs);
+  const visEvent = visualizerEventAt(project, project.playheadMs);
+  const visOpacity = visEvent ? visOpacityAt(visEvent, project.playheadMs) : 1;
   const analysisClip = analysisAudioClipAt(project, project.playheadMs) ?? mixClips[0];
   const analysisAsset = analysisClip
     ? project.assets.find((a) => a.id === analysisClip.assetId)
@@ -132,14 +197,15 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     if (isStill) return;
     const video = videoRef.current;
     if (!video || !videoClip || !videoAsset?.objectUrl) return;
-    const want = sourceTimeAt(videoClip, project.playheadMs) / 1000;
-    if (Math.abs(video.currentTime - want) > 0.08) {
-      video.currentTime = want;
-    }
-    video.playbackRate = videoClip.rate > 0 ? videoClip.rate : 1;
-    if (playing && video.paused) void video.play().catch(() => undefined);
-    if (!playing && !video.paused) video.pause();
+    syncPreviewMedia(video, videoClip, project.playheadMs, playing);
   }, [project.playheadMs, playing, videoClip, videoAsset?.objectUrl, isStill]);
+
+  useEffect(() => {
+    if (partnerIsStill) return;
+    const video = partnerVideoRef.current;
+    if (!video || !partnerClip || !partnerAsset?.objectUrl) return;
+    syncPreviewMedia(video, partnerClip, project.playheadMs, playing);
+  }, [project.playheadMs, playing, partnerClip, partnerAsset?.objectUrl, partnerIsStill]);
 
   useEffect(() => {
     if (!isStill || !videoClip || !videoAsset?.objectUrl) return;
@@ -175,6 +241,38 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
       cancelled = true;
     };
   }, [isStill, videoClip, videoAsset?.objectUrl, project.playheadMs, layerA]);
+
+  useEffect(() => {
+    if (!partnerIsStill || !partnerClip || !partnerAsset?.objectUrl) return;
+    const canvas = partnerStillRef.current;
+    if (!canvas) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const img = await loadStill(partnerAsset.objectUrl!);
+        if (cancelled) return;
+        const parent = canvas.parentElement;
+        const cssW = parent?.clientWidth || canvas.clientWidth || 640;
+        const cssH = parent?.clientHeight || canvas.clientHeight || 360;
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.max(1, Math.floor(cssW * dpr));
+        const h = Math.max(1, Math.floor(cssH * dpr));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        paintStill(ctx, canvas, img, partnerAlpha);
+      } catch {
+        /* missing still */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [partnerIsStill, partnerClip, partnerAsset?.objectUrl, project.playheadMs, partnerAlpha]);
 
   useEffect(() => {
     const bind = (el: HTMLAudioElement | null, trackId: TrackId) => {
@@ -215,18 +313,46 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
       } else {
         el.volume = Math.max(0, Math.min(1, mix));
       }
-      const want = sourceTimeAt(clip, project.playheadMs) / 1000;
-      if (Math.abs(el.currentTime - want) > 0.08) el.currentTime = want;
-      el.playbackRate = clip.rate > 0 ? clip.rate : 1;
-      if (playing && el.paused) void el.play().catch(() => undefined);
-      if (!playing && !el.paused) el.pause();
+      syncPreviewMedia(el, clip, project.playheadMs, playing);
     };
     bind(v1Ref.current, "V1");
     bind(v2Ref.current, "V2");
     for (const track of audioTracksOf(project)) {
       bind(audioRefs.current[track.id] ?? null, track.id);
     }
-  }, [mixClips, playing, project.assets, project.playheadMs, audioGraphKey, project.masterVolume]);
+    const partnerEl = xfadeRef.current;
+    const partner = audioPartner;
+    const partnerAsset = partner ? project.assets.find((a) => a.id === partner.assetId) : undefined;
+    if (
+      partnerEl &&
+      partner &&
+      partnerAsset?.objectUrl &&
+      isTrackAudible(project, partner.trackId) &&
+      vClipMixesOwnAudio(project, partner, project.playheadMs)
+    ) {
+      if (partnerEl.src !== partnerAsset.objectUrl) partnerEl.src = partnerAsset.objectUrl;
+      const live = liveWriteRef.current;
+      const mix =
+        mixLinearGain(
+          gainAtClipTime(partner, project.playheadMs - partner.startMs),
+          trackVolumeOf(project, partner.trackId),
+          project.masterVolume ?? 1,
+          false,
+          liveWriteAutomationValue(
+            partner.trackId,
+            volumeAutomationOf(project.tracks.find((t) => t.id === partner.trackId)),
+            project.playheadMs,
+            live.trackId,
+            live.value,
+          ),
+        ) * transitionAudioGain(project.transitions ?? [], partner.id, project.playheadMs, project);
+      partnerEl.volume = Math.max(0, Math.min(1, mix));
+      syncPreviewMedia(partnerEl, partner, project.playheadMs, playing);
+    } else if (partnerEl) {
+      partnerEl.pause();
+      partnerEl.removeAttribute("src");
+    }
+  }, [mixClips, playing, project.assets, project.playheadMs, audioGraphKey, project.masterVolume, audioPartner]);
 
   useEffect(() => {
     if (tapRef.current) return;
@@ -364,11 +490,18 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     const dt = Math.max(0, (project.playheadMs - lastPlayheadRef.current) / 1000);
     lastPlayheadRef.current = project.playheadMs;
     paint(dt);
+    let cancelled = false;
+    void ensureLexiScenes().then(() => {
+      if (!cancelled) paint(0);
+    });
 
     const target = canvas.parentElement ?? canvas;
     const ro = new ResizeObserver(() => paint(0));
     ro.observe(target);
-    return () => ro.disconnect();
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+    };
   }, [showViz, project, mixReady, analysisClip, audioLoaded, hasClipAtPlayhead]);
 
   const activeLabel = formatResolvedSource(picture);
@@ -405,9 +538,31 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
                   opacity:
                     layerA *
                     videoAlphaAtClipTime(videoClip, project.playheadMs - videoClip.startMs),
+                  position: "relative",
+                  zIndex: 1,
                 }}
               />
             )}
+            {partnerAsset?.objectUrl && partnerClip ? (
+              partnerIsStill ? (
+                <canvas
+                  ref={partnerStillRef}
+                  data-testid="preview-partner"
+                  className="preview-partner"
+                  style={{ opacity: partnerAlpha, zIndex: partnerBehind ? 0 : 2 }}
+                />
+              ) : (
+                <video
+                  ref={partnerVideoRef}
+                  src={partnerAsset.objectUrl}
+                  muted
+                  playsInline
+                  data-testid="preview-partner"
+                  className="preview-partner"
+                  style={{ opacity: partnerAlpha, zIndex: partnerBehind ? 0 : 2 }}
+                />
+              )
+            ) : null}
             {composite.plate && composite.plate.alpha > 0 ? (
               <div
                 data-testid="preview-plate"
@@ -426,7 +581,10 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
           <canvas
             ref={canvasRef}
             data-testid="visualizer-canvas"
-            style={videoAsset?.objectUrl && videoClip ? { position: "absolute", inset: 0 } : undefined}
+            style={{
+              ...(videoAsset?.objectUrl && videoClip ? { position: "absolute" as const, inset: 0 } : {}),
+              opacity: visOpacity,
+            }}
           />
         ) : !videoAsset?.objectUrl || !videoClip ? (
           <div className="preview-empty">
@@ -436,6 +594,7 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
           </div>
         ) : null}
       </div>
+      <audio ref={xfadeRef} className="hidden-audio" data-testid="preview-xfade" />
       <audio ref={v1Ref} className="hidden-audio" data-testid="preview-v1" />
       <audio ref={v2Ref} className="hidden-audio" data-testid="preview-v2" />
       {audioTracksOf(project).map((track) => (

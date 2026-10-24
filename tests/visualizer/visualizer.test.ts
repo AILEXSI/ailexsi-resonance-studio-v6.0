@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   DEFAULT_VISUALIZER_SCENE_ID,
   VISUALIZER_SCENE_IDS,
@@ -17,13 +17,17 @@ import {
   renderVisualizerScene,
   shouldShowVisualizer,
 } from "../../src/core/visualizer";
-import { builtinScenes, createVisualEngine, getRegisteredScene } from "../../src/core/visualz";
+import { builtinScenes, createVisualEngine, ensureLexiScenes, getRegisteredScene } from "../../src/core/visualz";
 import { isSilentEnergy, SILENCE_BASS, SILENCE_RMS } from "../../src/core/visualz/feature-extractor";
 import { preferLiveFeatures } from "../../src/core/visualz/playback-tap";
 import type { AudioFeatures } from "../../src/core/visualz";
 import { asset, clip, projectWith } from "../helpers";
 import { projectHasMixAudio, mixClipsAt } from "../../src/core/models";
 import { createPixelCanvas } from "../helpers/pixel-canvas";
+
+beforeAll(async () => {
+  await ensureLexiScenes();
+});
 
 function stubCtx(): CanvasRenderingContext2D {
   const noop = () => undefined;

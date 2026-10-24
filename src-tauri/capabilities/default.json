@@ -3,6 +3,16 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "allow-ai-chat",
+    "allow-ai-keychain-exists",
+    "allow-ai-keychain-status",
+    "allow-ai-keychain-set",
+    "allow-ai-keychain-delete",
+    "allow-allow-media-paths",
+    "allow-whisper-status",
+    "allow-whisper-pick-executable",
+    "allow-whisper-pick-model",
+    "allow-lyrics-whisper-align",
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-read-text-file",
@@ -14,8 +24,12 @@
       "identifier": "fs:scope",
       "allow": [
         { "path": "$APPDATA" },
-        { "path": "$APPDATA/*" },
-        { "path": "$APPDATA/**" }
+        { "path": "$APPDATA/last-project.json" }
+      ],
+      "deny": [
+        { "path": "$APPDATA/whisper-cpp.json" },
+        { "path": "$APPDATA/resonance-sealed" },
+        { "path": "$APPDATA/resonance-sealed/**" }
       ]
     }
   ]

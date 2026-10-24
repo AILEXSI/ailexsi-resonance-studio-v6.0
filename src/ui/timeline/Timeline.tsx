@@ -14,8 +14,10 @@ import {
   type TrackId,
   type VisualizerEvent,
   type VisualizerSceneId,
+  type VolumeAutomation,
 } from "../../core/models";
 import { fadeHandlesVisible, fadesFromHandleDrag } from "../../core/fade-handles";
+import { ClipKeyframeOverlay } from "./ClipKeyframeOverlay";
 import { durationMsFromHandleDrag, transitionDurationSnapTargets } from "../../core/transition-handles";
 import { listStackedEditPairs, type StackedOverlapMark } from "../../core/transition";
 import { normalizeClipFades } from "../../core/fades";
@@ -63,6 +65,8 @@ import {
   type ArrangeRow,
 } from "../../core/track-groups";
 import { VolumeAutomationLane } from "./VolumeAutomationLane";
+import { GroupCollapseIcon, GroupNameField, LaneGroupAssign } from "./TimelineLaneChrome";
+import { msToWidth, msToX, xToMs } from "./timeline-math";
 import { TrackHeaderOverflowButton, TrackHeaderOverflowMenu } from "./TrackHeaderOverflow";
 import {
   OVERFLOW_MENU_FALLBACK_HEIGHT_PX,
@@ -166,6 +170,23 @@ interface Props {
   onRelink?: (clipIds?: readonly string[]) => void;
   onCloseGap?: () => void;
   onRippleTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
+  onTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
+  onFadeEdge?: (edge: "in" | "out") => void;
+  onAddCrossfade?: () => void;
+  onToggleReverse?: () => void;
+  onFreezeFrame?: () => void;
+  onSetRate?: (rate: number) => void;
+  onAddClipKeyframe?: (clipId: string, kind: "gain" | "opacity", localMs: number) => void;
+  onRazorAll?: (timeMs?: number) => void;
+  onLinkClips?: () => void;
+  onUnlinkClips?: () => void;
+  onClipKeysLive?: (clipId: string, kind: "gain" | "opacity", lane: VolumeAutomation) => void;
+  onClipKeysCommit?: () => void;
+  onRemoveClipKeyframe?: (clipId: string, kind: "gain" | "opacity", timeMs: number) => void;
+  onAddVisKeyframe?: (eventId: string, localMs: number) => void;
+  onVisKeysLive?: (eventId: string, lane: VolumeAutomation) => void;
+  onVisKeysCommit?: () => void;
+  onRemoveVisKeyframe?: (eventId: string, timeMs: number) => void;
   onSelectAll?: () => void;
   onSelectAllOnTrack?: () => void;
   onSetClipsEnabled?: (enabled: boolean) => void;
@@ -210,135 +231,6 @@ interface Props {
   onVolumeAutomationPointCommit?: () => void;
   volumeWriteArmedIds?: readonly TrackId[];
   onToggleVolumeWriteArm?: (trackId: TrackId) => void;
-}
-
-function GroupCollapseIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true">
-      {collapsed ? (
-        <path d="M4 2 L9 6 L4 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      ) : (
-        <path d="M2 4 L6 9 L10 4" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      )}
-    </svg>
-  );
-}
-
-function LaneGroupAssign({
-  trackId,
-  groupId,
-  groups,
-  onAssign,
-  onCreate,
-}: {
-  trackId: TrackId;
-  groupId?: string;
-  groups: { id: string; name: string }[];
-  onAssign: (trackIds: TrackId[], groupId: string | null) => void;
-  onCreate?: (trackIds: TrackId[]) => void;
-}) {
-  return (
-    <select
-      className="lane-group-assign"
-      data-testid={`lane-group-assign-${trackId}`}
-      data-header-control="groupAssign"
-      aria-label="Track group"
-      title="Assign to chapter group"
-      value={groupId ?? ""}
-      onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        const value = e.target.value;
-        if (value === "__new__") {
-          onCreate?.([trackId]);
-          return;
-        }
-        onAssign([trackId], value === "" ? null : value);
-      }}
-    >
-      <option value="">—</option>
-      {groups.map((group) => (
-        <option key={group.id} value={group.id}>
-          {group.name}
-        </option>
-      ))}
-      <option value="__new__">New group…</option>
-    </select>
-  );
-}
-
-function GroupNameField({
-  groupId,
-  name,
-  onRename,
-}: {
-  groupId: string;
-  name: string;
-  onRename?: (groupId: string, name: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
-  useEffect(() => {
-    if (!editing) setDraft(name);
-  }, [name, editing]);
-  if (!onRename || !editing) {
-    return (
-      <button
-        type="button"
-        className="lane-group-name"
-        data-testid={`lane-group-name-${groupId}`}
-        title="Rename group"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!onRename) return;
-          setDraft(name);
-          setEditing(true);
-        }}
-      >
-        {name}
-      </button>
-    );
-  }
-  return (
-    <input
-      className="lane-group-name-input"
-      data-testid={`lane-group-name-input-${groupId}`}
-      value={draft}
-      autoFocus
-      aria-label="Group name"
-      onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        onRename(groupId, draft);
-        setEditing(false);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          onRename(groupId, draft);
-          setEditing(false);
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          setDraft(name);
-          setEditing(false);
-        }
-      }}
-    />
-  );
-}
-
-function msToX(ms: number, zoom: number, scrollMs: number): number {
-  return RULER_PAD_PX + ((ms - scrollMs) / 1000) * zoom;
-}
-
-function xToMs(x: number, zoom: number, scrollMs: number): number {
-  return scrollMs + ((x - RULER_PAD_PX) / zoom) * 1000;
-}
-
-function msToWidth(ms: number, zoom: number): number {
-  return (ms / 1000) * zoom;
 }
 
 interface ClipMenu {
@@ -417,6 +309,23 @@ export function Timeline({
   onRelink,
   onCloseGap,
   onRippleTrimToPlayhead,
+  onTrimToPlayhead,
+  onFadeEdge,
+  onAddCrossfade,
+  onToggleReverse,
+  onFreezeFrame,
+  onSetRate,
+  onAddClipKeyframe,
+  onRazorAll,
+  onLinkClips,
+  onUnlinkClips,
+  onClipKeysLive,
+  onClipKeysCommit,
+  onRemoveClipKeyframe,
+  onAddVisKeyframe,
+  onVisKeysLive,
+  onVisKeysCommit,
+  onRemoveVisKeyframe,
   onSelectAll,
   onSelectAllOnTrack,
   onSetClipsEnabled,
@@ -1357,7 +1266,7 @@ export function Timeline({
   const onClipContext = (e: ReactMouseEvent, clip: Clip) => {
     e.preventDefault();
     e.stopPropagation();
-    onSelect(clip.id);
+    if (!selectedIds.includes(clip.id)) onSelect(clip.id);
     setMarkerMenu(null);
     setOverflowOpenId(null);
     setMenu({
@@ -1684,6 +1593,14 @@ export function Timeline({
                     width: Math.max(28, msToWidth(event.durationMs, project.zoomPxPerSec)),
                   }}
                   onPointerDown={(e) => onVisEventPointerDown(e, event)}
+                  onDoubleClick={(e) => {
+                    if (!onAddVisKeyframe) return;
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                    const localMs = rect.width <= 0 ? 0 : (x / rect.width) * event.durationMs;
+                    onAddVisKeyframe(event.id, localMs);
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1694,6 +1611,16 @@ export function Timeline({
                   }}
                 >
                   <span className="vis-span-label">{formatVisEventLabel(event)}</span>
+                  {onVisKeysLive && onVisKeysCommit && onRemoveVisKeyframe ? (
+                    <ClipKeyframeOverlay
+                      durationMs={event.durationMs}
+                      lane={event.opacityKeys}
+                      testId={`vis-keys-${event.id}`}
+                      onChange={(lane) => onVisKeysLive(event.id, lane)}
+                      onCommit={onVisKeysCommit}
+                      onRemove={(timeMs) => onRemoveVisKeyframe(event.id, timeMs)}
+                    />
+                  ) : null}
                   <div
                     className="trim-handle in"
                     data-testid={`vis-event-in-${event.id}`}
@@ -2133,6 +2060,14 @@ export function Timeline({
                       }}
                       title={label}
                       onPointerDown={(e) => onClipPointerDown(e, clip)}
+                      onDoubleClick={(e) => {
+                        if (!onAddClipKeyframe) return;
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                        const localMs = rect.width <= 0 ? 0 : (x / rect.width) * clip.durationMs;
+                        onAddClipKeyframe(clip.id, kind === "audio" ? "gain" : "opacity", localMs);
+                      }}
                       onContextMenu={(e) => onClipContext(e, clip)}
                     >
                       {asset && kind === "audio" && !asset.missing ? (
@@ -2184,6 +2119,18 @@ export function Timeline({
                           </>
                         );
                       })()}
+                      {onClipKeysLive && onClipKeysCommit && onRemoveClipKeyframe ? (
+                        <ClipKeyframeOverlay
+                          durationMs={clip.durationMs}
+                          lane={kind === "audio" ? clip.gainKeys : clip.opacityKeys}
+                          testId={`clip-keys-${clip.id}`}
+                          onChange={(lane) => onClipKeysLive(clip.id, kind === "audio" ? "gain" : "opacity", lane)}
+                          onCommit={onClipKeysCommit}
+                          onRemove={(timeMs) =>
+                            onRemoveClipKeyframe(clip.id, kind === "audio" ? "gain" : "opacity", timeMs)
+                          }
+                        />
+                      ) : null}
                       <span className="clip-name">{label}</span>
                       {primary ? (
                         <>
@@ -2522,6 +2469,182 @@ export function Timeline({
               <span>Close gap</span>
               <kbd>{CLIP_MENU_SHORTCUTS.closeGap}</kbd>
             </button>
+          ) : null}
+          {onTrimToPlayhead ? (
+            <>
+              <button
+                type="button"
+                data-testid="clip-menu-trim-in"
+                onClick={() => {
+                  onTrimToPlayhead("in", menu.timeMs);
+                  setMenu(null);
+                }}
+              >
+                <span>Trim in to playhead</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.trimInToPlayhead}</kbd>
+              </button>
+              <button
+                type="button"
+                data-testid="clip-menu-trim-out"
+                onClick={() => {
+                  onTrimToPlayhead("out", menu.timeMs);
+                  setMenu(null);
+                }}
+              >
+                <span>Trim out to playhead</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.trimOutToPlayhead}</kbd>
+              </button>
+            </>
+          ) : null}
+          {onFadeEdge ? (
+            <>
+              <button
+                type="button"
+                data-testid="clip-menu-fade-in"
+                onClick={() => {
+                  onFadeEdge("in");
+                  setMenu(null);
+                }}
+              >
+                <span>Fade in</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.fadeIn}</kbd>
+              </button>
+              <button
+                type="button"
+                data-testid="clip-menu-fade-out"
+                onClick={() => {
+                  onFadeEdge("out");
+                  setMenu(null);
+                }}
+              >
+                <span>Fade out</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.fadeOut}</kbd>
+              </button>
+            </>
+          ) : null}
+          {onAddCrossfade ? (
+            <button
+              type="button"
+              data-testid="clip-menu-crossfade"
+              onClick={() => {
+                onAddCrossfade();
+                setMenu(null);
+              }}
+            >
+              <span>Crossfade</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.crossfade}</kbd>
+            </button>
+          ) : null}
+          {onToggleReverse ? (
+            <button
+              type="button"
+              data-testid="clip-menu-reverse"
+              onClick={() => {
+                onToggleReverse();
+                setMenu(null);
+              }}
+            >
+              <span>Reverse</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.reverse}</kbd>
+            </button>
+          ) : null}
+          {onFreezeFrame ? (
+            <button
+              type="button"
+              data-testid="clip-menu-freeze"
+              onClick={() => {
+                onFreezeFrame();
+                setMenu(null);
+              }}
+            >
+              <span>Freeze frame</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.freeze}</kbd>
+            </button>
+          ) : null}
+          {onRazorAll ? (
+            <button
+              type="button"
+              data-testid="clip-menu-razor-all"
+              onClick={() => {
+                onRazorAll(menu.timeMs);
+                setMenu(null);
+              }}
+            >
+              <span>Razor all</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.razorAll}</kbd>
+            </button>
+          ) : null}
+          {onLinkClips ? (
+            <button
+              type="button"
+              data-testid="clip-menu-link"
+              onClick={() => {
+                onLinkClips();
+                setMenu(null);
+              }}
+            >
+              <span>Link</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.link}</kbd>
+            </button>
+          ) : null}
+          {onUnlinkClips ? (
+            <button
+              type="button"
+              data-testid="clip-menu-unlink"
+              onClick={() => {
+                onUnlinkClips();
+                setMenu(null);
+              }}
+            >
+              <span>Unlink</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.unlink}</kbd>
+            </button>
+          ) : null}
+          {onAddClipKeyframe ? (
+            <button
+              type="button"
+              data-testid="clip-menu-keyframe"
+              onClick={() => {
+                const target = project.clips.find((c) => c.id === menu.clipId);
+                if (!target) return;
+                const localMs = Math.max(0, Math.min(target.durationMs, menu.timeMs - target.startMs));
+                onAddClipKeyframe(
+                  target.id,
+                  kindOfTrack(target.trackId) === "audio" ? "gain" : "opacity",
+                  localMs,
+                );
+                setMenu(null);
+              }}
+            >
+              <span>Add keyframe</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.keyframe}</kbd>
+            </button>
+          ) : null}
+          {onSetRate ? (
+            <>
+              <button
+                type="button"
+                data-testid="clip-menu-speed-half"
+                onClick={() => {
+                  onSetRate(0.5);
+                  setMenu(null);
+                }}
+              >
+                <span>Speed 0.5x</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.speedHalf}</kbd>
+              </button>
+              <button
+                type="button"
+                data-testid="clip-menu-speed-double"
+                onClick={() => {
+                  onSetRate(2);
+                  setMenu(null);
+                }}
+              >
+                <span>Speed 2x</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.speedDouble}</kbd>
+              </button>
+            </>
           ) : null}
           {onRippleTrimToPlayhead ? (
             <>

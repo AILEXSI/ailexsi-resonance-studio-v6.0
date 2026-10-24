@@ -6,6 +6,8 @@ import {
   clipById,
   clipEndMs,
   clipIsEnabled,
+  clipIsLocked,
+  clipOnTrackAt,
   isTrackAudible,
   kindOfTrack,
   type Clip,
@@ -13,6 +15,11 @@ import {
   type Project,
   type TrackId,
 } from "./models";
+
+/** Same-track crossfade length for the Edit menu, T, and the default command. */
+export const DEFAULT_CROSSFADE_MS = 500;
+
+const SAME_TRACK_ABUT_MS = 2;
 
 export const TRANSITION_TYPES = ["cut", "crossfade", "fadeBlack", "fadeWhite"] as const;
 export type TransitionType = (typeof TRANSITION_TYPES)[number];
@@ -737,4 +744,134 @@ export function sanitizeTransitions(raw: unknown): Transition[] {
     });
   }
   return out;
+}
+
+function enabledOnTrack(project: Project, trackId: TrackId): Clip[] {
+  return project.clips
+    .filter((c) => c.trackId === trackId && clipIsEnabled(c))
+    .sort((a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id));
+}
+
+function abuttingNext(project: Project, clip: Clip): Clip | undefined {
+  const end = clipEndMs(clip);
+  return enabledOnTrack(project, clip.trackId).find(
+    (c) => c.id !== clip.id && Math.abs(c.startMs - end) <= SAME_TRACK_ABUT_MS,
+  );
+}
+
+function abuttingPrev(project: Project, clip: Clip): Clip | undefined {
+  return enabledOnTrack(project, clip.trackId).find(
+    (c) => c.id !== clip.id && Math.abs(clipEndMs(c) - clip.startMs) <= SAME_TRACK_ABUT_MS,
+  );
+}
+
+/** Touching pair on one track. Two selected clips must be that pair. One selected clip uses its neighbor. */
+export function resolveSameTrackPair(
+  project: Project,
+  clipIds: readonly string[],
+): { left: Clip; right: Clip } | { error: string } {
+  const found = clipIds
+    .map((id) => clipById(project, id))
+    .filter((c): c is Clip => c != null && clipIsEnabled(c));
+  if (found.length === 0) return { error: "No clip selected" };
+  if (found.length >= 2) {
+    const sorted = [...found].sort((a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const left = sorted[i]!;
+      const right = sorted[i + 1]!;
+      if (left.trackId !== right.trackId) continue;
+      if (Math.abs(clipEndMs(left) - right.startMs) <= SAME_TRACK_ABUT_MS) return { left, right };
+    }
+    return { error: "Clips must touch on the same track" };
+  }
+  const one = found[0]!;
+  const next = abuttingNext(project, one);
+  if (next) return { left: one, right: next };
+  const prev = abuttingPrev(project, one);
+  if (prev) return { left: prev, right: one };
+  return { error: "No touching clip on this track" };
+}
+
+/**
+ * Overlap two touching clips on the same track and store a crossfade/dissolve.
+ * Later clips on that track, and linked mates plus later clips on their tracks,
+ * pull left by the overlap so the program shortens by the crossfade length.
+ * One returned project. Callers commit a single undo step.
+ */
+export function addSameTrackCrossfade(
+  project: Project,
+  clipIds: readonly string[],
+  durationMs = DEFAULT_CROSSFADE_MS,
+): { project: Project; error?: string } {
+  const pair = resolveSameTrackPair(project, clipIds);
+  if ("error" in pair) return { project, error: pair.error };
+  const { left, right } = pair;
+  if (clipIsLocked(left) || clipIsLocked(right)) return { project, error: "Clip is locked" };
+  const requested = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
+  const dur = Math.min(requested, Math.floor(Math.min(left.durationMs, right.durationMs) / 2));
+  if (dur < 1) return { project, error: "Crossfade does not fit" };
+
+  const pull = new Set<string>();
+  const absorbTrack = (trackId: TrackId, floorMs: number) => {
+    for (const clip of project.clips) {
+      if (clip.trackId === trackId && clip.startMs >= floorMs - SAME_TRACK_ABUT_MS) pull.add(clip.id);
+    }
+  };
+  absorbTrack(right.trackId, right.startMs);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const clip of project.clips) {
+      if (!pull.has(clip.id) || !clip.linkId) continue;
+      for (const other of project.clips) {
+        if (other.linkId !== clip.linkId || pull.has(other.id)) continue;
+        pull.add(other.id);
+        grew = true;
+        const before = pull.size;
+        absorbTrack(other.trackId, other.startMs);
+        if (pull.size !== before) grew = true;
+      }
+    }
+  }
+  pull.delete(left.id);
+  const moving = project.clips.filter((c) => pull.has(c.id));
+  if (moving.some((c) => clipIsLocked(c))) return { project, error: "Clip is locked" };
+  if (moving.some((c) => c.startMs - dur < 0)) return { project, error: "Crossfade would start before 0" };
+
+  const startMs = right.startMs - dur;
+  const existing = findTransitionForPair(project.transitions ?? [], left.id, right.id);
+  const transition: Transition = {
+    id: existing?.id ?? createId("tr"),
+    type: "crossfade",
+    startMs,
+    durationMs: dur,
+    sourceAClipId: left.id,
+    sourceBClipId: right.id,
+    audio: "crossfade",
+    audioMode: "crossfade",
+    audioDurationMs: dur,
+    source: existing?.source ?? "auto",
+  };
+  return {
+    project: {
+      ...project,
+      clips: project.clips.map((c) => (pull.has(c.id) ? { ...c, startMs: c.startMs - dur } : c)),
+      transitions: [...(project.transitions ?? []).filter((t) => t.id !== transition.id), transition],
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+/** The other same-track clip while a crossfade covers timeMs. Cross-track pairs stay on their own elements. */
+export function crossfadePartnerClip(project: Project, timeMs: number): Clip | undefined {
+  const t = transitionAt(project.transitions ?? [], timeMs);
+  if (!t || t.type !== "crossfade" || t.durationMs <= 0) return undefined;
+  const a = clipById(project, t.sourceAClipId);
+  const b = clipById(project, t.sourceBClipId);
+  if (!a || !b || !clipIsEnabled(a) || !clipIsEnabled(b)) return undefined;
+  if (a.trackId !== b.trackId) return undefined;
+  const covers = (c: Clip) => timeMs >= c.startMs && timeMs < clipEndMs(c);
+  if (!covers(a) || !covers(b)) return undefined;
+  const primary = clipOnTrackAt(project, a.trackId, timeMs);
+  return primary?.id === a.id ? b : a;
 }

@@ -14,7 +14,7 @@ export type {
 } from "./types";
 export { createVisualEngine, ensureBuiltinsRegistered, getRegisteredScene, registerScene } from "./engine";
 export type { VisualEngine } from "./engine";
-export { builtinScenes } from "./scenes";
+export { builtinScenes, ensureLexiScenes } from "./scenes";
 export {
   CLASSIC_FAMILIES,
   LEXI_FAMILIES,

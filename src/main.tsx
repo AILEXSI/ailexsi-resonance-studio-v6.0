@@ -1,10 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
-import { installExportFailDiagnostics } from "./core/exporter/export-fail-dump";
 import "./styles.css";
 
-installExportFailDiagnostics();
+void import("./core/exporter/export-fail-dump").then((mod) => {
+  mod.installExportFailDiagnostics();
+});
 
 const root = document.getElementById("root");
 if (!root) {

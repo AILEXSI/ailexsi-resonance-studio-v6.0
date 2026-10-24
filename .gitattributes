@@ -1,0 +1,10 @@
+# tauri-cli 2.11 writes src-tauri/Cargo.toml as LF when the raw text
+# differs. It does not write CRLF. A Windows checkout that is still CRLF
+# (core.autocrlf) therefore always differs and gets rewritten to LF, which
+# `git diff` can show with no content change. eol=lf keeps the checkout LF.
+# The tauri/tauri-build deps also use workspace = true so the CLI skips
+# the rewrite. The index is already LF; git add --renormalize does not
+# change the blob.
+*.toml text eol=lf
+src-tauri/tauri.conf.json text eol=lf
+src-tauri/capabilities/*.json text eol=lf

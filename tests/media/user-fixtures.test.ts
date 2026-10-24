@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,18 @@ import { placeAsset, splitClipAt } from "../../src/core/timeline";
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "../fixtures");
 const videoPath = join(fixturesDir, "user-video.mp4");
 const audioPath = join(fixturesDir, "user-audio.mp3");
+const USER_FIXTURES = existsSync(videoPath) && existsSync(audioPath);
+
+function ffprobeOnPath(): boolean {
+  try {
+    execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const FFPROBE = ffprobeOnPath();
 
 function fileFromDisk(path: string, name: string, type: string): File {
   const buf = readFileSync(path);
@@ -25,7 +37,11 @@ function ffprobeDurationMs(path: string): number {
   return Math.round(Number(out.trim()) * 1000);
 }
 
-describe("user fixtures video + mp3", () => {
+describe.skipIf(!USER_FIXTURES)(
+  USER_FIXTURES
+    ? "user fixtures video + mp3"
+    : "user fixtures skipped: tests/fixtures/user-video.mp4 or user-audio.mp3 missing",
+  () => {
   it("both files exist and classify correctly", () => {
     const video = fileFromDisk(videoPath, "user-video.mp4", "video/mp4");
     const audio = fileFromDisk(audioPath, "user-audio.mp3", "audio/mpeg");
@@ -37,7 +53,11 @@ describe("user fixtures video + mp3", () => {
     expect(readFileSync(audioPath).subarray(0, 3).toString("ascii")).toBe("ID3");
   });
 
-  it("imports video to V1 and mp3 to A1 then splits video", async () => {
+  it.skipIf(!FFPROBE)(
+    FFPROBE
+      ? "imports video to V1 and mp3 to A1 then splits video"
+      : "user fixtures skipped: ffprobe is not on PATH",
+    async () => {
     const videoFile = fileFromDisk(videoPath, "user-video.mp4", "video/mp4");
     const audioFile = fileFromDisk(audioPath, "user-audio.mp3", "audio/mpeg");
     const videoMs = ffprobeDurationMs(videoPath);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { VISUALIZER_SCENE_IDS, isVisualizerSceneId } from "../../src/core/models";
 import {
   featuresAt,
@@ -9,7 +9,7 @@ import {
   visFeaturesForExport,
   visFeaturesForPreview,
 } from "../../src/core/visualizer";
-import { builtinScenes, getRegisteredScene } from "../../src/core/visualz";
+import { builtinScenes, ensureLexiScenes, getRegisteredScene } from "../../src/core/visualz";
 import {
   lexiAccent,
   lexiAmbientExpand,
@@ -47,6 +47,10 @@ import {
 import { lexiMinimalScene } from "../../src/core/visualz/scenes/lexi-minimal";
 import type { AudioFeatures } from "../../src/core/visualz";
 import { createPixelCanvas } from "../helpers/pixel-canvas";
+
+beforeAll(async () => {
+  await ensureLexiScenes();
+});
 
 const QUIET: AudioFeatures = {
   timeMs: 800,

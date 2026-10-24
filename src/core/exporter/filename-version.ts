@@ -27,6 +27,11 @@ export interface ParsedExportFileName {
   ext: string;
 }
 
+export function wavFileName(name: string): string {
+  const base = name.replace(/\.(mp4|wav)$/i, "") || "resonance";
+  return `${base}.wav`;
+}
+
 export function sanitizeMediaExportStem(name: string): string {
   const safe = (name || "resonance").replace(/[^\w\-]+/g, "_");
   return safe || "untitled";

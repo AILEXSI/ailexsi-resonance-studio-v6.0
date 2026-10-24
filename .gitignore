@@ -4,6 +4,7 @@ dist-ssr
 *.local
 .DS_Store
 /src-tauri/target
+/src-tauri/gen/
 target/
 *.exe
 /AILEXSI Resonance Studio V5.exe

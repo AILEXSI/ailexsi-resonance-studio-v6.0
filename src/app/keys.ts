@@ -1,5 +1,7 @@
+import { DEFAULT_FADE_MS } from "../core/fades";
 import { firstClipIdWithLivingMate } from "../core/link";
 import { FRAME_MS, projectDurationMs } from "../core/models";
+import { DEFAULT_CROSSFADE_MS } from "../core/transition";
 import { isSlideBlock } from "../core/timeline";
 import { applyCommand, type EditorCommand } from "./commands";
 import { applyPlayhead, selectionOf, volumeWriteArmTarget, type Session } from "./session";
@@ -48,6 +50,7 @@ function commandFromKey(
       const clipId = firstClipIdWithLivingMate(session.project, selectionOf(session));
       return clipId ? { type: "unlinkClips", clipId } : null;
     }
+    if (letter === "l") return { type: "linkClips" };
     return null;
   }
 
@@ -70,9 +73,25 @@ function commandFromKey(
     return { type: "slip", clipId: session.selectedClipId, deltaMs };
   }
 
+  if (e.altKey && !e.shiftKey && !mod) {
+    if (e.code === "Digit1") return { type: "setSelectionRate", rate: 0.5 };
+    if (e.code === "Digit2") return { type: "setSelectionRate", rate: 1 };
+    if (e.code === "Digit3") return { type: "setSelectionRate", rate: 2 };
+  }
+  if (letter === "r") return e.shiftKey ? { type: "freezeFrame" } : { type: "toggleReverse" };
+  if (!e.altKey && letter === "v") return { type: "addKeyframe" };
+  if (letter === "b") return { type: "razorAll" };
   if (letter === "s") return { type: "split" };
   if (letter === "g") return { type: "closeGap" };
   if (letter === "q") return { type: "rippleTrimToPlayhead", edge: "in" };
+  if (e.key === "[" || e.code === "BracketLeft") return { type: "trimToPlayhead", edge: "in" };
+  if (e.key === "]" || e.code === "BracketRight") return { type: "trimToPlayhead", edge: "out" };
+  if (!e.altKey && letter === "f") {
+    return e.shiftKey
+      ? { type: "setSelectionFades", fadeOutMs: DEFAULT_FADE_MS }
+      : { type: "setSelectionFades", fadeInMs: DEFAULT_FADE_MS };
+  }
+  if (!e.altKey && letter === "t") return { type: "addCrossfade", durationMs: DEFAULT_CROSSFADE_MS };
   if (letter === "w") {
     if (e.altKey) return { type: "rippleTrimToPlayhead", edge: "out" };
     if (e.shiftKey) return null;
@@ -186,10 +205,20 @@ export function dispatchEditorKey(
     command.type === "liftRange" ||
     command.type === "extractRange" ||
     command.type === "unlinkClips" ||
+    command.type === "unlinkSelection" ||
+    command.type === "linkClips" ||
+    command.type === "razorAll" ||
     command.type === "gotoNextEdit" ||
     command.type === "gotoPrevEdit" ||
     command.type === "closeGap" ||
     command.type === "rippleTrimToPlayhead" ||
+    command.type === "trimToPlayhead" ||
+    command.type === "setSelectionFades" ||
+    command.type === "addCrossfade" ||
+    command.type === "setSelectionRate" ||
+    command.type === "toggleReverse" ||
+    command.type === "freezeFrame" ||
+    command.type === "addKeyframe" ||
     command.type === "toggleVolumeWriteArm" ||
     command.type === "selectAll" ||
     command.type === "selectAllOnTrack";

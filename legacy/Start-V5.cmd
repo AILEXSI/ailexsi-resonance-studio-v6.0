@@ -2,10 +2,11 @@
 setlocal
 title AILEXSI Resonance Studio V6.0
 rem Startdatei for Resonance Studio V6.0. Prefer INSTALL_BUILD_RUN_V6.0.cmd.
-cd /d "%~dp0"
+set "ROOT=%~dp0.."
+cd /d "%ROOT%"
 
-if not exist "%~dp0package.json" (
-  echo Fehler: package.json fehlt. Start-V5.cmd muss im V5.5-Repo-Wurzelordner liegen.
+if not exist "%ROOT%\package.json" (
+  echo Fehler: package.json fehlt. Start-V5.cmd liegt in legacy und startet das Repo eine Ebene darueber.
   echo Nicht in ResonanceStudio V4 starten.
   pause
   exit /b 1
@@ -28,7 +29,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-v5.5.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\run-v5.5.ps1"
 set "ERR=%ERRORLEVEL%"
 if "%ERR%"=="10" (
   echo Bereit: http://127.0.0.1:1421

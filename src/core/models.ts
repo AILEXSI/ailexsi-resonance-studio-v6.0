@@ -32,6 +32,8 @@ export interface VisualizerEvent {
   sceneId: VisualizerSceneId;
   startMs: number;
   durationMs: number;
+  /** Clip-local opacity. Missing = fully opaque. */
+  opacityKeys?: VolumeAutomation;
 }
 
 /** In-song mode change. Last cue with startMs <= t wins until the next cue. */
@@ -171,8 +173,16 @@ export interface Clip {
   fadeInMs: number;
   /** Linear fade-out length. 0 = none. */
   fadeOutMs: number;
-  /** Playback rate. 1 = unity. Source window stays; durationMs = (sourceOut−sourceIn) / rate. */
+  /** Playback rate. 1 = unity. Source window stays; durationMs = (sourceOut-sourceIn) / rate. */
   rate: number;
+  /** Play the source window backward. Missing = forward. */
+  reversed?: boolean;
+  /** When set, every output frame samples this source time (freeze). Missing = normal playback. */
+  holdSourceMs?: number;
+  /** Clip-local volume keys. Missing or empty = the static gain. */
+  gainKeys?: VolumeAutomation;
+  /** Clip-local opacity keys. Missing or empty = the fade only. */
+  opacityKeys?: VolumeAutomation;
   /** Shared id for a linked A/V pair. Missing = unlinked (legacy). */
   linkId?: string;
   /** False = skip picture and mix. Missing = enabled. */
@@ -488,7 +498,20 @@ export function projectHasMixAudio(project: Project): boolean {
   });
 }
 
-export function sourceTimeAt(clip: Clip, timelineMs: number): number {
+export function sourceTimeAt(
+  clip: {
+    startMs: number;
+    sourceInMs: number;
+    sourceOutMs: number;
+    rate?: number;
+    reversed?: boolean;
+    holdSourceMs?: number;
+  },
+  timelineMs: number,
+): number {
+  if (clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs)) return clip.holdSourceMs;
   const offset = Math.max(0, timelineMs - clip.startMs);
-  return clip.sourceInMs + offset * clipRateOf(clip);
+  const rate = clipRateOf(clip);
+  if (clip.reversed) return clip.sourceOutMs - offset * rate;
+  return clip.sourceInMs + offset * rate;
 }

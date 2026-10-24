@@ -32,6 +32,7 @@ import { clearMediaCache, isPlayableSource } from "./media";
 import { clearStillCache, paintStillUrl } from "../still";
 import { mp4HasAudioTrack, muxAvcToMp4, type AvcSample } from "./mp4";
 import type { ExportClip, ExportHooks, ExportJob, ExportResult } from "./types";
+import { visOpacityAt } from "../clip-keys";
 import { videoAlphaAtClipTime } from "../fades";
 import {
   compositeVideoAt,
@@ -132,6 +133,50 @@ function paintTransitionPlate(
   ctx.globalAlpha = prev;
 }
 
+function exportClipById(job: ExportJob, clipId: string): ExportClip | undefined {
+  return job.tracks.flatMap((track) => track.clips).find((clip) => clip.id === clipId);
+}
+
+/** Paint crossfade/dissolve layers other than the run's primary clip. Frame engine stays the timestamp source. */
+async function paintOtherLayers(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  job: ExportJob,
+  timeMs: number,
+  primaryId: string,
+  place: "behind" | "front",
+  signal?: AbortSignal,
+): Promise<void> {
+  const layers = jobComposite(job, timeMs).layers;
+  const index = layers.findIndex((layer) => layer.clipId === primaryId);
+  const chosen =
+    place === "behind"
+      ? layers.slice(0, index < 0 ? 0 : index)
+      : layers.slice(index < 0 ? 0 : index + 1);
+  for (const layer of chosen) {
+    if (layer.alpha <= 0.001 || layer.clipId === primaryId) continue;
+    const clip = exportClipById(job, layer.clipId);
+    if (!clip || timeMs < clip.startMs || timeMs >= clip.endMs) continue;
+    if (clip.still) {
+      await paintStillUrl(ctx, canvas, clip.sourceUrl, exportPaintAlpha(job, clip, timeMs));
+      continue;
+    }
+    if (!isPlayableSource(clip.sourceUrl) || clip.missing) continue;
+    const decoded = await getDecoder(clip.sourceUrl, signal);
+    const frames = decoded.samplesAtTimestamps([sourceTimeSec(clip, timeMs, job.fps)], signal);
+    const step = await frames[Symbol.asyncIterator]().next();
+    const sample = step.value;
+    if (!sample) continue;
+    try {
+      withVideoClipAlpha(ctx, job, clip, timeMs, () => {
+        sample.drawWithFit(ctx, { fit: "contain" });
+      });
+    } finally {
+      sample.close();
+    }
+  }
+}
+
 function beginExportFrame(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -163,11 +208,19 @@ function paintVisualizer(
       ? job.visualizer.sceneId
       : undefined;
   if (!sceneId) return;
+  const opacity = covering ? visOpacityAt(covering, timeMs) : 1;
+  if (opacity <= 0) return;
+  const prevAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = prevAlpha * opacity;
   const features = visFeaturesForExport(timeMs, job.durationMs, mix, {
     timelineOriginMs: job.startMs,
     extractor: session ?? undefined,
   });
-  renderVisualizerScene(ctx, job.width, job.height, sceneId, features, dt);
+  try {
+    renderVisualizerScene(ctx, job.width, job.height, sceneId, features, dt);
+  } finally {
+    ctx.globalAlpha = prevAlpha;
+  }
 }
 
 export type FrameRun = {
@@ -244,6 +297,7 @@ function exportClipVideoAlpha(clip: ExportClip, timeMs: number): number {
       fadeOutMs: clip.fadeOutMs,
       fadeInFrom: clip.fadeInFrom,
       fadeOutTo: clip.fadeOutTo,
+      opacityKeys: clip.opacityKeys,
     },
     exportClipLocalMs(clip, timeMs),
   );
@@ -566,11 +620,13 @@ export async function exportWithWebCodecs(
           });
           const timeMs = (i / job.fps) * 1000;
           beginExportFrame(ctx, width, height, job, timeMs);
+          await paintOtherLayers(ctx, canvas, job, timeMs, clip.id, "behind", hooks.signal);
           if (await paintStillUrl(ctx, canvas, clip.sourceUrl, exportPaintAlpha(job, clip, timeMs))) {
             painted += 1;
           } else {
             paintFallback(i);
           }
+          await paintOtherLayers(ctx, canvas, job, timeMs, clip.id, "front", hooks.signal);
           await encodeCanvas(i);
           noteEncoded(i, false);
         }
@@ -685,6 +741,7 @@ export async function exportWithWebCodecs(
           const loop0 = afePerfEnabled() ? performance.now() : 0;
           beginExportFrame(ctx, width, height, job, timeMs);
           if (loop0) afePerfAdd("exportLoopOverhead", performance.now() - loop0);
+          await paintOtherLayers(ctx, canvas, job, timeMs, clip.id, "behind", hooks.signal);
           if (!sample) {
             const dump =
               decoded.stallSnapshot({
@@ -706,6 +763,7 @@ export async function exportWithWebCodecs(
             sample.drawWithFit(ctx, { fit: "contain" });
           });
           sample.close();
+          await paintOtherLayers(ctx, canvas, job, timeMs, clip.id, "front", hooks.signal);
           painted += 1;
           await encodeCanvas(i);
           noteEncoded(i, true);

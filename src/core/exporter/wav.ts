@@ -1,5 +1,8 @@
 import { mixJobAudio, type AacProbe } from "./audio";
+import { wavFileName } from "./filename-version";
 import type { ExportHooks, ExportJob, ExportResult } from "./types";
+
+export { wavFileName };
 
 /** Mix layout for WAV — same PCM mix as AAC/VIS, no AAC encoder. */
 export const WAV_MIX_LAYOUT: AacProbe = {
@@ -24,11 +27,6 @@ function fail(job: ExportJob, error: string, aborted = false): ExportResult {
     durationMs: job.durationMs,
     fileSizeBytes: 0,
   };
-}
-
-export function wavFileName(name: string): string {
-  const base = name.replace(/\.(mp4|wav)$/i, "") || "resonance";
-  return `${base}.wav`;
 }
 
 function clampSample(s: number): number {
