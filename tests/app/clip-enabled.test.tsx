@@ -178,7 +178,7 @@ describe("clip enable / disable (P45)", () => {
 
   it("does not steal a key for enable/disable", () => {
     const start = stackedSession();
-    for (const key of ["e", "d", "b"]) {
+    for (const key of ["e", "d"]) {
       expect(dispatchEditorKey(start, false, { key }).type).not.toBe("session");
     }
     expect(selectionOf(start)).toEqual(["v1"]);

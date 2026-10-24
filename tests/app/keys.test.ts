@@ -28,11 +28,12 @@ describe("editor keys", () => {
     expect(next.status).toBe("Split at playhead");
   });
 
-  it("bare V does not split", () => {
+  it("bare V adds a keyframe and does not split", () => {
     const start = clipSession();
-    const action = dispatchEditorKey(start, false, { key: "v" });
-    expect(action.type).toBe("none");
-    expect(start.project.clips).toHaveLength(1);
+    const next = sessionOf(dispatchEditorKey(start, false, { key: "v" }));
+    expect(next.project.clips).toHaveLength(1);
+    expect(next.project.clips[0]?.gainKeys?.points).toEqual([{ timeMs: 1000, value: 1 }]);
+    expect(next.history.past).toHaveLength(1);
   });
 
   it("Ctrl+V pastes and does not split", () => {
@@ -424,7 +425,7 @@ describe("editor keys", () => {
     expect(shiftDel.status).toBe("Extracted range");
   });
 
-  it("Ctrl+Shift+L unlinks a living pair; Ctrl+L and bare L stay unused / shuttle", () => {
+  it("Ctrl+Shift+L unlinks a living pair; Ctrl+L links video and audio; bare L shuttles", () => {
     const va = asset({ id: "va", kind: "video", durationMs: 2000, hasAudio: true });
     const start: Session = {
       ...createSession(createMemoryBlobStore()),
@@ -468,8 +469,24 @@ describe("editor keys", () => {
     expect(viaMeta.status).toBe("Unlinked clips");
     expect(viaMeta.project.clips.every((c) => !c.linkId)).toBe(true);
 
-    const ctrlL = dispatchEditorKey(start, false, { key: "l", ctrlKey: true });
-    expect(ctrlL.type).toBe("none");
+    const onlyVideo = sessionOf(dispatchEditorKey(start, false, { key: "l", ctrlKey: true }));
+    expect(onlyVideo.error).toBe("Select one video clip and one audio clip");
+    expect(onlyVideo.history.past).toHaveLength(0);
+    expect(onlyVideo.project.clips.every((c) => c.linkId === "lnk1")).toBe(true);
+
+    const unlinkedPair: Session = {
+      ...start,
+      selectedClipIds: ["v1", "a1"],
+      project: {
+        ...start.project,
+        clips: start.project.clips.map((c) => ({ ...c, linkId: undefined })),
+      },
+    };
+    const linked = sessionOf(dispatchEditorKey(unlinkedPair, false, { key: "l", ctrlKey: true }));
+    expect(linked.status).toBe("Linked clips");
+    expect(linked.history.past).toHaveLength(1);
+    expect(linked.project.clips[0]?.linkId).toBeTruthy();
+    expect(linked.project.clips[0]?.linkId).toBe(linked.project.clips[1]?.linkId);
 
     const shuttle = sessionOf(dispatchEditorKey(start, false, { key: "l" }));
     expect(shuttle.shuttleRate).toBe(1);
