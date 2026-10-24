@@ -663,12 +663,56 @@ fn status_of_load(load: WhisperLoad) -> WhisperStatus {
     }
 }
 
+const EXE_REJECT: &str = "Choose a whisper.cpp executable (.exe), such as whisper-cli.exe or main.exe. Nothing was saved.";
+const MODEL_REJECT: &str = "Choose a ggml model (.bin or .gguf). Nothing was saved.";
+const MEDIA_REJECT: &str = "Choose the whisper.cpp program, not a media or model file. Nothing was saved.";
+
+fn file_extension(path: &str) -> String {
+    let name = path.trim().rsplit(['/', '\\']).next().unwrap_or("");
+    match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => ext.to_ascii_lowercase(),
+        _ => String::new(),
+    }
+}
+
+/// Dialog filter. Windows executables are `.exe` only. Models are `.bin` or `.gguf` everywhere.
+fn whisper_dialog_filter(which: &str, windows: bool) -> Option<(&'static str, &'static [&'static str])> {
+    if which == "model" {
+        return Some(("ggml model", &["bin", "gguf"]));
+    }
+    if which == "executable" && windows {
+        return Some(("whisper.cpp executable", &["exe"]));
+    }
+    None
+}
+
+fn whisper_file_rejection(which: &str, path: &str, windows: bool) -> Option<&'static str> {
+    let ext = file_extension(path);
+    if which == "executable" {
+        if windows {
+            return if ext == "exe" { None } else { Some(EXE_REJECT) };
+        }
+        let media = matches!(
+            ext.as_str(),
+            "mp4" | "mov" | "webm" | "mkv" | "m4v" | "wav" | "mp3" | "m4a" | "aac" | "flac" | "ogg" | "png"
+                | "jpg" | "jpeg" | "gif" | "webp" | "bin" | "gguf" | "json" | "txt" | "zip"
+        );
+        return if media { Some(MEDIA_REJECT) } else { None };
+    }
+    if ext == "bin" || ext == "gguf" {
+        None
+    } else {
+        Some(MODEL_REJECT)
+    }
+}
+
 fn pick_whisper_file(app: &tauri::AppHandle, which: &str, title: &str) -> Result<WhisperStatus, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = app
-        .dialog()
-        .file()
-        .set_title(title)
+    let mut dialog = app.dialog().file().set_title(title);
+    if let Some((name, extensions)) = whisper_dialog_filter(which, cfg!(windows)) {
+        dialog = dialog.add_filter(name, extensions);
+    }
+    let picked = dialog
         .blocking_pick_file()
         .ok_or_else(|| "No file was chosen. Nothing was saved.".to_string())?;
     let path = picked
@@ -677,11 +721,14 @@ fn pick_whisper_file(app: &tauri::AppHandle, which: &str, title: &str) -> Result
     if !path.is_file() {
         return Err("The chosen file was not found. Nothing was saved.".into());
     }
+    let text = path.to_string_lossy().into_owned();
+    if let Some(message) = whisper_file_rejection(which, &text, cfg!(windows)) {
+        return Err(message.to_string());
+    }
     let mut settings = match load_whisper(app)? {
         WhisperLoad::Ready(settings) => settings,
         WhisperLoad::Empty | WhisperLoad::Broken => WhisperSettings::default(),
     };
-    let text = path.to_string_lossy().into_owned();
     if which == "executable" {
         settings.executable = text;
     } else {
@@ -735,6 +782,12 @@ fn lyrics_whisper_align(app: tauri::AppHandle, audio_path: String) -> Result<Str
     }
     if !std::path::Path::new(&audio).is_file() {
         return Err("Audio file was not found. Nothing was sent.".into());
+    }
+    if let Some(message) = whisper_file_rejection("executable", &executable, cfg!(windows)) {
+        return Err(message.to_string());
+    }
+    if let Some(message) = whisper_file_rejection("model", &model, cfg!(windows)) {
+        return Err(message.to_string());
     }
     let dir = std::env::temp_dir().join(format!("ailexsi-whisper-{}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|_| {
@@ -1085,5 +1138,33 @@ mod whisper_seal_tests {
         assert!(!path_is_whisper_store("/home/user/.local/share/studio/last-project.json", root));
         assert!(!path_is_whisper_store("/home/user/Music/song.wav", root));
         assert!(!path_is_whisper_store("/home/user/.local/share/studio-extra/whisper-cpp.json", root));
+    }
+
+    #[test]
+    fn windows_dialogs_accept_only_exe_and_ggml_models() {
+        use super::{whisper_dialog_filter, whisper_file_rejection};
+        assert_eq!(
+            whisper_dialog_filter("executable", true),
+            Some(("whisper.cpp executable", &["exe"][..]))
+        );
+        assert_eq!(whisper_dialog_filter("model", true), Some(("ggml model", &["bin", "gguf"][..])));
+        assert_eq!(whisper_dialog_filter("model", false), Some(("ggml model", &["bin", "gguf"][..])));
+        assert!(whisper_dialog_filter("executable", false).is_none());
+        let video = whisper_file_rejection("executable", r"C:\Clips\song.mp4", true).unwrap();
+        assert!(video.contains(".exe"));
+        assert!(video.contains("whisper-cli"));
+        assert!(video.contains("Nothing was saved"));
+        assert!(!video.contains("song.mp4"));
+        assert!(whisper_file_rejection("executable", r"C:\Tools\whisper-cli.exe", true).is_none());
+        assert!(whisper_file_rejection("executable", r"C:\Tools\main.EXE", true).is_none());
+        let model = whisper_file_rejection("model", r"D:\media\clip.mp4", true).unwrap();
+        assert!(model.contains(".bin"));
+        assert!(model.contains(".gguf"));
+        assert!(model.contains("Nothing was saved"));
+        assert!(whisper_file_rejection("model", r"D:\models\ggml-base.bin", true).is_none());
+        assert!(whisper_file_rejection("model", "/opt/models/ggml-base.gguf", false).is_none());
+        let linux_video = whisper_file_rejection("executable", "/home/me/song.mp4", false).unwrap();
+        assert!(linux_video.contains("not a media"));
+        assert!(whisper_file_rejection("executable", "/opt/whisper/main", false).is_none());
     }
 }

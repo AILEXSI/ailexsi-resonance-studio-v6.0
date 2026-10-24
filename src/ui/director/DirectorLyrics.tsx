@@ -41,7 +41,7 @@ export function DirectorLyrics({
       <textarea
         data-testid="lyric-text"
         aria-label="Lyrics"
-        rows={5}
+        rows={4}
         value={text}
         disabled={busy}
         onChange={(event) => onText(event.target.value)}
@@ -54,7 +54,9 @@ export function DirectorLyrics({
           Align with whisper.cpp
         </button>
       </div>
-      <p data-testid="lyric-status">{status}</p>
+      <p className="director-note" data-testid="lyric-status">
+        {status}
+      </p>
       <div className="director-card-actions">
         <button
           type="button"
@@ -68,10 +70,26 @@ export function DirectorLyrics({
           Choose model
         </button>
       </div>
-      <p data-testid="whisper-status">
+      <p className="director-note" data-testid="whisper-status">
         {desktop
           ? `Executable: ${executableLabel}. Model: ${modelLabel}.`
           : "Choose the executable and model in the desktop app. This page cannot pass a path."}
+      </p>
+      {whisper.configured ? null : (
+        <p className="director-note" data-testid="whisper-not-configured">
+          whisper.cpp is not configured. Choose the executable and the model before aligning. Nothing is sent until then.
+        </p>
+      )}
+      <p className="director-note" data-testid="whisper-download-hint">
+        Get{" "}
+        <a href="https://github.com/ggml-org/whisper.cpp" target="_blank" rel="noreferrer">
+          whisper.cpp
+        </a>{" "}
+        (whisper-cli or main) and a ggml model (.bin or .gguf) from{" "}
+        <a href="https://huggingface.co/ggerganov/whisper.cpp" target="_blank" rel="noreferrer">
+          Hugging Face
+        </a>
+        .
       </p>
     </div>
   );

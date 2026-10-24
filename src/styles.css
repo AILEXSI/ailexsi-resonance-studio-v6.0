@@ -410,12 +410,59 @@ input[type="range"] { accent-color: var(--accent-2); }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 140px;
-  overflow: auto;
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
   font-size: 12px;
 }
 .director-log p {
   margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  overflow: visible;
+}
+.director-proposals {
+  flex: 0 0 auto;
+}
+.director-lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+.director-lyrics h3 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+.director-lyrics textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5em;
+  font: inherit;
+  color: var(--text);
+  background: #141a24;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+.director-lyrics button {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  line-height: 1.4;
+}
+.director-lyrics .director-card-actions {
+  flex-wrap: wrap;
+}
+.director-lyrics a {
+  color: var(--accent-2);
 }
 .director-role {
   display: inline-block;
