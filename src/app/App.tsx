@@ -71,6 +71,7 @@ import { ProjectFilePanel } from "../ui/project-file/ProjectFilePanel";
 import { Toolbar } from "../ui/toolbar/Toolbar";
 import { ShortcutsOverlay } from "../ui/shortcuts/ShortcutsOverlay";
 import { DirectorController } from "../ui/director/DirectorController";
+import { DirectorMasterVolume } from "../ui/mixer/DirectorMasterVolume";
 import { readAiDirectorEnabled, writeAiDirectorEnabled } from "./ai/flag";
 import { ExportDialog } from "../ui/export/ExportDialog";
 import {
@@ -135,6 +136,7 @@ import {
   PREVIEW_H_MIN_PX,
   PREVIEW_MIN_PX,
   SPLITTER_PX,
+  applyDirectorSplitPointer,
   applyHSplitPointer,
   applyMixerWidthPointer,
   applySplitPointer,
@@ -142,6 +144,8 @@ import {
   browserLayoutStorage,
   clampHSplitRatio,
   loadCollapsedGroupIds,
+  loadDirectorExpanded,
+  loadDirectorSplitRatio,
   loadOpenVolumeLaneIds,
   loadHSplitRatio,
   loadInspectorCollapsed,
@@ -153,6 +157,8 @@ import {
   loadSplitRatio,
   loadTimelineFocus,
   saveCollapsedGroupIds,
+  saveDirectorExpanded,
+  saveDirectorSplitRatio,
   saveOpenVolumeLaneIds,
   saveHSplitRatio,
   saveInspectorCollapsed,
@@ -196,6 +202,12 @@ export function App() {
   const shortcutsOpenRef = useRef(false);
   shortcutsOpenRef.current = shortcutsOpen;
   const layoutStore = browserLayoutStorage();
+  const [directorExpanded, setDirectorExpanded] = useState(() => loadDirectorExpanded(layoutStore));
+  const [directorSplitRatio, setDirectorSplitRatio] = useState(() => loadDirectorSplitRatio(layoutStore));
+  const directorSplitRatioRef = useRef(directorSplitRatio);
+  directorSplitRatioRef.current = directorSplitRatio;
+  const directorSplitDragRef = useRef(false);
+  const inspectorBodyRef = useRef<HTMLDivElement>(null);
   const [mixerCollapsed, setMixerCollapsed] = useState(() => loadMixerCollapsed(layoutStore));
   const [inspectorCollapsed, setInspectorCollapsed] = useState(() => loadInspectorCollapsed(layoutStore));
   const [collapsedGroupIds, setCollapsedGroupIds] = useState(() => loadCollapsedGroupIds(layoutStore));
@@ -1312,6 +1324,47 @@ export function App() {
     setHSplitRatio(next.ratio);
   };
 
+  const applyDirectorSplitFromEvent = (clientY: number) => {
+    const stack = inspectorBodyRef.current;
+    if (!stack) return;
+    const rect = stack.getBoundingClientRect();
+    const next = applyDirectorSplitPointer({
+      clientY,
+      stackTop: rect.top,
+      stackHeight: rect.height,
+    });
+    directorSplitRatioRef.current = next.ratio;
+    setDirectorSplitRatio(next.ratio);
+    saveDirectorSplitRatio(layoutStore, next.ratio);
+  };
+
+  const onDirectorSplitPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    directorSplitDragRef.current = true;
+    applyDirectorSplitFromEvent(e.clientY);
+    const move = (ev: PointerEvent) => {
+      if (!directorSplitDragRef.current) return;
+      applyDirectorSplitFromEvent(ev.clientY);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      directorSplitDragRef.current = false;
+      saveDirectorSplitRatio(layoutStore, directorSplitRatioRef.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const toggleDirectorExpanded = () => {
+    setDirectorExpanded((expanded) => {
+      const next = !expanded;
+      saveDirectorExpanded(layoutStore, next);
+      return next;
+    });
+  };
+
   const onHSplitPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -1419,6 +1472,32 @@ export function App() {
       error: null,
     }));
   };
+
+  const inspectorPane = (
+    <Inspector
+      project={session.project}
+      selectedClipId={session.selectedClipId}
+      selectedClipIds={session.selectedClipIds}
+      selectedMarkerId={session.selectedMarkerId}
+      selectedVis={session.selectedVis}
+      selectedVisEventId={session.selectedVisEventId}
+      onChange={(clipId, patch) => setSession(applyUpdateClip(session, clipId, patch))}
+      onSetEnabled={(enabled) => runCommand({ type: "setClipsEnabled", enabled })}
+      onSetLocked={(locked) => runCommand({ type: "setClipsLocked", locked })}
+      onFades={(clipId, fadeInMs, fadeOutMs) =>
+        setSession(applyCommand(session, { type: "setClipFades", clipId, fadeInMs, fadeOutMs }))
+      }
+      onRate={(clipId, rate) => setSession(applyCommand(session, { type: "setClipRate", clipId, rate }))}
+      onUnlink={(clipId) => setSession(applyCommand(session, { type: "unlinkClips", clipId }))}
+      onRelink={() => void runRelink()}
+      onRenameMarker={(markerId, label) =>
+        setSession(applyCommand(session, { type: "renameMarker", markerId, label }))
+      }
+      onTransition={(cmd) => setSession(applyCommand(session, cmd))}
+      onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
+    />
+  );
+  const directorMasterOnly = directorOn && directorExpanded && !inspectorCollapsed;
 
   return (
     <div className="app" data-testid="app">
@@ -1598,33 +1677,53 @@ export function App() {
             )}
           </div>
           {inspectorCollapsed ? null : (
-            <div id="inspector-body" className="inspector-body">
-              <Inspector
-                project={session.project}
-                selectedClipId={session.selectedClipId}
-                selectedClipIds={session.selectedClipIds}
-                selectedMarkerId={session.selectedMarkerId}
-                selectedVis={session.selectedVis}
-                selectedVisEventId={session.selectedVisEventId}
-                onChange={(clipId, patch) => setSession(applyUpdateClip(session, clipId, patch))}
-                onSetEnabled={(enabled) => runCommand({ type: "setClipsEnabled", enabled })}
-                onSetLocked={(locked) => runCommand({ type: "setClipsLocked", locked })}
-                onFades={(clipId, fadeInMs, fadeOutMs) =>
-                  setSession(applyCommand(session, { type: "setClipFades", clipId, fadeInMs, fadeOutMs }))
-                }
-                onRate={(clipId, rate) =>
-                  setSession(applyCommand(session, { type: "setClipRate", clipId, rate }))
-                }
-                onUnlink={(clipId) => setSession(applyCommand(session, { type: "unlinkClips", clipId }))}
-                onRelink={() => void runRelink()}
-                onRenameMarker={(markerId, label) =>
-                  setSession(applyCommand(session, { type: "renameMarker", markerId, label }))
-                }
-                onTransition={(cmd) => setSession(applyCommand(session, cmd))}
-                onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
-              />
+            <div
+              id="inspector-body"
+              className="inspector-body"
+              ref={inspectorBodyRef}
+              data-director={directorOn ? (directorExpanded ? "expanded" : "docked") : "off"}
+              data-director-split={directorSplitRatio}
+            >
+              {directorOn && directorExpanded ? null : directorOn ? (
+                <div
+                  className="inspector-slot"
+                  style={{ flex: `${directorSplitRatio} 1 0px`, minHeight: 0 }}
+                >
+                  {inspectorPane}
+                </div>
+              ) : (
+                inspectorPane
+              )}
+              {directorOn && !directorExpanded ? (
+                <div
+                  className="layout-split director-split"
+                  data-testid="ai-director-split"
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="Inspector and AI Director"
+                  title="Inspector / AI Director"
+                  style={{ cursor: "ns-resize" }}
+                  onPointerDown={onDirectorSplitPointerDown}
+                >
+                  <span className="layout-split-grip" data-testid="ai-director-split-grip" aria-hidden="true" />
+                </div>
+              ) : null}
               {directorOn ? (
-                <DirectorController session={session} applySession={applySession} />
+                <div
+                  className="director-slot"
+                  style={
+                    directorExpanded
+                      ? { flex: "1 1 auto" }
+                      : { flex: `${1 - directorSplitRatio} 1 0px`, minHeight: 0 }
+                  }
+                >
+                  <DirectorController
+                    session={session}
+                    applySession={applySession}
+                    expanded={directorExpanded}
+                    onToggleExpanded={toggleDirectorExpanded}
+                  />
+                </div>
               ) : null}
             </div>
           )}
@@ -1697,18 +1796,21 @@ export function App() {
         />
       ) : null}
       <div
-        className={`arrange-row${mixerCollapsed ? " mixer-collapsed" : ""}`}
+        className={`arrange-row${directorMasterOnly ? " director-master-only" : mixerCollapsed ? " mixer-collapsed" : ""}`}
         data-testid="arrange-row"
         data-mixer-width={mixerWidthPx}
+        data-director-expanded={directorMasterOnly ? "true" : "false"}
         ref={arrangeRowRef}
         style={{
           overflow: "hidden",
           ["--mixer-width" as string]: `${mixerWidthPx}px`,
-          ...(mixerCollapsed
-            ? {}
-            : {
-                gridTemplateColumns: `minmax(${TIMELINE_MIN_PX}px, 1fr) ${mixerWidthPx}px`,
-              }),
+          ...(directorMasterOnly
+            ? { gridTemplateColumns: `minmax(${TIMELINE_MIN_PX}px, 1fr) 72px` }
+            : mixerCollapsed
+              ? {}
+              : {
+                  gridTemplateColumns: `minmax(${TIMELINE_MIN_PX}px, 1fr) ${mixerWidthPx}px`,
+                }),
         }}
       >
       <Timeline
@@ -1842,33 +1944,40 @@ export function App() {
         onLoopMoveLive={onLoopMoveLive}
         onLoopCommit={onLoopCommit}
       />
-      <Mixer
-        project={session.project}
-        selectedTrackId={session.targetTrackId}
-        selectedTrackIds={session.selectedTrackIds}
-        peaks={mixPeaks}
-        collapsed={mixerCollapsed}
-        onToggleCollapsed={toggleMixerCollapsed}
-        onResizePointerDown={onMixerResizePointerDown}
-        onSelectTrack={(id, opts) => setSession((s) => applySelectTracks(s, id, opts))}
-        onVolume={(id, v) => setSession((s) => applyMixerVolume(s, id, v))}
-        onPan={(id, pan) => setSession(applyCommand(session, { type: "setTrackPan", trackId: id, pan }))}
-        onMasterVolume={(v) => setSession(applyMasterVolume(session, v))}
-        onToggleMute={(id) => runCommand({ type: "toggleMute", trackId: id })}
-        onToggleSolo={(id) => runCommand({ type: "toggleSolo", trackId: id })}
-        collapsedGroupIds={collapsedGroupIds}
-        onToggleGroupCollapsed={toggleGroupCollapsed}
-        playing={session.playing}
-        volumeWriteArmedIds={session.volumeWriteArmedIds}
-        volumeWriteTrackId={session.volumeWriteGesture?.trackId ?? null}
-        volumeWriteValue={session.volumeWriteGesture?.liveValue ?? null}
-        onToggleVolumeWriteArm={(id) => runCommand({ type: "toggleVolumeWriteArm", trackId: id })}
-        onVolumeWritePointerUp={() => {
-          window.setTimeout(() => {
-            setSession((s) => applyCommitVolumeWriteIfIdle(s, Date.now(), WRITE_POINTER_UP_MS));
-          }, WRITE_POINTER_UP_MS);
-        }}
-      />
+      {directorMasterOnly ? (
+        <DirectorMasterVolume
+          volume={session.project.masterVolume}
+          onVolume={(v) => setSession(applyMasterVolume(session, v))}
+        />
+      ) : (
+        <Mixer
+          project={session.project}
+          selectedTrackId={session.targetTrackId}
+          selectedTrackIds={session.selectedTrackIds}
+          peaks={mixPeaks}
+          collapsed={mixerCollapsed}
+          onToggleCollapsed={toggleMixerCollapsed}
+          onResizePointerDown={onMixerResizePointerDown}
+          onSelectTrack={(id, opts) => setSession((s) => applySelectTracks(s, id, opts))}
+          onVolume={(id, v) => setSession((s) => applyMixerVolume(s, id, v))}
+          onPan={(id, pan) => setSession(applyCommand(session, { type: "setTrackPan", trackId: id, pan }))}
+          onMasterVolume={(v) => setSession(applyMasterVolume(session, v))}
+          onToggleMute={(id) => runCommand({ type: "toggleMute", trackId: id })}
+          onToggleSolo={(id) => runCommand({ type: "toggleSolo", trackId: id })}
+          collapsedGroupIds={collapsedGroupIds}
+          onToggleGroupCollapsed={toggleGroupCollapsed}
+          playing={session.playing}
+          volumeWriteArmedIds={session.volumeWriteArmedIds}
+          volumeWriteTrackId={session.volumeWriteGesture?.trackId ?? null}
+          volumeWriteValue={session.volumeWriteGesture?.liveValue ?? null}
+          onToggleVolumeWriteArm={(id) => runCommand({ type: "toggleVolumeWriteArm", trackId: id })}
+          onVolumeWritePointerUp={() => {
+            window.setTimeout(() => {
+              setSession((s) => applyCommitVolumeWriteIfIdle(s, Date.now(), WRITE_POINTER_UP_MS));
+            }, WRITE_POINTER_UP_MS);
+          }}
+        />
+      )}
       </div>
       </div>
       </div>

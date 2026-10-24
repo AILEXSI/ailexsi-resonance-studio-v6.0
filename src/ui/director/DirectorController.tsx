@@ -20,6 +20,9 @@ interface Props {
   applySession: (update: (session: Session) => Session) => void;
   /** Optional proposal delivered by a host. The panel does not invent one. */
   offer?: AITransaction | null;
+  /** Layout lives in the app shell. The controller does not persist it. */
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 function cardOf(txn: AITransaction): DirectorProposalCard {
@@ -41,7 +44,7 @@ function storageOrNull(): Storage | null {
  * Director host. Send is the only path that talks to a provider.
  * Accept calls the existing command path. Reject does not.
  */
-export function DirectorController({ session, applySession, offer }: Props) {
+export function DirectorController({ session, applySession, offer, expanded, onToggleExpanded }: Props) {
   const [lines, setLines] = useState<DirectorLine[]>(() => [
     { id: createId("aimsg"), role: "system", text: SHELL_NOTICE },
   ]);
@@ -162,6 +165,8 @@ export function DirectorController({ session, applySession, offer }: Props) {
       proposals={transactions.map(cardOf)}
       onAccept={onAccept}
       onReject={onReject}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
       extra={
         <DirectorSettings
           prefs={prefs}

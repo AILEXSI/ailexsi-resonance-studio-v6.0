@@ -68,6 +68,17 @@ import {
   saveMixerCollapsed,
   saveMixerWidth,
   saveSplitRatio,
+  DEFAULT_DIRECTOR_SPLIT_RATIO,
+  DIRECTOR_EXPANDED_KEY,
+  DIRECTOR_INSPECTOR_MIN_PX,
+  DIRECTOR_PANEL_MIN_PX,
+  DIRECTOR_SPLIT_KEY,
+  applyDirectorSplitPointer,
+  clampDirectorSplitRatio,
+  loadDirectorExpanded,
+  loadDirectorSplitRatio,
+  saveDirectorExpanded,
+  saveDirectorSplitRatio,
 } from "../../src/core/layout-prefs";
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -286,6 +297,28 @@ describe("layout prefs", () => {
     expect(store.map.get(NORMAL_SPLIT_RATIO_KEY)).toBe("0.61");
     expect(loadNormalSplitRatio(store)).toBeCloseTo(0.61, 5);
     expect(loadNormalSplitRatio(memoryStorage())).toBe(DEFAULT_SPLIT_RATIO);
+  });
+
+  it("persists AI Director expanded state as a workspace pref (default docked)", () => {
+    const store = memoryStorage();
+    expect(loadDirectorExpanded(store)).toBe(false);
+    expect(loadDirectorExpanded(null)).toBe(false);
+    saveDirectorExpanded(store, true);
+    expect(store.map.get(DIRECTOR_EXPANDED_KEY)).toBe("1");
+    expect(loadDirectorExpanded(store)).toBe(true);
+    saveDirectorExpanded(store, false);
+    expect(store.map.get(DIRECTOR_EXPANDED_KEY)).toBe("0");
+    expect(loadDirectorExpanded(store)).toBe(false);
+    expect(loadDirectorSplitRatio(store)).toBe(DEFAULT_DIRECTOR_SPLIT_RATIO);
+    saveDirectorSplitRatio(store, 0.55);
+    expect(store.map.get(DIRECTOR_SPLIT_KEY)).toBe("0.55");
+    expect(loadDirectorSplitRatio(store)).toBeCloseTo(0.55, 5);
+    const available = 400;
+    expect(clampDirectorSplitRatio(0, available) * available).toBeCloseTo(DIRECTOR_INSPECTOR_MIN_PX, 5);
+    expect((1 - clampDirectorSplitRatio(1, available)) * available).toBeCloseTo(DIRECTOR_PANEL_MIN_PX, 5);
+    const dragged = applyDirectorSplitPointer({ clientY: 296, stackTop: 100, stackHeight: 400 });
+    expect(dragged.ratio).toBeCloseTo(0.5, 5);
+    expect(dragged.inspectorPx + dragged.directorPx).toBe(400 - 8);
   });
 
   it("packs V/A/VIS headers inline below the stacked name + chrome threshold", () => {

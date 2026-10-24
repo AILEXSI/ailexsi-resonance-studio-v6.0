@@ -49,6 +49,14 @@ export function fixedLaneBoxStyle(px: number): { height: number; minHeight: numb
   const h = Number.isFinite(px) ? Math.max(1, Math.round(px)) : DEFAULT_LANE_HEIGHT_PX;
   return { height: h, minHeight: h, maxHeight: h };
 }
+/** AI Director full-height mode. UI chrome only — not project data. Missing key = docked. */
+export const DIRECTOR_EXPANDED_KEY = "resonance-studio-v6-0-ai-director-expanded";
+/** Share of the inspector column given to the Inspector while the Director is docked. */
+export const DIRECTOR_SPLIT_KEY = "resonance-studio-v6-0-ai-director-split";
+export const DEFAULT_DIRECTOR_SPLIT_RATIO = 0.42;
+export const DIRECTOR_INSPECTOR_MIN_PX = 96;
+export const DIRECTOR_PANEL_MIN_PX = 140;
+export const DIRECTOR_SPLITTER_PX = 8;
 export const MIXER_WIDTH_KEY = "resonance-studio-v6-0-mixer-width";
 export const MIXER_EXPANDED_PX = 228;
 export const MIXER_COLLAPSED_PX = 56;
@@ -458,6 +466,71 @@ export function heightGroupOfLane(id: string): LaneHeightGroup {
 /** When a V/A/VIS header is shorter than the stacked name + chrome block, pack them in one row. */
 export function laneHeaderPacksInline(heightPx: number): boolean {
   return Number.isFinite(heightPx) && heightPx < LANE_HEADER_STACK_MIN_PX;
+}
+
+/** Default docked. Only `"1"` is expanded. Never stored on the project. */
+export function loadDirectorExpanded(storage?: StorageLike | null): boolean {
+  try {
+    return storage?.getItem(DIRECTOR_EXPANDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveDirectorExpanded(storage: StorageLike | null | undefined, expanded: boolean): void {
+  try {
+    storage?.setItem(DIRECTOR_EXPANDED_KEY, expanded ? "1" : "0");
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clampDirectorSplitRatio(ratio: number, availablePx: number): number {
+  if (!Number.isFinite(ratio)) return DEFAULT_DIRECTOR_SPLIT_RATIO;
+  if (!Number.isFinite(availablePx) || availablePx <= 0) {
+    return Math.min(0.75, Math.max(0.2, Number.isFinite(ratio) ? ratio : DEFAULT_DIRECTOR_SPLIT_RATIO));
+  }
+  const minR = DIRECTOR_INSPECTOR_MIN_PX / availablePx;
+  const maxR = 1 - DIRECTOR_PANEL_MIN_PX / availablePx;
+  if (minR >= maxR) {
+    return DIRECTOR_INSPECTOR_MIN_PX / (DIRECTOR_INSPECTOR_MIN_PX + DIRECTOR_PANEL_MIN_PX);
+  }
+  return Math.min(maxR, Math.max(minR, ratio));
+}
+
+/** Drag inside the inspector column. Ratio is the Inspector's share; the Director gets the rest. */
+export function applyDirectorSplitPointer(opts: {
+  clientY: number;
+  stackTop: number;
+  stackHeight: number;
+  splitterPx?: number;
+}): { ratio: number; inspectorPx: number; directorPx: number } {
+  const splitter = opts.splitterPx ?? DIRECTOR_SPLITTER_PX;
+  const available = Math.max(1, opts.stackHeight - splitter);
+  const ratio = clampDirectorSplitRatio((opts.clientY - opts.stackTop) / available, available);
+  const inspectorPx = Math.round(ratio * available);
+  return { ratio, inspectorPx, directorPx: available - inspectorPx };
+}
+
+export function loadDirectorSplitRatio(storage?: StorageLike | null): number {
+  try {
+    const raw = storage?.getItem(DIRECTOR_SPLIT_KEY);
+    if (raw == null) return DEFAULT_DIRECTOR_SPLIT_RATIO;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return DEFAULT_DIRECTOR_SPLIT_RATIO;
+    return clampDirectorSplitRatio(n, DIRECTOR_INSPECTOR_MIN_PX + DIRECTOR_PANEL_MIN_PX + 400);
+  } catch {
+    return DEFAULT_DIRECTOR_SPLIT_RATIO;
+  }
+}
+
+export function saveDirectorSplitRatio(storage: StorageLike | null | undefined, ratio: number): void {
+  try {
+    if (!Number.isFinite(ratio)) return;
+    storage?.setItem(DIRECTOR_SPLIT_KEY, String(clampDirectorSplitRatio(ratio, DIRECTOR_INSPECTOR_MIN_PX + DIRECTOR_PANEL_MIN_PX + 400)));
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 export function browserLayoutStorage(): StorageLike | null {
