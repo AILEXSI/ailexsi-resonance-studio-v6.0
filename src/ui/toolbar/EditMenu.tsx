@@ -23,6 +23,11 @@ export const EDIT_MENU_ITEMS: Item[] = [
   { id: "fade-in", label: "Fade in", shortcut: CLIP_MENU_SHORTCUTS.fadeIn, command: { type: "setSelectionFades", fadeInMs: DEFAULT_FADE_MS } },
   { id: "fade-out", label: "Fade out", shortcut: CLIP_MENU_SHORTCUTS.fadeOut, command: { type: "setSelectionFades", fadeOutMs: DEFAULT_FADE_MS } },
   { id: "crossfade", label: "Crossfade", shortcut: CLIP_MENU_SHORTCUTS.crossfade, command: { type: "addCrossfade", durationMs: DEFAULT_CROSSFADE_MS } },
+  { id: "speed-half", label: "Speed 0.5x", shortcut: CLIP_MENU_SHORTCUTS.speedHalf, command: { type: "setSelectionRate", rate: 0.5 } },
+  { id: "speed-unity", label: "Speed 1x", shortcut: CLIP_MENU_SHORTCUTS.speedUnity, command: { type: "setSelectionRate", rate: 1 } },
+  { id: "speed-double", label: "Speed 2x", shortcut: CLIP_MENU_SHORTCUTS.speedDouble, command: { type: "setSelectionRate", rate: 2 } },
+  { id: "reverse", label: "Reverse", shortcut: CLIP_MENU_SHORTCUTS.reverse, command: { type: "toggleReverse" } },
+  { id: "freeze", label: "Freeze frame", shortcut: CLIP_MENU_SHORTCUTS.freeze, command: { type: "freezeFrame" } },
   { id: "ripple-delete", label: "Ripple delete", shortcut: CLIP_MENU_SHORTCUTS.rippleDelete, command: { type: "rippleDelete" } },
   { id: "lift-delete", label: "Lift delete", shortcut: CLIP_MENU_SHORTCUTS.delete, command: { type: "liftDelete" } },
 ];

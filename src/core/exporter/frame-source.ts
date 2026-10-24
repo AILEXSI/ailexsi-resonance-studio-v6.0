@@ -45,9 +45,22 @@ const decoderCache = new Map<string, Promise<OpenedDecoder>>();
 
 /** Source media time (seconds) at the center of an output frame. */
 export function sourceTimeSec(clip: ExportClip, timelineMs: number, fps: number): number {
+  if (clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs)) {
+    return Math.max(0, clip.holdSourceMs / 1000);
+  }
   const srcIn = clip.sourceInMs ?? 0;
   const offset = Math.max(0, timelineMs - clip.startMs);
-  let srcMs = srcIn + offset * clipRateOf(clip) + 500 / Math.max(1, fps);
+  const bias = 500 / Math.max(1, fps);
+  const rate = clipRateOf(clip);
+  if (clip.reversed) {
+    const later = srcIn;
+    const earlier = clip.sourceOutMs ?? 0;
+    const lo = Math.min(earlier, later);
+    const hi = Math.max(earlier, later);
+    const srcMs = Math.min(hi, Math.max(lo, later - offset * rate - bias));
+    return Math.max(0, srcMs / 1000);
+  }
+  let srcMs = srcIn + offset * rate + bias;
   if (clip.sourceOutMs != null && clip.sourceOutMs > srcIn) {
     srcMs = Math.min(srcMs, clip.sourceOutMs - 1);
   }

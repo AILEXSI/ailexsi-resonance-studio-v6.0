@@ -33,6 +33,11 @@ export const DIRECTOR_TOOL_SPECS: readonly ProviderToolSpec[] = [
     description:
       "Propose fade in and/or fade out on the selection, in milliseconds. An omitted side stays. Both omitted means 500 ms in and out. Nothing changes until accept.",
   },
+  {
+    name: "timeline.set_speed",
+    description:
+      "Propose a playback rate from 0.25 to 4 on the selection. Source in and out stay. Nothing changes until accept.",
+  },
   { name: "timeline.nudge", description: "Propose a nudge. Snap may change the delta." },
   {
     name: "timeline.split_at_markers",

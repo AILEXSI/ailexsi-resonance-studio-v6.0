@@ -92,6 +92,11 @@ export function jobFromProject(project: Project, opts: JobOptions = {}): ExportJ
           fadeInFrom: fades.fadeInFrom,
           fadeOutTo: fades.fadeOutTo,
           rate: c.rate ?? 1,
+          reversed: c.reversed === true ? true : undefined,
+          holdSourceMs:
+            typeof c.holdSourceMs === "number" && Number.isFinite(c.holdSourceMs)
+              ? c.holdSourceMs
+              : undefined,
           missing: !asset || asset.missing || !asset.objectUrl,
           label: asset?.name ?? c.id,
           linkId: c.linkId,

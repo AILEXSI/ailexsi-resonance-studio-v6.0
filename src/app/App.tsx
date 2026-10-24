@@ -1989,6 +1989,9 @@ export function App() {
           )
         }
         onAddCrossfade={() => runCommand({ type: "addCrossfade", durationMs: DEFAULT_CROSSFADE_MS })}
+        onToggleReverse={() => runCommand({ type: "toggleReverse" })}
+        onFreezeFrame={() => runCommand({ type: "freezeFrame" })}
+        onSetRate={(rate) => runCommand({ type: "setSelectionRate", rate })}
         onTrimToPlayhead={(edge, timeMs) => {
           setSession((s) => {
             const parked =

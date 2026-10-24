@@ -72,6 +72,12 @@ function commandFromKey(
     return { type: "slip", clipId: session.selectedClipId, deltaMs };
   }
 
+  if (e.altKey && !e.shiftKey && !mod) {
+    if (e.code === "Digit1") return { type: "setSelectionRate", rate: 0.5 };
+    if (e.code === "Digit2") return { type: "setSelectionRate", rate: 1 };
+    if (e.code === "Digit3") return { type: "setSelectionRate", rate: 2 };
+  }
+  if (letter === "r") return e.shiftKey ? { type: "freezeFrame" } : { type: "toggleReverse" };
   if (letter === "s") return { type: "split" };
   if (letter === "g") return { type: "closeGap" };
   if (letter === "q") return { type: "rippleTrimToPlayhead", edge: "in" };
@@ -203,6 +209,9 @@ export function dispatchEditorKey(
     command.type === "trimToPlayhead" ||
     command.type === "setSelectionFades" ||
     command.type === "addCrossfade" ||
+    command.type === "setSelectionRate" ||
+    command.type === "toggleReverse" ||
+    command.type === "freezeFrame" ||
     command.type === "toggleVolumeWriteArm" ||
     command.type === "selectAll" ||
     command.type === "selectAllOnTrack";

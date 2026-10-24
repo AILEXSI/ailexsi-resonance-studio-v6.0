@@ -2,7 +2,7 @@ import type { EditorCommand } from "../../commands";
 import { selectionOf, type Session } from "../../session";
 import { DEFAULT_FADE_MS } from "../../../core/fades";
 import { editableLinkedMate } from "../../../core/link";
-import { clipById, clipIsLocked, kindOfTrack, SPLIT_EDGE_GUARD_MS } from "../../../core/models";
+import { CLIP_RATE_MAX, CLIP_RATE_MIN, clipById, clipIsLocked, kindOfTrack, SPLIT_EDGE_GUARD_MS } from "../../../core/models";
 import type { BeatAnalysis } from "../audio/beats";
 import { previewPlan, type PlanStep } from "../preview";
 import { toolErr, toolOk, type ToolResult } from "./result";
@@ -16,6 +16,7 @@ export const MUTATION_TOOL_NAMES = [
   "timeline.trim",
   "timeline.ripple_delete",
   "timeline.add_fade",
+  "timeline.set_speed",
   "timeline.nudge",
   "timeline.split_at_markers",
   "audio.detect_beats",
@@ -246,6 +247,46 @@ export function planAddFade(session: Session, args: unknown): ToolResult<Mutatio
   });
 }
 
+export function planSetSpeed(session: Session, args: unknown): ToolResult<MutationProposal> {
+  const raw = argsOf(args);
+  if (typeof raw.rate !== "number" || !Number.isFinite(raw.rate)) {
+    return toolErr("SCHEMA_INVALID", "rate must be a finite number");
+  }
+  if (raw.rate < CLIP_RATE_MIN || raw.rate > CLIP_RATE_MAX) {
+    return toolErr("SCHEMA_INVALID", "rate must be between 0.25 and 4");
+  }
+  let clipId: string | undefined;
+  if (raw.clipId !== undefined) {
+    if (typeof raw.clipId !== "string" || raw.clipId.trim().length === 0) {
+      return toolErr("SCHEMA_INVALID", "clipId must be a clip id");
+    }
+    clipId = raw.clipId;
+    const clip = clipById(session.project, clipId);
+    if (!clip) return toolErr("CLIP_NOT_FOUND", "Clip not found");
+    if (clipIsLocked(clip)) return toolErr("CLIP_LOCKED", "Clip is locked");
+  } else if (selectionOf(session).length === 0) {
+    return toolErr("NO_SELECTION", "No clip selected");
+  }
+  const command: EditorCommand = clipId
+    ? { type: "setClipRate", clipId, rate: raw.rate }
+    : { type: "setSelectionRate", rate: raw.rate };
+  const preview = previewPlan(session, [{ kind: "command", command }]);
+  if (!preview.ok) return toolErr("PREVIEW_REJECTED", preview.error);
+  const watch = clipId ? [clipId] : selectionOf(session);
+  const unchanged = watch.every((id) => {
+    const before = clipById(session.project, id);
+    const after = clipById(preview.session.project, id);
+    return Boolean(before && after && before.rate === after.rate && before.durationMs === after.durationMs);
+  });
+  if (unchanged) return toolErr("NO_CHANGE", "Speed would not change the clip");
+  return toolOk({
+    tool: "timeline.set_speed",
+    summary: `Set speed to ${raw.rate}x. Source in and out stay. Nothing changes until you accept. Preview keeps pitch. Export changes pitch with speed.`,
+    steps: [{ kind: "command", command }],
+    command,
+  });
+}
+
 export function planRippleDelete(session: Session, _args: unknown): ToolResult<MutationProposal> {
   const ids = selectionOf(session);
   if (ids.length === 0) return toolErr("NO_SELECTION", "No clip selected");
@@ -439,6 +480,8 @@ export function planMutation(session: Session, name: string, args?: unknown): To
       return planRippleDelete(session, args);
     case "timeline.add_fade":
       return planAddFade(session, args);
+    case "timeline.set_speed":
+      return planSetSpeed(session, args);
     case "timeline.nudge":
       return planNudge(session, args);
     case "timeline.split_at_markers":

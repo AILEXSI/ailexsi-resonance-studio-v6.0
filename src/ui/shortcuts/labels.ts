@@ -20,6 +20,11 @@ export const CLIP_MENU_SHORTCUTS = {
   fadeIn: "F",
   fadeOut: "Shift+F",
   crossfade: "T",
+  reverse: "R",
+  freeze: "Shift+R",
+  speedHalf: "Alt+1",
+  speedUnity: "Alt+2",
+  speedDouble: "Alt+3",
   selectAll: "Ctrl+A",
   selectAllOnTrack: "Ctrl+Shift+A",
 } as const;
@@ -60,6 +65,18 @@ export const SHORTCUT_ROWS: { key: string; action: string }[] = [
   {
     key: CLIP_MENU_SHORTCUTS.crossfade,
     action: "Crossfade with the touching clip on the same track (later clips pull left)",
+  },
+  { key: CLIP_MENU_SHORTCUTS.speedHalf, action: "Set selection speed to 0.5x" },
+  { key: CLIP_MENU_SHORTCUTS.speedUnity, action: "Set selection speed to 1x" },
+  { key: CLIP_MENU_SHORTCUTS.speedDouble, action: "Set selection speed to 2x" },
+  {
+    key: "Inspector rate",
+    action: "Any speed from 0.25x to 4x. Preview keeps pitch. Export changes pitch with speed.",
+  },
+  { key: CLIP_MENU_SHORTCUTS.reverse, action: "Play the selected clip backward" },
+  {
+    key: CLIP_MENU_SHORTCUTS.freeze,
+    action: "Freeze the video frame at the playhead for 2 s (linked audio stays put)",
   },
   { key: "W", action: "Arm / disarm volume write (selected audio track; same as the W button)" },
   { key: "Ctrl+S", action: "Save project" },

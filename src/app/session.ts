@@ -73,6 +73,8 @@ import {
   slideClips,
   setClipRate,
   setClipFades,
+  freezeFrameAtPlayhead,
+  toggleClipReversed,
   maybeScrollToOrigin,
   moveClip,
   moveClipsByDelta,
@@ -1343,6 +1345,41 @@ export function applySetClipRate(session: Session, clipId: string, rate: number)
   if (result.error) return { ...session, error: result.error };
   if (result.project === session.project) return session;
   return withHistory(session, result.project, "Clip rate");
+}
+
+/** One rate for every selected clip. Linked mates follow inside setClipRate. One undo step. */
+export function applySetSelectionRate(session: Session, rate: number): Session {
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  const seen = new Set<string>();
+  let changed = false;
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const before = project;
+    const result = setClipRate(project, id, rate);
+    if (result.error) return { ...session, error: result.error };
+    seen.add(id);
+    const mate = editableLinkedMate(result.project, id);
+    if (mate) seen.add(mate.id);
+    if (result.project !== before) changed = true;
+    project = result.project;
+  }
+  if (!changed) return session;
+  return withHistory(session, project, "Clip rate");
+}
+
+export function applyToggleReverse(session: Session): Session {
+  const result = toggleClipReversed(session.project, selectionOf(session));
+  if (result.error) return { ...session, error: result.error };
+  if (result.project === session.project) return session;
+  return withHistory(session, result.project, "Reverse clip");
+}
+
+export function applyFreezeFrame(session: Session): Session {
+  const result = freezeFrameAtPlayhead(session.project, selectionOf(session));
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Freeze frame");
 }
 
 export function applySetTransition(

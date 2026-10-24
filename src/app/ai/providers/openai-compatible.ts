@@ -195,7 +195,7 @@ const SYSTEM = [
   "The structure context includes project, track, and marker names, plus ids and times.",
   "It does not include file paths, media bytes, or waveforms.",
   "Propose at most one edit. The human accepts or rejects it.",
-  "timeline.trim, timeline.ripple_delete, and timeline.add_fade only propose an edit. Accept applies one undo step.",
+  "timeline.trim, timeline.ripple_delete, timeline.add_fade, and timeline.set_speed only propose an edit. Accept applies one undo step.",
   "Use the tool interface for tool calls. Do not print a tool call as JSON text.",
 ].join(" ");
 

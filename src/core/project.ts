@@ -135,6 +135,9 @@ function sanitizeClip(raw: unknown): Clip | null {
     linkId: typeof c.linkId === "string" && c.linkId.length > 0 ? c.linkId : undefined,
     enabled: c.enabled === false ? false : undefined,
     locked: c.locked === true ? true : undefined,
+    reversed: c.reversed === true ? true : undefined,
+    holdSourceMs:
+      typeof c.holdSourceMs === "number" && Number.isFinite(c.holdSourceMs) ? c.holdSourceMs : undefined,
   };
 }
 

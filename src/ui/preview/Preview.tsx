@@ -72,6 +72,39 @@ export function previewMediaBindKey(input: {
   return `${input.audioGraphKey}|${input.playheadMs}|${input.playing ? 1 : 0}|${input.masterVolume}|${input.assetGen ?? 0}`;
 }
 
+function holdPitch(el: HTMLMediaElement): void {
+  el.preservesPitch = true;
+  (el as HTMLMediaElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = true;
+}
+
+/** Forward clips play at rate with pitch held. Reverse and freeze scrub the element. */
+function syncPreviewMedia(
+  el: HTMLMediaElement,
+  clip: {
+    startMs: number;
+    sourceInMs: number;
+    sourceOutMs: number;
+    rate?: number;
+    reversed?: boolean;
+    holdSourceMs?: number;
+  },
+  playheadMs: number,
+  playing: boolean,
+): void {
+  holdPitch(el);
+  const want = sourceTimeAt(clip, playheadMs) / 1000;
+  const scrub = clip.reversed === true || (clip.holdSourceMs != null && Number.isFinite(clip.holdSourceMs));
+  if (scrub) {
+    el.pause();
+    if (Number.isFinite(el.currentTime) && Math.abs(el.currentTime - want) > 0.04) el.currentTime = want;
+    return;
+  }
+  if (Number.isFinite(el.currentTime) && Math.abs(el.currentTime - want) > 0.08) el.currentTime = want;
+  el.playbackRate = clip.rate && clip.rate > 0 ? clip.rate : 1;
+  if (playing && el.paused) void el.play().catch(() => undefined);
+  if (!playing && !el.paused) el.pause();
+}
+
 export function Preview({ project, playing, liveWriteTrackId = null, liveWriteValue = null, onLevels }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const partnerVideoRef = useRef<HTMLVideoElement>(null);
@@ -160,24 +193,14 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
     if (isStill) return;
     const video = videoRef.current;
     if (!video || !videoClip || !videoAsset?.objectUrl) return;
-    const want = sourceTimeAt(videoClip, project.playheadMs) / 1000;
-    if (Math.abs(video.currentTime - want) > 0.08) {
-      video.currentTime = want;
-    }
-    video.playbackRate = videoClip.rate > 0 ? videoClip.rate : 1;
-    if (playing && video.paused) void video.play().catch(() => undefined);
-    if (!playing && !video.paused) video.pause();
+    syncPreviewMedia(video, videoClip, project.playheadMs, playing);
   }, [project.playheadMs, playing, videoClip, videoAsset?.objectUrl, isStill]);
 
   useEffect(() => {
     if (partnerIsStill) return;
     const video = partnerVideoRef.current;
     if (!video || !partnerClip || !partnerAsset?.objectUrl) return;
-    const want = sourceTimeAt(partnerClip, project.playheadMs) / 1000;
-    if (Math.abs(video.currentTime - want) > 0.08) video.currentTime = want;
-    video.playbackRate = partnerClip.rate > 0 ? partnerClip.rate : 1;
-    if (playing && video.paused) void video.play().catch(() => undefined);
-    if (!playing && !video.paused) video.pause();
+    syncPreviewMedia(video, partnerClip, project.playheadMs, playing);
   }, [project.playheadMs, playing, partnerClip, partnerAsset?.objectUrl, partnerIsStill]);
 
   useEffect(() => {
@@ -286,11 +309,7 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
       } else {
         el.volume = Math.max(0, Math.min(1, mix));
       }
-      const want = sourceTimeAt(clip, project.playheadMs) / 1000;
-      if (Math.abs(el.currentTime - want) > 0.08) el.currentTime = want;
-      el.playbackRate = clip.rate > 0 ? clip.rate : 1;
-      if (playing && el.paused) void el.play().catch(() => undefined);
-      if (!playing && !el.paused) el.pause();
+      syncPreviewMedia(el, clip, project.playheadMs, playing);
     };
     bind(v1Ref.current, "V1");
     bind(v2Ref.current, "V2");
@@ -324,11 +343,7 @@ export function Preview({ project, playing, liveWriteTrackId = null, liveWriteVa
           ),
         ) * transitionAudioGain(project.transitions ?? [], partner.id, project.playheadMs, project);
       partnerEl.volume = Math.max(0, Math.min(1, mix));
-      const want = sourceTimeAt(partner, project.playheadMs) / 1000;
-      if (Math.abs(partnerEl.currentTime - want) > 0.08) partnerEl.currentTime = want;
-      partnerEl.playbackRate = partner.rate > 0 ? partner.rate : 1;
-      if (playing && partnerEl.paused) void partnerEl.play().catch(() => undefined);
-      if (!playing && !partnerEl.paused) partnerEl.pause();
+      syncPreviewMedia(partnerEl, partner, project.playheadMs, playing);
     } else if (partnerEl) {
       partnerEl.pause();
       partnerEl.removeAttribute("src");

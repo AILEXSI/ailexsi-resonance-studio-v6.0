@@ -171,6 +171,9 @@ interface Props {
   onTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
   onFadeEdge?: (edge: "in" | "out") => void;
   onAddCrossfade?: () => void;
+  onToggleReverse?: () => void;
+  onFreezeFrame?: () => void;
+  onSetRate?: (rate: number) => void;
   onSelectAll?: () => void;
   onSelectAllOnTrack?: () => void;
   onSetClipsEnabled?: (enabled: boolean) => void;
@@ -296,6 +299,9 @@ export function Timeline({
   onTrimToPlayhead,
   onFadeEdge,
   onAddCrossfade,
+  onToggleReverse,
+  onFreezeFrame,
+  onSetRate,
   onSelectAll,
   onSelectAllOnTrack,
   onSetClipsEnabled,
@@ -2466,6 +2472,58 @@ export function Timeline({
               <span>Crossfade</span>
               <kbd>{CLIP_MENU_SHORTCUTS.crossfade}</kbd>
             </button>
+          ) : null}
+          {onToggleReverse ? (
+            <button
+              type="button"
+              data-testid="clip-menu-reverse"
+              onClick={() => {
+                onToggleReverse();
+                setMenu(null);
+              }}
+            >
+              <span>Reverse</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.reverse}</kbd>
+            </button>
+          ) : null}
+          {onFreezeFrame ? (
+            <button
+              type="button"
+              data-testid="clip-menu-freeze"
+              onClick={() => {
+                onFreezeFrame();
+                setMenu(null);
+              }}
+            >
+              <span>Freeze frame</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.freeze}</kbd>
+            </button>
+          ) : null}
+          {onSetRate ? (
+            <>
+              <button
+                type="button"
+                data-testid="clip-menu-speed-half"
+                onClick={() => {
+                  onSetRate(0.5);
+                  setMenu(null);
+                }}
+              >
+                <span>Speed 0.5x</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.speedHalf}</kbd>
+              </button>
+              <button
+                type="button"
+                data-testid="clip-menu-speed-double"
+                onClick={() => {
+                  onSetRate(2);
+                  setMenu(null);
+                }}
+              >
+                <span>Speed 2x</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.speedDouble}</kbd>
+              </button>
+            </>
           ) : null}
           {onRippleTrimToPlayhead ? (
             <>

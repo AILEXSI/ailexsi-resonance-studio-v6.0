@@ -44,6 +44,9 @@ import {
   applySetClipFades,
   applySetSelectionFades,
   applySetClipRate,
+  applySetSelectionRate,
+  applyToggleReverse,
+  applyFreezeFrame,
   applySetTrackPan,
   applySetTransition,
   applySetTransitionAudio,
@@ -146,6 +149,9 @@ export type EditorCommand =
   | { type: "setSelectionFades"; fadeInMs?: number; fadeOutMs?: number }
   | { type: "addCrossfade"; durationMs?: number }
   | { type: "setClipRate"; clipId: string; rate: number }
+  | { type: "setSelectionRate"; rate: number }
+  | { type: "toggleReverse" }
+  | { type: "freezeFrame" }
   | { type: "setTrackPan"; trackId: TrackId; pan: number }
   | { type: "unlinkClips"; clipId: string }
   | { type: "relinkClips"; clipIds: readonly string[]; assetId: string }
@@ -297,6 +303,12 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyAddCrossfade(session, command.durationMs);
     case "setClipRate":
       return applySetClipRate(session, command.clipId, command.rate);
+    case "setSelectionRate":
+      return applySetSelectionRate(session, command.rate);
+    case "toggleReverse":
+      return applyToggleReverse(session);
+    case "freezeFrame":
+      return applyFreezeFrame(session);
     case "setTrackPan":
       return applySetTrackPan(session, command.trackId, command.pan);
     case "unlinkClips":

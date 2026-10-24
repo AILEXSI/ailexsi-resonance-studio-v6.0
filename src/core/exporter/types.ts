@@ -20,6 +20,10 @@ export interface ExportClip {
   /** Factor at job-local end when OUT ends mid fade-out (omit = classic 0). */
   fadeOutTo?: number;
   rate: number;
+  /** Missing = forward. Source in/out are already the window's source times. */
+  reversed?: boolean;
+  /** Missing = play the window. Set = sample this source time for every frame. */
+  holdSourceMs?: number;
   missing: boolean;
   label: string;
   linkId?: string;
