@@ -193,6 +193,13 @@ describe("AI-5 provider gate", () => {
       ok: true,
       local: true,
     });
+    expect(
+      validateProviderTarget({
+        baseUrl: "https://example.com/v1",
+        model: "m",
+        desktop: { invoke: async () => ({}), useKeychain: true },
+      }),
+    ).toMatchObject({ ok: true, local: false });
     const provider = createOpenAiCompatibleProvider({
       baseUrl: "https://example.com/v1",
       model: "m",
@@ -249,6 +256,66 @@ describe("AI-5 provider gate", () => {
     expect(turn.transaction?.command).toEqual({ type: "moveClips", clipIds: ["c1"], deltaMs: 2000 });
     expect(session.history.past).toHaveLength(0);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks Ollama on loopback through the desktop command without a key", async () => {
+    const sse = ['data: {"choices":[{"delta":{"content":"local-ok"}}]}\n', "data: [DONE]\n"].join("\n");
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      expect(command).toBe("ai_chat");
+      expect(args?.sessionKey).toBeNull();
+      expect(args?.baseUrl).toBe("http://127.0.0.1:11434/v1");
+      expect(JSON.stringify(args)).not.toContain("Authorization");
+      expect(JSON.stringify(args?.messages)).not.toContain("runtime-key");
+      return { status: 200, body: sse };
+    });
+    const fetchImpl = vi.fn();
+    const provider = createOpenAiCompatibleProvider({
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen2.5:7b",
+      desktop: { invoke, useKeychain: false },
+    });
+    const turn = await runDirectorTurn({ session: fixedSession(), prompt: "hello", provider });
+    expect(turn.text).toContain("local-ok");
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("passes a session key only to the desktop command and does not store it", async () => {
+    const commands: string[] = [];
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      commands.push(command);
+      expect(args?.sessionKey).toBe("runtime-key");
+      expect(JSON.stringify(args?.messages)).not.toContain("runtime-key");
+      expect(command).not.toBe("ai_keychain_set");
+      expect(command).not.toBe("ai_keychain_get");
+      return { status: 200, body: 'data: {"choices":[{"delta":{"content":"cloud-ok"}}]}\n\ndata: [DONE]\n' };
+    });
+    const provider = createOpenAiCompatibleProvider({
+      baseUrl: "https://example.com/v1",
+      model: "m",
+      apiKey: "runtime-key",
+      desktop: { invoke, useKeychain: false },
+    });
+    const turn = await runDirectorTurn({ session: fixedSession(), prompt: "hello", provider });
+    expect(turn.text).toContain("cloud-ok");
+    expect(commands).toEqual(["ai_chat"]);
+  });
+
+  it("does not put a saved key in the webview when the desktop shell reads the keychain", async () => {
+    const invoke = vi.fn(async (_command: string, args?: Record<string, unknown>) => {
+      expect(args?.sessionKey).toBeNull();
+      expect(JSON.stringify(args)).not.toContain("Bearer");
+      expect(JSON.stringify(args)).not.toContain("stored-cloud-key");
+      return { status: 200, body: 'data: {"choices":[{"delta":{"content":"saved"}}]}\n\ndata: [DONE]\n' };
+    });
+    const provider = createOpenAiCompatibleProvider({
+      baseUrl: "https://example.com/v1",
+      model: "m",
+      desktop: { invoke, useKeychain: true },
+    });
+    const turn = await runDirectorTurn({ session: fixedSession(), prompt: "hello", provider });
+    expect(turn.text).toContain("saved");
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it("includes project, track, and marker names and still omits paths and media", () => {

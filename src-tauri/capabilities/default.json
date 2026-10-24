@@ -3,6 +3,13 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "allow-ai-chat",
+    "allow-ai-keychain-exists",
+    "allow-ai-keychain-status",
+    "allow-ai-keychain-set",
+    "allow-ai-keychain-delete",
+    "allow-allow-media-paths",
+    "allow-lyrics-whisper-align",
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-read-text-file",

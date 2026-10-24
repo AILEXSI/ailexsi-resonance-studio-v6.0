@@ -1,11 +1,24 @@
 import type { AIProvider, ProviderEvent, ProviderRequest, ToolCall } from "./types";
 
+export type DesktopInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+
+export interface DesktopChat {
+  invoke: DesktopInvoke;
+  /**
+   * Cloud only, and only when the session field is empty.
+   * Rust then reads the OS keychain. The secret is not returned.
+   */
+  useKeychain: boolean;
+}
+
 export interface OpenAiCompatibleConfig {
   baseUrl: string;
   model: string;
   /** Runtime only. Never read from the repo, the bundle, or localStorage. */
   apiKey?: string;
   fetchImpl?: typeof fetch;
+  /** Desktop shell. The provider request is made in Rust. */
+  desktop?: DesktopChat;
 }
 
 export type ProviderGate = { ok: true; local: boolean } | { ok: false; error: string };
@@ -28,7 +41,8 @@ export function validateProviderTarget(config: OpenAiCompatibleConfig): Provider
   if (!local && url.protocol !== "https:") {
     return { ok: false, error: "Cloud providers need https. Nothing was sent." };
   }
-  if (!local && !config.apiKey?.trim()) {
+  const key = config.apiKey?.trim();
+  if (!local && !key && !config.desktop?.useKeychain) {
     return { ok: false, error: "Cloud providers need a key supplied at runtime. Nothing was sent." };
   }
   return { ok: true, local };
@@ -162,6 +176,42 @@ export function toolCallsFromAccumulators(acc: Map<number, ToolAcc>): ToolCall[]
   return calls;
 }
 
+const DESKTOP_ERRORS = new Set([
+  "Invalid base URL. Nothing was sent.",
+  "Local providers need http or https. Nothing was sent.",
+  "Cloud providers need https. Nothing was sent.",
+  "Cloud providers need a key supplied at runtime. Nothing was sent.",
+  "Model name required. Nothing was sent.",
+  "The API key is invalid. Nothing was sent.",
+  "OS keychain could not be read. Nothing was sent.",
+  "Provider request failed. Nothing was changed.",
+  "Provider response is too large. Nothing was changed.",
+  "Provider response was not text. Nothing was changed.",
+]);
+
+function desktopError(error: unknown): string {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return DESKTOP_ERRORS.has(message) ? message : "Provider request failed. Nothing was changed.";
+}
+
+function asDesktopChat(value: unknown): { status: number; body: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as { status?: unknown; body?: unknown };
+  if (typeof record.status !== "number" || typeof record.body !== "string") return null;
+  return { status: record.status, body: record.body };
+}
+
+function sseStream(text: string): ReadableStream<Uint8Array> {
+  const payload = text.endsWith("\n") ? text : `${text}\n`;
+  const bytes = new TextEncoder().encode(payload);
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+}
+
 /** Parse one SSE body. Malformed JSON lines are ignored. */
 export async function* readSseJson(body: ReadableStream<Uint8Array>): AsyncGenerator<unknown> {
   const reader = body.getReader();
@@ -208,10 +258,7 @@ export function createOpenAiCompatibleProvider(config: OpenAiCompatibleConfig): 
         yield { type: "error", message: gate.error };
         return;
       }
-      const fetchImpl = config.fetchImpl ?? fetch;
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
       const key = config.apiKey?.trim();
-      if (key) headers.Authorization = `Bearer ${key}`;
       const messages = [
         { role: "system", content: SYSTEM },
         ...(request.context ? [{ role: "system", content: JSON.stringify(request.context) }] : []),
@@ -221,35 +268,67 @@ export function createOpenAiCompatibleProvider(config: OpenAiCompatibleConfig): 
           tool_call_id: message.toolCallId,
         })),
       ];
-      let response: Response;
-      try {
-        response = await fetchImpl(chatUrl(config.baseUrl), {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
+      const tools = request.tools.map((tool) => ({
+        type: "function",
+        function: { name: tool.name, description: tool.description, parameters: { type: "object" } },
+      }));
+      let stream: ReadableStream<Uint8Array>;
+      if (config.desktop && !config.fetchImpl) {
+        if (request.signal?.aborted) {
+          yield { type: "error", message: "Provider request failed. Nothing was changed." };
+          return;
+        }
+        let raw: unknown;
+        try {
+          raw = await config.desktop.invoke("ai_chat", {
+            baseUrl: config.baseUrl,
             model: config.model.trim(),
-            stream: true,
             messages,
-            tools: request.tools.map((tool) => ({
-              type: "function",
-              function: { name: tool.name, description: tool.description, parameters: { type: "object" } },
-            })),
-          }),
-          redirect: "error",
-          signal: request.signal,
-        });
-      } catch {
-        yield { type: "error", message: "Provider request failed. Nothing was changed." };
-        return;
-      }
-      if (!response.ok || !response.body) {
-        yield { type: "error", message: `Provider status ${response.status}. Nothing was changed.` };
-        return;
+            tools,
+            sessionKey: key || null,
+          });
+        } catch (error) {
+          yield { type: "error", message: desktopError(error) };
+          return;
+        }
+        const parsed = asDesktopChat(raw);
+        if (!parsed || parsed.status !== 200 || parsed.body.length === 0) {
+          yield { type: "error", message: `Provider status ${parsed?.status ?? 0}. Nothing was changed.` };
+          return;
+        }
+        stream = sseStream(parsed.body);
+      } else {
+        const fetchImpl = config.fetchImpl ?? fetch;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (key) headers.Authorization = `Bearer ${key}`;
+        let response: Response;
+        try {
+          response = await fetchImpl(chatUrl(config.baseUrl), {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              model: config.model.trim(),
+              stream: true,
+              messages,
+              tools,
+            }),
+            redirect: "error",
+            signal: request.signal,
+          });
+        } catch {
+          yield { type: "error", message: "Provider request failed. Nothing was changed." };
+          return;
+        }
+        if (!response.ok || !response.body) {
+          yield { type: "error", message: `Provider status ${response.status}. Nothing was changed.` };
+          return;
+        }
+        stream = response.body;
       }
       const acc = new Map<number, ToolAcc>();
       let text = "";
       try {
-        for await (const chunk of readSseJson(response.body)) {
+        for await (const chunk of readSseJson(stream)) {
           const choice = (chunk as { choices?: { delta?: unknown }[] }).choices?.[0];
           const delta = consumeDelta(acc, choice?.delta);
           if (delta) {

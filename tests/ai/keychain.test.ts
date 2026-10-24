@@ -7,7 +7,7 @@ describe("OS keychain adapter", () => {
     const chain = memoryKeychain("memory only");
     expect(chain.available).toBe(false);
     await expect(chain.write("super-secret")).rejects.toThrow(/not available/);
-    expect(await chain.read()).toBeNull();
+    expect(await chain.exists()).toBe(false);
     const data: Record<string, string> = {};
     const storage = {
       getItem: (key: string) => data[key] ?? null,
@@ -20,7 +20,7 @@ describe("OS keychain adapter", () => {
     expect(readAiPrefs(storage).rememberKey).toBe(true);
   });
 
-  it("uses the desktop commands and does not echo the secret in the reason", async () => {
+  it("stores through the desktop command and only learns whether a key exists", async () => {
     const calls: { command: string; args?: Record<string, unknown> }[] = [];
     let stored = "";
     const chain = tauriKeychain(async (command, args) => {
@@ -29,19 +29,37 @@ describe("OS keychain adapter", () => {
         stored = String(args?.secret ?? "");
         return null;
       }
-      if (command === "ai_keychain_get") return stored;
+      if (command === "ai_keychain_exists") return stored.length > 0;
       if (command === "ai_keychain_delete") {
         stored = "";
         return null;
       }
+      if (command === "ai_keychain_get") return stored;
       return null;
     });
     expect(chain.available).toBe(true);
     expect(chain.reason).not.toContain("super-secret");
     await chain.write("super-secret");
-    expect(await chain.read()).toBe("super-secret");
+    expect(await chain.exists()).toBe(true);
     await chain.remove();
-    expect(await chain.read()).toBeNull();
-    expect(calls.map((call) => call.command)).toEqual(["ai_keychain_set", "ai_keychain_get", "ai_keychain_delete", "ai_keychain_get"]);
+    expect(await chain.exists()).toBe(false);
+    expect(calls.map((call) => call.command)).toEqual([
+      "ai_keychain_set",
+      "ai_keychain_exists",
+      "ai_keychain_delete",
+      "ai_keychain_exists",
+    ]);
+    expect(calls.map((call) => call.command)).not.toContain("ai_keychain_get");
+    expect(JSON.stringify(calls)).toContain("super-secret");
+    expect(chain.reason).not.toContain("super-secret");
+  });
+
+  it("does not treat a plaintext command result as the stored key", async () => {
+    const chain = tauriKeychain(async (command) => {
+      if (command === "ai_keychain_exists") return "super-secret";
+      return null;
+    });
+    expect(await chain.exists()).toBe(false);
+    expect(chain.reason).not.toContain("super-secret");
   });
 });

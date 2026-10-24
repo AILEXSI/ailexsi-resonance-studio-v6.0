@@ -10,7 +10,7 @@ The owner answered the open questions and asked for the missing pieces on the sa
 - Same-track audio crossfades are proposed with `setClipFades` (200 ms, then the existing fade normalizer) when a marker split asks for transitions. One Accept is one undo, and that undo restores the fades.
 - `audio.detect_beats` decodes the selected clip's loaded audio in process and measures RMS onsets. It proposes markers at those times, labeled Beat or Onset with a confidence number. It does not invent a tempo. Accept keeps the clip selected. One undo removes the markers.
 - After those markers exist, the existing cut-at-beats request splits on them and can add the audio fades.
-- Opt-in OS keychain commands (`ai_keychain_status`, `ai_keychain_get`, `ai_keychain_set`, `ai_keychain_delete`) use the `keyring` crate in the Tauri shell. The browser checkbox stays disabled. The key is not written to localStorage.
+- Opt-in OS keychain commands (`ai_keychain_status`, `ai_keychain_exists`, `ai_keychain_set`, `ai_keychain_delete`) use the `keyring` crate in the Tauri shell. `ai_chat` reads a saved key in-process and returns only the provider response. The browser checkbox stays disabled. The key is not written to localStorage and is not copied back into the webview.
 
 ## Windows EXE
 

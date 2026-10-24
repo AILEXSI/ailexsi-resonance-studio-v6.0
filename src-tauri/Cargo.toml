@@ -28,3 +28,6 @@ tauri-plugin-dialog = "2.4"
 keyring = { version = "3.6.3", default-features = false, features = ["linux-native-sync-persistent", "windows-native", "apple-native"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+url = "2"
+# native-tls uses schannel on Windows. The webview never sees the API key.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "native-tls"] }

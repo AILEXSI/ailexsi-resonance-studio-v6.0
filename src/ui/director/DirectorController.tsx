@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createId } from "../../core/ids";
+import { isTauriRuntime } from "../../core/tauri-runtime";
 import type { Session } from "../../app/session";
 import { runDirectorTurn } from "../../app/ai/loop";
-import { createOpenAiCompatibleProvider } from "../../app/ai/providers/openai-compatible";
+import { createOpenAiCompatibleProvider, type DesktopChat } from "../../app/ai/providers/openai-compatible";
 import { createMockProvider } from "../../app/ai/providers/mock";
 import { buildSendContext } from "../../app/ai/context";
 import { BROWSER_KEYCHAIN_REASON, detectOsKeychain, memoryKeychain, type OsKeychain } from "../../app/ai/providers/keychain";
@@ -75,8 +76,6 @@ export function DirectorController({ session, applySession, offer, expanded, onT
   const [apiKey, setApiKey] = useState("");
   const [keychain, setKeychain] = useState<OsKeychain>(() => memoryKeychain(BROWSER_KEYCHAIN_REASON));
   const abortRef = useRef<AbortController | null>(null);
-  const keyRef = useRef("");
-  keyRef.current = apiKey;
 
   useEffect(() => {
     if (!offer) return;
@@ -103,9 +102,14 @@ export function DirectorController({ session, applySession, offer, expanded, onT
       if (cancelled) return;
       if (found.available || found.reason !== BROWSER_KEYCHAIN_REASON) setKeychain(found);
       if (!found.available || !prefs.rememberKey) return;
-      void found.read().then((stored) => {
-        if (!cancelled && stored && keyRef.current.length === 0) setApiKey(stored);
-      });
+      void found.exists().then((saved) => {
+        if (cancelled || !saved) return;
+        setKeychain((current) =>
+          current.reason.includes("A saved key is not copied")
+            ? current
+            : { ...current, reason: `${found.reason} A saved key is not copied into this field.` },
+        );
+      }).catch(() => undefined);
     });
     return () => {
       cancelled = true;
@@ -129,6 +133,14 @@ export function DirectorController({ session, applySession, offer, expanded, onT
     const abort = new AbortController();
     abortRef.current = abort;
     try {
+      let desktop: DesktopChat | undefined;
+      if (prefs.provider !== "mock" && isTauriRuntime()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        desktop = {
+          invoke,
+          useKeychain: prefs.provider === "cloud" && prefs.rememberKey && apiKey.trim().length === 0,
+        };
+      }
       const provider =
         prefs.provider === "mock"
           ? createMockProvider()
@@ -136,6 +148,7 @@ export function DirectorController({ session, applySession, offer, expanded, onT
               baseUrl: prefs.baseUrl,
               model: prefs.model,
               apiKey: prefs.provider === "cloud" ? apiKey : undefined,
+              desktop,
             });
       const turn = await runDirectorTurn({
         session,

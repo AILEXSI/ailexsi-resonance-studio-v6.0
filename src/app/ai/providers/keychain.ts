@@ -4,7 +4,8 @@ export interface OsKeychain {
   available: boolean;
   /** Shown in the panel. Never includes the secret. */
   reason: string;
-  read(): Promise<string | null>;
+  /** Whether a key is stored. Never the key itself. */
+  exists(): Promise<boolean>;
   write(secret: string): Promise<void>;
   remove(): Promise<void>;
 }
@@ -18,8 +19,8 @@ export function memoryKeychain(reason: string): OsKeychain {
   return {
     available: false,
     reason,
-    async read() {
-      return null;
+    async exists() {
+      return false;
     },
     async write() {
       throw new Error("OS keychain is not available");
@@ -36,10 +37,10 @@ type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unkno
 export function tauriKeychain(invoke: Invoke): OsKeychain {
   return {
     available: true,
-    reason: `OS keychain (${SERVICE}) is available. Saving is opt-in and is not localStorage.`,
-    async read() {
-      const value = await invoke("ai_keychain_get");
-      return typeof value === "string" && value.length > 0 ? value : null;
+    reason: `OS keychain (${SERVICE}) is available. Saving is opt-in and is not localStorage. A saved key is not copied into this field.`,
+    async exists() {
+      const value = await invoke("ai_keychain_exists");
+      return value === true;
     },
     async write(secret: string) {
       await invoke("ai_keychain_set", { secret });
