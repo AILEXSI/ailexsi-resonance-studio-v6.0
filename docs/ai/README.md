@@ -14,6 +14,7 @@ AI-0 remains the authoritative map. Later rows are implementation notes. They do
 | [`phases/AI-4.md`](./phases/AI-4.md) | Transactions, permissions, one-command Accept |
 | [`phases/AI-5.md`](./phases/AI-5.md) | Provider adapter, offline mock, explicit Send |
 | [`phases/AI-6.md`](./phases/AI-6.md) | Marker multi-step proposals, one undo |
+| [`phases/AI-7_LIPSYNC_PLAN.md`](./phases/AI-7_LIPSYNC_PLAN.md) | Plan only. Lyrics, lipsync, matching imagery. No code. |
 
 V5.6 AI-0 recon (`docs/ai-director/` on unmerged branch `cursor/ai-0-recon-architecture-freeze-45e4`, V5.6 PR **#36**) is **non-authoritative reference**. Do not merge it into V6 `main`. Re-verify every claim against this tree.
 
