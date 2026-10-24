@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error node:fs is resolved by Vitest, not by the app bundle
+import * as nodeFs from "node:fs";
 
 /**
  * The webview policy. Preview uses blob: media, export fetches those blob URLs,
@@ -7,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * Remote scripts stay blocked.
  */
 describe("Tauri content security policy", () => {
-  const conf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8")) as {
+  const conf = JSON.parse(nodeFs.readFileSync("src-tauri/tauri.conf.json", "utf8") as string) as {
     app?: { security?: { csp?: string | null } };
   };
   const csp = conf.app?.security?.csp ?? "";
