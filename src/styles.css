@@ -171,10 +171,13 @@ input[type="range"] { accent-color: var(--accent-2); }
 .toolbar-edit {
   position: relative;
 }
-.edit-menu {
+.clip-menu.edit-menu {
+  position: absolute;
   top: calc(100% + 4px);
   left: 0;
   z-index: 30;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
 }
 .toolbar-file-row {
   display: flex;
