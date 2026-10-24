@@ -50,7 +50,7 @@ export const SHORTCUT_ROWS: { key: string; action: string }[] = [
   { key: "Ctrl+Shift+S", action: "Save project as" },
   { key: "Ctrl+Z", action: "Undo" },
   { key: "Ctrl+Y", action: "Redo" },
-  { key: CLIP_MENU_SHORTCUTS.cut, action: "Cut selected clip(s)" },
+  { key: CLIP_MENU_SHORTCUTS.cut, action: "Cut selected clip(s); split a VIS event when the playhead is inside it" },
   { key: CLIP_MENU_SHORTCUTS.copy, action: "Copy selected clip(s)" },
   { key: CLIP_MENU_SHORTCUTS.paste, action: "Paste clip(s) at playhead" },
   { key: CLIP_MENU_SHORTCUTS.duplicate, action: "Duplicate selection at playhead" },

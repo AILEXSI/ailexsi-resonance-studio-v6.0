@@ -94,6 +94,88 @@ describe("VIS event edit ops", () => {
     expect(pasted.project.playheadMs).toBe(2070);
   });
 
+  it("cut with the playhead inside a VIS block leaves two positive parts and one undo", () => {
+    const start = visSession(
+      [{ id: "ve1", sceneId: "resonance-wave", startMs: 0, durationMs: 480_000 }],
+      { playheadMs: 225_000 },
+    );
+    const cut = applyCommand(start, { type: "cut" });
+    expect(cut.error).toBeNull();
+    expect(cut.status).toBe("Cut VIS event");
+    expect(cut.history.past.length).toBe(start.history.past.length + 1);
+    const events = visualizerEventsOf(cut.project).sort((a, b) => a.startMs - b.startMs);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      id: "ve1",
+      sceneId: "resonance-wave",
+      startMs: 0,
+      durationMs: 225_000,
+    });
+    expect(events[1]).toMatchObject({
+      sceneId: "resonance-wave",
+      startMs: 225_000,
+      durationMs: 255_000,
+    });
+    expect(events[0]!.durationMs).toBeGreaterThan(0);
+    expect(events[1]!.durationMs).toBeGreaterThan(0);
+    const undone = applyCommand(cut, { type: "undo" });
+    expect(visualizerEventsOf(undone.project)).toEqual([
+      { id: "ve1", sceneId: "resonance-wave", startMs: 0, durationMs: 480_000 },
+    ]);
+  });
+
+  it("cut inside the later VIS block keeps the earlier block and splits the one under the playhead", () => {
+    const start = visSession(
+      [
+        { id: "left", sceneId: "resonance-wave", startMs: 0, durationMs: 225_000 },
+        { id: "right", sceneId: "lexi-v3", startMs: 225_000, durationMs: 260_000 },
+      ],
+      { playheadMs: 403_840 },
+    );
+    start.project.visualizer.sceneId = "lexi-v3";
+    start.selectedVisEventId = "right";
+    start.selectedVisEventIds = ["right"];
+    const cut = applyCommand(start, { type: "cut" });
+    expect(cut.error).toBeNull();
+    expect(cut.history.past.length).toBe(start.history.past.length + 1);
+    const events = visualizerEventsOf(cut.project).sort((a, b) => a.startMs - b.startMs);
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({
+      id: "left",
+      sceneId: "resonance-wave",
+      startMs: 0,
+      durationMs: 225_000,
+    });
+    expect(events[1]).toMatchObject({
+      id: "right",
+      sceneId: "lexi-v3",
+      startMs: 225_000,
+      durationMs: 178_840,
+    });
+    expect(events[2]).toMatchObject({
+      sceneId: "lexi-v3",
+      startMs: 403_840,
+      durationMs: 81_160,
+    });
+    expect(events.every((e) => e.durationMs > 0)).toBe(true);
+    const undone = applyCommand(cut, { type: "undo" });
+    expect(visualizerEventsOf(undone.project).map((e) => e.id).sort()).toEqual(["left", "right"]);
+  });
+
+  it("cut too close to a VIS edge leaves the block in place", () => {
+    const start = visSession(
+      [{ id: "ve1", sceneId: "resonance-wave", startMs: 0, durationMs: 480_000 }],
+      { playheadMs: 10 },
+    );
+    const cut = applyCommand(start, { type: "cut" });
+    expect(cut.error).toBe("Split too close to VIS event edge");
+    expect(cut.status).toBe("Cut rejected");
+    expect(visualizerEventsOf(cut.project)).toEqual([
+      { id: "ve1", sceneId: "resonance-wave", startMs: 0, durationMs: 480_000 },
+    ]);
+    expect(cut.history.past.length).toBe(start.history.past.length);
+  });
+
   it("cut copies then deletes the selected event", () => {
     const start = visSession([
       { id: "ve1", sceneId: "tunnel-spiral", startMs: 0, durationMs: 1000 },

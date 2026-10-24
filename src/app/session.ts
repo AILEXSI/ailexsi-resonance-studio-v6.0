@@ -130,6 +130,7 @@ import {
   pasteVisualizerEvent,
   setVisualizer,
   splitVisualizerAtPlayhead,
+  splitVisualizerEventAt,
   stretchVisualizerEvent,
   toggleVisualizerMute,
   updateVisualizerEvent,
@@ -1051,10 +1052,39 @@ export function applyCopy(session: Session): Session {
   };
 }
 
+/**
+ * Playhead strictly inside the event. The start edge is not inside, so a
+ * cut with the playhead parked on the event head still clipboard-deletes.
+ */
+function playheadInsideVisEvent(
+  event: { startMs: number; durationMs: number },
+  playheadMs: number,
+): boolean {
+  return playheadMs > event.startMs && playheadMs < event.startMs + Math.max(0, event.durationMs);
+}
+
 /** Copy then lift-delete the selection. One history entry. */
 export function applyCut(session: Session): Session {
   const vis = selectedVisEvent(session);
   if (vis) {
+    if (playheadInsideVisEvent(vis, session.project.playheadMs)) {
+      const result = splitVisualizerEventAt(session.project, vis.id, session.project.playheadMs);
+      if (result.error || !result.leftId || !result.rightId) {
+        return { ...session, error: result.error ?? "Cut rejected", status: "Cut rejected" };
+      }
+      const events = visualizerEventsOf(result.project);
+      const left = events.find((e) => e.id === result.leftId);
+      const right = events.find((e) => e.id === result.rightId);
+      if (!left || !right || left.durationMs <= 0 || right.durationMs <= 0) {
+        return { ...session, error: "Cut rejected", status: "Cut rejected" };
+      }
+      return {
+        ...withHistory(session, result.project, "Cut VIS event"),
+        selectedVis: true,
+        selectedVisEventId: result.leftId,
+        selectedVisEventIds: [result.leftId],
+      };
+    }
     const copied = applyCopy(session);
     const next = deleteVisualizerEvent(session.project, vis.id);
     return {
