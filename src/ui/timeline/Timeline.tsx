@@ -168,6 +168,7 @@ interface Props {
   onRelink?: (clipIds?: readonly string[]) => void;
   onCloseGap?: () => void;
   onRippleTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
+  onTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
   onSelectAll?: () => void;
   onSelectAllOnTrack?: () => void;
   onSetClipsEnabled?: (enabled: boolean) => void;
@@ -290,6 +291,7 @@ export function Timeline({
   onRelink,
   onCloseGap,
   onRippleTrimToPlayhead,
+  onTrimToPlayhead,
   onSelectAll,
   onSelectAllOnTrack,
   onSetClipsEnabled,
@@ -2395,6 +2397,32 @@ export function Timeline({
               <span>Close gap</span>
               <kbd>{CLIP_MENU_SHORTCUTS.closeGap}</kbd>
             </button>
+          ) : null}
+          {onTrimToPlayhead ? (
+            <>
+              <button
+                type="button"
+                data-testid="clip-menu-trim-in"
+                onClick={() => {
+                  onTrimToPlayhead("in", menu.timeMs);
+                  setMenu(null);
+                }}
+              >
+                <span>Trim in to playhead</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.trimInToPlayhead}</kbd>
+              </button>
+              <button
+                type="button"
+                data-testid="clip-menu-trim-out"
+                onClick={() => {
+                  onTrimToPlayhead("out", menu.timeMs);
+                  setMenu(null);
+                }}
+              >
+                <span>Trim out to playhead</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.trimOutToPlayhead}</kbd>
+              </button>
+            </>
           ) : null}
           {onRippleTrimToPlayhead ? (
             <>

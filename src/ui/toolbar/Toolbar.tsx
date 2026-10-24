@@ -1,6 +1,8 @@
+import type { EditorCommand } from "../../app/commands";
 import type { ProductionScreen } from "../../app/screens";
 import { AILEXSI_PRODUCT_VERSION } from "../../core/build-info";
 import { ScreenNav } from "../screens/ScreenNav";
+import { EditMenu } from "./EditMenu";
 
 interface Props {
   exporting: boolean;
@@ -13,6 +15,7 @@ interface Props {
   projectName?: string;
   onRenameProject?: (name: string) => void;
   projectDirty?: boolean;
+  onEditCommand?: (command: EditorCommand) => void;
 }
 
 export function Toolbar({
@@ -26,6 +29,7 @@ export function Toolbar({
   projectName = "Untitled Resonance",
   onRenameProject,
   projectDirty = false,
+  onEditCommand,
 }: Props) {
   return (
     <header className="toolbar" data-testid="toolbar">
@@ -55,6 +59,11 @@ export function Toolbar({
         <ScreenNav screen={screen} onSelect={onSelectScreen ?? (() => {})} />
         </div>
       </div>
+      {onEditCommand ? (
+        <div className="toolbar-group" data-group="edit">
+          <EditMenu onCommand={onEditCommand} />
+        </div>
+      ) : null}
       <div className="toolbar-brand">
         <input
           className="project-name"

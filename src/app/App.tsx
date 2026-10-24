@@ -1579,6 +1579,7 @@ export function App() {
         projectName={session.project.name}
         projectDirty={isProjectDirty(session)}
         onRenameProject={(name) => runCommand({ type: "renameProject", name })}
+        onEditCommand={runCommand}
       />
       <input
         type="file"
@@ -1978,6 +1979,13 @@ export function App() {
         onExtractRange={() => runCommand({ type: "extractRange" })}
         onRelink={(clipIds) => void runRelink(clipIds)}
         onCloseGap={() => runCommand({ type: "closeGap" })}
+        onTrimToPlayhead={(edge, timeMs) => {
+          setSession((s) => {
+            const parked =
+              timeMs != null ? applyPlayhead(s, snapPlayheadSeek(s.project, timeMs)) : s;
+            return applyCommand(parked, { type: "trimToPlayhead", edge });
+          });
+        }}
         onRippleTrimToPlayhead={(edge, timeMs) => {
           setSession((s) => {
             const parked =

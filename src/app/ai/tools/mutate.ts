@@ -12,6 +12,8 @@ export const MUTATION_TOOL_NAMES = [
   "timeline.move_clip",
   "timeline.split_at_playhead",
   "timeline.lift_delete",
+  "timeline.trim",
+  "timeline.ripple_delete",
   "timeline.nudge",
   "timeline.split_at_markers",
   "audio.detect_beats",
@@ -148,6 +150,53 @@ export function planSplitAtPlayhead(session: Session, _args: unknown): ToolResul
     command,
   });
   return planned;
+}
+
+export function planTrim(session: Session, args: unknown): ToolResult<MutationProposal> {
+  const raw = argsOf(args);
+  const edge = raw.edge;
+  if (edge !== "in" && edge !== "out") {
+    return toolErr("SCHEMA_INVALID", "edge must be in or out");
+  }
+  let clipId: string;
+  if (typeof raw.clipId === "string" && raw.clipId.trim().length > 0) clipId = raw.clipId;
+  else {
+    const selected = selectionOf(session);
+    if (selected.length === 0) return toolErr("NO_SELECTION", "No clip selected");
+    if (selected.length !== 1) return toolErr("AMBIGUOUS_SELECTION", "Select exactly one clip");
+    clipId = selected[0]!;
+  }
+  const clip = clipById(session.project, clipId);
+  if (!clip) return toolErr("CLIP_NOT_FOUND", "Clip not found");
+  if (clipIsLocked(clip)) return toolErr("CLIP_LOCKED", "Clip is locked");
+  const target = raw.targetEdgeMs;
+  const nextEdgeMs =
+    typeof target === "number" && Number.isFinite(target) ? target : session.project.playheadMs;
+  const command: EditorCommand = { type: "liftTrim", clipId, edge, nextEdgeMs };
+  const preview = previewPlan(session, [{ kind: "command", command }]);
+  if (!preview.ok) return toolErr("PREVIEW_REJECTED", preview.error);
+  const after = clipById(preview.session.project, clipId);
+  if (!after || (after.startMs === clip.startMs && after.durationMs === clip.durationMs)) {
+    return toolErr("NO_CHANGE", "Trim would not change the clip");
+  }
+  return toolOk({
+    tool: "timeline.trim",
+    summary: `Trim ${edge} of ${clipId} toward ${nextEdgeMs} ms. Snap is ${session.project.snap ? "on" : "off"}. Nothing changes until you accept.`,
+    steps: [{ kind: "command", command }],
+    command,
+  });
+}
+
+export function planRippleDelete(session: Session, _args: unknown): ToolResult<MutationProposal> {
+  const ids = selectionOf(session);
+  if (ids.length === 0) return toolErr("NO_SELECTION", "No clip selected");
+  const command: EditorCommand = { type: "rippleDelete" };
+  return propose(session, {
+    tool: "timeline.ripple_delete",
+    summary: `Ripple-delete ${ids.length === 1 ? ids[0] : `${ids.length} selected clips`} (${ids.join(", ")}). Later clips on those tracks close the gap. Nothing changes until you accept.`,
+    steps: [{ kind: "command", command }],
+    command,
+  });
 }
 
 export function planLiftDelete(session: Session, _args: unknown): ToolResult<MutationProposal> {
@@ -325,6 +374,10 @@ export function planMutation(session: Session, name: string, args?: unknown): To
       return planSplitAtPlayhead(session, args);
     case "timeline.lift_delete":
       return planLiftDelete(session, args);
+    case "timeline.trim":
+      return planTrim(session, args);
+    case "timeline.ripple_delete":
+      return planRippleDelete(session, args);
     case "timeline.nudge":
       return planNudge(session, args);
     case "timeline.split_at_markers":

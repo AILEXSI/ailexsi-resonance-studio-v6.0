@@ -66,6 +66,7 @@ import {
   applyToggleMute,
   applyToggleSolo,
   applyTrim,
+  applyTrimToPlayhead,
   applyUndo,
   applyUnlinkClips,
   revertToLastSave,
@@ -94,6 +95,7 @@ export type EditorCommand =
   | { type: "liftDelete" }
   | { type: "rippleDelete" }
   | { type: "closeGap" }
+  | { type: "trimToPlayhead"; edge: "in" | "out" }
   | { type: "rippleTrimToPlayhead"; edge: "in" | "out" }
   | { type: "nudgeClip"; deltaMs: number }
   | { type: "nudgePlayhead"; deltaMs: number }
@@ -257,6 +259,8 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyTrim(session, command.clipId, command.edge, command.nextEdgeMs);
     case "rippleTrim":
       return applyRippleTrim(session, command.clipId, command.edge, command.nextEdgeMs);
+    case "trimToPlayhead":
+      return applyTrimToPlayhead(session, command.edge);
     case "rollEdit":
       return applyRoll(session, command.clipId, command.edge, command.nextEdgeMs);
     case "select":

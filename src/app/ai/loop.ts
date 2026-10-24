@@ -20,6 +20,14 @@ export const DIRECTOR_TOOL_SPECS: readonly ProviderToolSpec[] = [
   { name: "timeline.move_clip", description: "Propose an exact move in milliseconds. Does not snap." },
   { name: "timeline.split_at_playhead", description: "Propose a split at the current playhead." },
   { name: "timeline.lift_delete", description: "Propose a lift-delete of the current selection." },
+  {
+    name: "timeline.trim",
+    description: "Propose a lift trim of one clip edge toward the playhead or targetEdgeMs. edge is in or out. Snap may move the edge.",
+  },
+  {
+    name: "timeline.ripple_delete",
+    description: "Propose a ripple delete of the current selection. Later clips on the same track close the gap.",
+  },
   { name: "timeline.nudge", description: "Propose a nudge. Snap may change the delta." },
   {
     name: "timeline.split_at_markers",

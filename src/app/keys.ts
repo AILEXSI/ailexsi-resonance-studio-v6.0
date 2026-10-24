@@ -73,6 +73,8 @@ function commandFromKey(
   if (letter === "s") return { type: "split" };
   if (letter === "g") return { type: "closeGap" };
   if (letter === "q") return { type: "rippleTrimToPlayhead", edge: "in" };
+  if (e.key === "[" || e.code === "BracketLeft") return { type: "trimToPlayhead", edge: "in" };
+  if (e.key === "]" || e.code === "BracketRight") return { type: "trimToPlayhead", edge: "out" };
   if (letter === "w") {
     if (e.altKey) return { type: "rippleTrimToPlayhead", edge: "out" };
     if (e.shiftKey) return null;
@@ -190,6 +192,7 @@ export function dispatchEditorKey(
     command.type === "gotoPrevEdit" ||
     command.type === "closeGap" ||
     command.type === "rippleTrimToPlayhead" ||
+    command.type === "trimToPlayhead" ||
     command.type === "toggleVolumeWriteArm" ||
     command.type === "selectAll" ||
     command.type === "selectAllOnTrack";

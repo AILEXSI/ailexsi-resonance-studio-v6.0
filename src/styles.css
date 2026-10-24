@@ -168,6 +168,14 @@ input[type="range"] { accent-color: var(--accent-2); }
   flex-wrap: nowrap;
   gap: 6px;
 }
+.toolbar-edit {
+  position: relative;
+}
+.edit-menu {
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+}
 .toolbar-file-row {
   display: flex;
   align-items: center;

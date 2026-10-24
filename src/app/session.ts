@@ -778,6 +778,30 @@ export function applyRippleTrim(
   return withHistory(session, result.project, "Ripple trimmed");
 }
 
+export function applyTrimToPlayhead(session: Session, edge: "in" | "out"): Session {
+  const clip = resolveRippleTrimToPlayheadClip(session.project, {
+    selectedClipId: session.selectedClipId,
+    selectedVis: session.selectedVis,
+  });
+  if (!clip) return session;
+  const playheadMs = session.project.playheadMs;
+  if (!playheadStrictlyInsideClip(clip, playheadMs)) return session;
+  let next = applyTrim(session, clip.id, edge, playheadMs);
+  if (next.project.playheadMs !== playheadMs) {
+    next = { ...next, project: { ...next.project, playheadMs } };
+  }
+  if (clipById(next.project, clip.id) && next.selectedClipId !== clip.id) {
+    return {
+      ...next,
+      selectedClipId: clip.id,
+      selectedClipIds: [clip.id],
+      selectedVis: false,
+      selectedVisEventId: null,
+    };
+  }
+  return next;
+}
+
 export function applyRippleTrimToPlayhead(session: Session, edge: "in" | "out"): Session {
   const clip = resolveRippleTrimToPlayheadClip(session.project, {
     selectedClipId: session.selectedClipId,
