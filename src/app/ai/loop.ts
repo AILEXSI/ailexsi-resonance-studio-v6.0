@@ -28,6 +28,11 @@ export const DIRECTOR_TOOL_SPECS: readonly ProviderToolSpec[] = [
     name: "timeline.ripple_delete",
     description: "Propose a ripple delete of the current selection. Later clips on the same track close the gap.",
   },
+  {
+    name: "timeline.add_fade",
+    description:
+      "Propose fade in and/or fade out on the selection, in milliseconds. An omitted side stays. Both omitted means 500 ms in and out. Nothing changes until accept.",
+  },
   { name: "timeline.nudge", description: "Propose a nudge. Snap may change the delta." },
   {
     name: "timeline.split_at_markers",

@@ -1,5 +1,6 @@
 import type { EditorCommand } from "../../commands";
 import { selectionOf, type Session } from "../../session";
+import { DEFAULT_FADE_MS } from "../../../core/fades";
 import { editableLinkedMate } from "../../../core/link";
 import { clipById, clipIsLocked, kindOfTrack, SPLIT_EDGE_GUARD_MS } from "../../../core/models";
 import type { BeatAnalysis } from "../audio/beats";
@@ -14,6 +15,7 @@ export const MUTATION_TOOL_NAMES = [
   "timeline.lift_delete",
   "timeline.trim",
   "timeline.ripple_delete",
+  "timeline.add_fade",
   "timeline.nudge",
   "timeline.split_at_markers",
   "audio.detect_beats",
@@ -182,6 +184,63 @@ export function planTrim(session: Session, args: unknown): ToolResult<MutationPr
   return toolOk({
     tool: "timeline.trim",
     summary: `Trim ${edge} of ${clipId} toward ${nextEdgeMs} ms. Snap is ${session.project.snap ? "on" : "off"}. Nothing changes until you accept.`,
+    steps: [{ kind: "command", command }],
+    command,
+  });
+}
+
+export function planAddFade(session: Session, args: unknown): ToolResult<MutationProposal> {
+  const raw = argsOf(args);
+  const readMs = (key: string): { ok: true; ms?: number } | { ok: false; error: string } => {
+    if (raw[key] === undefined) return { ok: true };
+    const parsed = finiteNumber(raw[key], key);
+    if (!parsed.ok) return parsed;
+    if (parsed.ms < 0) return { ok: false, error: `${key} must be >= 0` };
+    return { ok: true, ms: parsed.ms };
+  };
+  const fadeIn = readMs("fadeInMs");
+  if (!fadeIn.ok) return toolErr("SCHEMA_INVALID", fadeIn.error);
+  const fadeOut = readMs("fadeOutMs");
+  if (!fadeOut.ok) return toolErr("SCHEMA_INVALID", fadeOut.error);
+  const fadeInMs = fadeIn.ms ?? (fadeOut.ms == null ? DEFAULT_FADE_MS : undefined);
+  const fadeOutMs = fadeOut.ms ?? (fadeIn.ms == null ? DEFAULT_FADE_MS : undefined);
+
+  let clipId: string | undefined;
+  if (raw.clipId !== undefined) {
+    if (typeof raw.clipId !== "string" || raw.clipId.trim().length === 0) {
+      return toolErr("SCHEMA_INVALID", "clipId must be a clip id");
+    }
+    clipId = raw.clipId;
+    const clip = clipById(session.project, clipId);
+    if (!clip) return toolErr("CLIP_NOT_FOUND", "Clip not found");
+    if (clipIsLocked(clip)) return toolErr("CLIP_LOCKED", "Clip is locked");
+  } else if (selectionOf(session).length === 0) {
+    return toolErr("NO_SELECTION", "No clip selected");
+  }
+
+  const command: EditorCommand = clipId
+    ? {
+        type: "setClipFades",
+        clipId,
+        fadeInMs: fadeInMs ?? clipById(session.project, clipId)?.fadeInMs ?? 0,
+        fadeOutMs: fadeOutMs ?? clipById(session.project, clipId)?.fadeOutMs ?? 0,
+      }
+    : { type: "setSelectionFades", fadeInMs, fadeOutMs };
+  const preview = previewPlan(session, [{ kind: "command", command }]);
+  if (!preview.ok) return toolErr("PREVIEW_REJECTED", preview.error);
+  const watch = clipId ? [clipId] : selectionOf(session);
+  const unchanged = watch.every((id) => {
+    const before = clipById(session.project, id);
+    const after = clipById(preview.session.project, id);
+    return Boolean(before && after && before.fadeInMs === after.fadeInMs && before.fadeOutMs === after.fadeOutMs);
+  });
+  if (unchanged) return toolErr("NO_CHANGE", "Fade would not change the clip");
+  const summary = clipId
+    ? `Fade ${clipId} in ${fadeInMs ?? "unchanged"} ms and out ${fadeOutMs ?? "unchanged"} ms. Nothing changes until you accept.`
+    : `Fade the selection in ${fadeInMs ?? "unchanged"} ms and out ${fadeOutMs ?? "unchanged"} ms. Nothing changes until you accept.`;
+  return toolOk({
+    tool: "timeline.add_fade",
+    summary,
     steps: [{ kind: "command", command }],
     command,
   });
@@ -378,6 +437,8 @@ export function planMutation(session: Session, name: string, args?: unknown): To
       return planTrim(session, args);
     case "timeline.ripple_delete":
       return planRippleDelete(session, args);
+    case "timeline.add_fade":
+      return planAddFade(session, args);
     case "timeline.nudge":
       return planNudge(session, args);
     case "timeline.split_at_markers":

@@ -1,5 +1,7 @@
+import { DEFAULT_FADE_MS } from "../core/fades";
 import { firstClipIdWithLivingMate } from "../core/link";
 import { FRAME_MS, projectDurationMs } from "../core/models";
+import { DEFAULT_CROSSFADE_MS } from "../core/transition";
 import { isSlideBlock } from "../core/timeline";
 import { applyCommand, type EditorCommand } from "./commands";
 import { applyPlayhead, selectionOf, volumeWriteArmTarget, type Session } from "./session";
@@ -75,6 +77,12 @@ function commandFromKey(
   if (letter === "q") return { type: "rippleTrimToPlayhead", edge: "in" };
   if (e.key === "[" || e.code === "BracketLeft") return { type: "trimToPlayhead", edge: "in" };
   if (e.key === "]" || e.code === "BracketRight") return { type: "trimToPlayhead", edge: "out" };
+  if (!e.altKey && letter === "f") {
+    return e.shiftKey
+      ? { type: "setSelectionFades", fadeOutMs: DEFAULT_FADE_MS }
+      : { type: "setSelectionFades", fadeInMs: DEFAULT_FADE_MS };
+  }
+  if (!e.altKey && letter === "t") return { type: "addCrossfade", durationMs: DEFAULT_CROSSFADE_MS };
   if (letter === "w") {
     if (e.altKey) return { type: "rippleTrimToPlayhead", edge: "out" };
     if (e.shiftKey) return null;
@@ -193,6 +201,8 @@ export function dispatchEditorKey(
     command.type === "closeGap" ||
     command.type === "rippleTrimToPlayhead" ||
     command.type === "trimToPlayhead" ||
+    command.type === "setSelectionFades" ||
+    command.type === "addCrossfade" ||
     command.type === "toggleVolumeWriteArm" ||
     command.type === "selectAll" ||
     command.type === "selectAllOnTrack";

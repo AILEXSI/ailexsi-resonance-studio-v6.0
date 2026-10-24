@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { EditorCommand } from "../../app/commands";
+import { DEFAULT_FADE_MS } from "../../core/fades";
+import { DEFAULT_CROSSFADE_MS } from "../../core/transition";
 import { CLIP_MENU_SHORTCUTS } from "../shortcuts/labels";
 
 type Item = {
@@ -18,6 +20,9 @@ export const EDIT_MENU_ITEMS: Item[] = [
   { id: "trim-out", label: "Trim out to playhead", shortcut: CLIP_MENU_SHORTCUTS.trimOutToPlayhead, command: { type: "trimToPlayhead", edge: "out" } },
   { id: "ripple-trim-in", label: "Ripple trim in to playhead", shortcut: CLIP_MENU_SHORTCUTS.rippleTrimInToPlayhead, command: { type: "rippleTrimToPlayhead", edge: "in" } },
   { id: "ripple-trim-out", label: "Ripple trim out to playhead", shortcut: CLIP_MENU_SHORTCUTS.rippleTrimOutToPlayhead, command: { type: "rippleTrimToPlayhead", edge: "out" } },
+  { id: "fade-in", label: "Fade in", shortcut: CLIP_MENU_SHORTCUTS.fadeIn, command: { type: "setSelectionFades", fadeInMs: DEFAULT_FADE_MS } },
+  { id: "fade-out", label: "Fade out", shortcut: CLIP_MENU_SHORTCUTS.fadeOut, command: { type: "setSelectionFades", fadeOutMs: DEFAULT_FADE_MS } },
+  { id: "crossfade", label: "Crossfade", shortcut: CLIP_MENU_SHORTCUTS.crossfade, command: { type: "addCrossfade", durationMs: DEFAULT_CROSSFADE_MS } },
   { id: "ripple-delete", label: "Ripple delete", shortcut: CLIP_MENU_SHORTCUTS.rippleDelete, command: { type: "rippleDelete" } },
   { id: "lift-delete", label: "Lift delete", shortcut: CLIP_MENU_SHORTCUTS.delete, command: { type: "liftDelete" } },
 ];

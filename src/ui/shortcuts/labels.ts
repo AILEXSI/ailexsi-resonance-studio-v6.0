@@ -17,6 +17,9 @@ export const CLIP_MENU_SHORTCUTS = {
   rippleTrimOutToPlayhead: "Alt+W",
   trimInToPlayhead: "[",
   trimOutToPlayhead: "]",
+  fadeIn: "F",
+  fadeOut: "Shift+F",
+  crossfade: "T",
   selectAll: "Ctrl+A",
   selectAllOnTrack: "Ctrl+Shift+A",
 } as const;
@@ -51,6 +54,13 @@ export const SHORTCUT_ROWS: { key: string; action: string }[] = [
   { key: CLIP_MENU_SHORTCUTS.trimOutToPlayhead, action: "Trim out to playhead (snap, leaves a gap)" },
   { key: CLIP_MENU_SHORTCUTS.rippleTrimInToPlayhead, action: "Ripple trim in to playhead" },
   { key: CLIP_MENU_SHORTCUTS.rippleTrimOutToPlayhead, action: "Ripple trim out to playhead" },
+  { key: CLIP_MENU_SHORTCUTS.fadeIn, action: "Fade in 500 ms (audio and video, keeps fade out)" },
+  { key: CLIP_MENU_SHORTCUTS.fadeOut, action: "Fade out 500 ms (audio and video, keeps fade in)" },
+  { key: "Corner handles", action: "Drag fade in or fade out on the clip" },
+  {
+    key: CLIP_MENU_SHORTCUTS.crossfade,
+    action: "Crossfade with the touching clip on the same track (later clips pull left)",
+  },
   { key: "W", action: "Arm / disarm volume write (selected audio track; same as the W button)" },
   { key: "Ctrl+S", action: "Save project" },
   { key: "Ctrl+Shift+S", action: "Save project as" },

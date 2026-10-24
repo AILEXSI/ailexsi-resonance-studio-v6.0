@@ -169,6 +169,8 @@ interface Props {
   onCloseGap?: () => void;
   onRippleTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
   onTrimToPlayhead?: (edge: "in" | "out", timeMs?: number) => void;
+  onFadeEdge?: (edge: "in" | "out") => void;
+  onAddCrossfade?: () => void;
   onSelectAll?: () => void;
   onSelectAllOnTrack?: () => void;
   onSetClipsEnabled?: (enabled: boolean) => void;
@@ -292,6 +294,8 @@ export function Timeline({
   onCloseGap,
   onRippleTrimToPlayhead,
   onTrimToPlayhead,
+  onFadeEdge,
+  onAddCrossfade,
   onSelectAll,
   onSelectAllOnTrack,
   onSetClipsEnabled,
@@ -2423,6 +2427,45 @@ export function Timeline({
                 <kbd>{CLIP_MENU_SHORTCUTS.trimOutToPlayhead}</kbd>
               </button>
             </>
+          ) : null}
+          {onFadeEdge ? (
+            <>
+              <button
+                type="button"
+                data-testid="clip-menu-fade-in"
+                onClick={() => {
+                  onFadeEdge("in");
+                  setMenu(null);
+                }}
+              >
+                <span>Fade in</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.fadeIn}</kbd>
+              </button>
+              <button
+                type="button"
+                data-testid="clip-menu-fade-out"
+                onClick={() => {
+                  onFadeEdge("out");
+                  setMenu(null);
+                }}
+              >
+                <span>Fade out</span>
+                <kbd>{CLIP_MENU_SHORTCUTS.fadeOut}</kbd>
+              </button>
+            </>
+          ) : null}
+          {onAddCrossfade ? (
+            <button
+              type="button"
+              data-testid="clip-menu-crossfade"
+              onClick={() => {
+                onAddCrossfade();
+                setMenu(null);
+              }}
+            >
+              <span>Crossfade</span>
+              <kbd>{CLIP_MENU_SHORTCUTS.crossfade}</kbd>
+            </button>
           ) : null}
           {onRippleTrimToPlayhead ? (
             <>

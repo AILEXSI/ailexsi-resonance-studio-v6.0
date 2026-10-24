@@ -3,6 +3,9 @@
  * Fade factor is 0..1; gainAtClipTime multiplies that by clip.gain.
  */
 
+/** Menu, shortcut, and Director default when a fade length is omitted. */
+export const DEFAULT_FADE_MS = 500;
+
 export type Fadeable = {
   durationMs: number;
   fadeInMs?: number;

@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { DEFAULT_FADE_MS } from "../core/fades";
 import { assetById, clipById, type TrackId } from "../core/models";
+import { DEFAULT_CROSSFADE_MS } from "../core/transition";
 import { canAddAudioTrack, canRemoveAudioTrack } from "../core/audio-tracks";
 import { MEDIA_FILE_ACCEPT, preferredTrackForAsset } from "../core/media";
 import { advancePlayhead } from "../core/playback";
@@ -1979,6 +1981,14 @@ export function App() {
         onExtractRange={() => runCommand({ type: "extractRange" })}
         onRelink={(clipIds) => void runRelink(clipIds)}
         onCloseGap={() => runCommand({ type: "closeGap" })}
+        onFadeEdge={(edge) =>
+          runCommand(
+            edge === "in"
+              ? { type: "setSelectionFades", fadeInMs: DEFAULT_FADE_MS }
+              : { type: "setSelectionFades", fadeOutMs: DEFAULT_FADE_MS },
+          )
+        }
+        onAddCrossfade={() => runCommand({ type: "addCrossfade", durationMs: DEFAULT_CROSSFADE_MS })}
         onTrimToPlayhead={(edge, timeMs) => {
           setSession((s) => {
             const parked =

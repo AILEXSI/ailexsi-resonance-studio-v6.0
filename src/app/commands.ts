@@ -40,7 +40,9 @@ import {
   applyInsertVisEvent,
   applyMoveVisEvent,
   applyStretchVisEvent,
+  applyAddCrossfade,
   applySetClipFades,
+  applySetSelectionFades,
   applySetClipRate,
   applySetTrackPan,
   applySetTransition,
@@ -141,6 +143,8 @@ export type EditorCommand =
   | { type: "liftRange" }
   | { type: "extractRange" }
   | { type: "setClipFades"; clipId: string; fadeInMs: number; fadeOutMs: number }
+  | { type: "setSelectionFades"; fadeInMs?: number; fadeOutMs?: number }
+  | { type: "addCrossfade"; durationMs?: number }
   | { type: "setClipRate"; clipId: string; rate: number }
   | { type: "setTrackPan"; trackId: TrackId; pan: number }
   | { type: "unlinkClips"; clipId: string }
@@ -287,6 +291,10 @@ export function applyCommand(session: Session, command: EditorCommand): Session 
       return applyExtractRange(session);
     case "setClipFades":
       return applySetClipFades(session, command.clipId, command.fadeInMs, command.fadeOutMs);
+    case "setSelectionFades":
+      return applySetSelectionFades(session, command.fadeInMs, command.fadeOutMs);
+    case "addCrossfade":
+      return applyAddCrossfade(session, command.durationMs);
     case "setClipRate":
       return applySetClipRate(session, command.clipId, command.rate);
     case "setTrackPan":

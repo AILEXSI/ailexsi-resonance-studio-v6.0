@@ -1,4 +1,5 @@
-import { unlinkClips } from "../core/link";
+import { editableLinkedMate, unlinkClips } from "../core/link";
+import { DEFAULT_FADE_MS, normalizeClipFades } from "../core/fades";
 import {
   editPairAtProbe,
   findTransitionForPair,
@@ -8,6 +9,8 @@ import {
   transitionAudioDurationMs,
   transitionAudioOf,
   transitionSourceOf,
+  addSameTrackCrossfade,
+  DEFAULT_CROSSFADE_MS,
   upsertTransition,
   type Transition,
   type TransitionAudioMode,
@@ -1289,6 +1292,51 @@ export function applySetClipFades(
   if (result.error) return { ...session, error: result.error };
   return withHistory(session, result.project, "Clip fades");
 }
+
+/** Fade in and/or out on the selection. An omitted side keeps each clip's current fade. One undo step. */
+export function applySetSelectionFades(
+  session: Session,
+  fadeInMs?: number,
+  fadeOutMs?: number,
+): Session {
+  if (fadeInMs == null && fadeOutMs == null) return session;
+  const ids = selectionOf(session);
+  if (ids.length === 0) return { ...session, error: "No clip selected" };
+  let project = session.project;
+  const seen = new Set<string>();
+  let changed = false;
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const clip = clipById(project, id);
+    if (!clip) continue;
+    seen.add(id);
+    const mate = editableLinkedMate(project, id);
+    if (mate) seen.add(mate.id);
+    const nextIn = fadeInMs ?? clip.fadeInMs;
+    const nextOut = fadeOutMs ?? clip.fadeOutMs;
+    const norm = normalizeClipFades(nextIn, nextOut, clip.durationMs);
+    const mateNorm = mate ? normalizeClipFades(nextIn, nextOut, mate.durationMs) : null;
+    const same =
+      norm.fadeInMs === clip.fadeInMs &&
+      norm.fadeOutMs === clip.fadeOutMs &&
+      (!mate || !mateNorm || (mateNorm.fadeInMs === mate.fadeInMs && mateNorm.fadeOutMs === mate.fadeOutMs));
+    if (same) continue;
+    const result = setClipFades(project, id, nextIn, nextOut);
+    if (result.error) return { ...session, error: result.error };
+    project = result.project;
+    changed = true;
+  }
+  if (!changed) return session;
+  return withHistory(session, project, "Clip fades");
+}
+
+export function applyAddCrossfade(session: Session, durationMs = DEFAULT_CROSSFADE_MS): Session {
+  const result = addSameTrackCrossfade(session.project, selectionOf(session), durationMs);
+  if (result.error) return { ...session, error: result.error };
+  return withHistory(session, result.project, "Crossfade");
+}
+
+export { DEFAULT_FADE_MS };
 
 export function applySetClipRate(session: Session, clipId: string, rate: number): Session {
   const result = setClipRate(session.project, clipId, rate);
