@@ -6,10 +6,12 @@ import { AI_DIRECTOR_FLAG_KEY } from "../../src/app/ai/flag";
 import { AI_PREFS_KEY } from "../../src/app/ai/providers/prefs";
 import { PROJECT_SCHEMA_VERSION } from "../../src/core/project";
 import {
+  DEFAULT_H_SPLIT_RATIO,
   DIRECTOR_EXPANDED_KEY,
   DIRECTOR_SPLIT_KEY,
   MIXER_COLLAPSED_KEY,
   MIXER_WIDTH_KEY,
+  directorSpanColumnPx,
 } from "../../src/core/layout-prefs";
 import { dbToFader, dbToLinear, faderToDb, formatDb, linearToDb } from "../../src/core/volume";
 import "../../src/styles.css";
@@ -117,6 +119,50 @@ describe("AI Director layout", () => {
     expect(q("director-master-volume")).toBeTruthy();
     expect(q("arrange-row")?.getAttribute("data-director-expanded")).toBe("true");
     expect(q("arrange-row")?.getAttribute("data-mixer-width")).toBe("240");
+    expect(q("stage")?.getAttribute("data-director-span")).toBe("true");
+    const spanMain = q("director-span-main");
+    const column = q("workspace-inspector") as HTMLElement;
+    expect(spanMain?.contains(q("workspace-preview"))).toBe(true);
+    expect(spanMain?.contains(q("timeline"))).toBe(true);
+    expect(spanMain?.contains(q("lower-stage"))).toBe(true);
+    expect(column.getAttribute("data-span")).toBe("full");
+    expect(column.style.position).toBe("absolute");
+    expect(column.style.top).toBe("0px");
+    expect(column.style.bottom).toBe("0px");
+    expect(column.contains(q("ai-director"))).toBe(true);
+    const stage = q("stage") as HTMLElement;
+    const stageWidth = 1441;
+    stage.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 41,
+        left: 0,
+        top: 41,
+        right: stageWidth,
+        bottom: 874,
+        width: stageWidth,
+        height: 833,
+        toJSON() {
+          return {};
+        },
+      }) as DOMRect;
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    const expected = directorSpanColumnPx(stageWidth, DEFAULT_H_SPLIT_RATIO);
+    expect((q("preview-pane") as HTMLElement).style.width).toBe(`${expected.leftPx}px`);
+    expect((q("preview-pane") as HTMLElement).style.maxWidth).toBe(`${expected.leftPx}px`);
+    expect((q("lower-stage") as HTMLElement).style.width).toBe(`${expected.leftPx}px`);
+    expect((q("layout-split") as HTMLElement).style.width).toBe(`${expected.leftPx}px`);
+    expect(column.style.width).toBe(`${expected.rightPx}px`);
+    expect((q("layout-split-h") as HTMLElement).style.left).toBe(`${expected.leftPx}px`);
+    expect(expected.rightPx).toBeGreaterThan((1 - DEFAULT_H_SPLIT_RATIO) * stageWidth);
+    const message = q("ai-director-input") as HTMLTextAreaElement;
+    expect(message.rows).toBe(6);
+    expect(message.style.resize).toBe("vertical");
+    expect(message.style.minHeight).toBe("7.5em");
+    expect(q("ai-director-scroll")?.contains(message)).toBe(false);
+    expect(message.nextElementSibling).toBe(q("ai-director-send"));
 
     const slider = q("director-master-volume") as HTMLInputElement;
     const before = Number(slider.value);
@@ -145,6 +191,11 @@ describe("AI Director layout", () => {
 
     await click("ai-director-expand");
     expect(localStorage.getItem(DIRECTOR_EXPANDED_KEY)).toBe("0");
+    expect(q("stage")?.getAttribute("data-director-span")).toBe("false");
+    expect(q("director-span-main")).toBeNull();
+    expect(q("workspace-inspector")?.getAttribute("data-span")).toBe("column");
+    expect((q("workspace-inspector") as HTMLElement).style.position).toBe("");
+    expect(q("preview-pane")?.contains(q("inspector"))).toBe(true);
     expect(q("inspector")).toBeTruthy();
     expect(q("mixer")).toBeTruthy();
     expect(q("mix-V1")).toBeTruthy();

@@ -74,6 +74,7 @@ import {
   DIRECTOR_PANEL_MIN_PX,
   DIRECTOR_SPLIT_KEY,
   applyDirectorSplitPointer,
+  directorSpanColumnPx,
   clampDirectorSplitRatio,
   loadDirectorExpanded,
   loadDirectorSplitRatio,
@@ -317,6 +318,9 @@ describe("layout prefs", () => {
     expect(clampDirectorSplitRatio(0, available) * available).toBeCloseTo(DIRECTOR_INSPECTOR_MIN_PX, 5);
     expect((1 - clampDirectorSplitRatio(1, available)) * available).toBeCloseTo(DIRECTOR_PANEL_MIN_PX, 5);
     const dragged = applyDirectorSplitPointer({ clientY: 296, stackTop: 100, stackHeight: 400 });
+    const span = directorSpanColumnPx(1441, DEFAULT_H_SPLIT_RATIO);
+    expect(span.leftPx + span.rightPx).toBeCloseTo(1441 - 14, 5);
+    expect(span.rightPx).toBeCloseTo(180 + (1 - DEFAULT_H_SPLIT_RATIO) * (1441 - 14 - 200 - 180), 5);
     expect(dragged.ratio).toBeCloseTo(0.5, 5);
     expect(dragged.inspectorPx + dragged.directorPx).toBe(400 - 8);
   });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { assetById, clipById, type TrackId } from "../core/models";
 import { canAddAudioTrack, canRemoveAudioTrack } from "../core/audio-tracks";
 import { MEDIA_FILE_ACCEPT, preferredTrackForAsset } from "../core/media";
@@ -137,6 +137,7 @@ import {
   PREVIEW_MIN_PX,
   SPLITTER_PX,
   applyDirectorSplitPointer,
+  directorSpanColumnPx,
   applyHSplitPointer,
   applyMixerWidthPointer,
   applySplitPointer,
@@ -203,11 +204,13 @@ export function App() {
   shortcutsOpenRef.current = shortcutsOpen;
   const layoutStore = browserLayoutStorage();
   const [directorExpanded, setDirectorExpanded] = useState(() => loadDirectorExpanded(layoutStore));
+  const [spanStageWidth, setSpanStageWidth] = useState(0);
   const [directorSplitRatio, setDirectorSplitRatio] = useState(() => loadDirectorSplitRatio(layoutStore));
   const directorSplitRatioRef = useRef(directorSplitRatio);
   directorSplitRatioRef.current = directorSplitRatio;
   const directorSplitDragRef = useRef(false);
   const inspectorBodyRef = useRef<HTMLDivElement>(null);
+  const directorSpanActiveRef = useRef(false);
   const [mixerCollapsed, setMixerCollapsed] = useState(() => loadMixerCollapsed(layoutStore));
   const [inspectorCollapsed, setInspectorCollapsed] = useState(() => loadInspectorCollapsed(layoutStore));
   const [collapsedGroupIds, setCollapsedGroupIds] = useState(() => loadCollapsedGroupIds(layoutStore));
@@ -1313,9 +1316,9 @@ export function App() {
   };
 
   const applyHSplitFromEvent = (clientX: number) => {
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
-    const rect = workspace.getBoundingClientRect();
+    const host = directorSpanActiveRef.current ? stageRef.current : workspaceRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
     const next = applyHSplitPointer({
       clientX,
       workspaceLeft: rect.left,
@@ -1497,7 +1500,73 @@ export function App() {
       onVisualizer={(patch) => setSession(applySetVisualizer(session, patch))}
     />
   );
-  const directorMasterOnly = directorOn && directorExpanded && !inspectorCollapsed;
+  const directorSpan = directorOn && directorExpanded && !inspectorCollapsed;
+  directorSpanActiveRef.current = directorSpan;
+  const directorMasterOnly = directorSpan;
+  useLayoutEffect(() => {
+    if (!directorSpan) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const measure = () => {
+      const width = stage.getBoundingClientRect().width;
+      if (width > 0) setSpanStageWidth((prev) => (prev === width ? prev : width));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(stage);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [directorSpan]);
+  const spanPx =
+    directorSpan && spanStageWidth > 0 ? directorSpanColumnPx(spanStageWidth, hSplitRatio) : null;
+  const spanLeftWidth = spanPx
+    ? `${spanPx.leftPx}px`
+    : `calc(${hSplitRatio * 100}% - ${H_SPLITTER_PX}px)`;
+  const spanColumnWidth = spanPx ? `${spanPx.rightPx}px` : `${(1 - hSplitRatio) * 100}%`;
+  const inspectorChrome = (
+    <div className="inspector-chrome">
+      <button
+        type="button"
+        className="inspector-collapse"
+        data-testid="inspector-collapse"
+        aria-expanded={!inspectorCollapsed}
+        aria-controls="inspector-body"
+        title={inspectorCollapsed ? "Inspector ausklappen" : "Inspector einklappen"}
+        onClick={toggleInspectorCollapsed}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          {inspectorCollapsed ? (
+            <path d="M4 2 L9 6 L4 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          ) : (
+            <path d="M8 2 L3 6 L8 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          )}
+        </svg>
+        {inspectorCollapsed ? <span className="inspector-reopen-label">INS</span> : null}
+      </button>
+      {inspectorCollapsed ? null : <span className="inspector-chrome-label">Ins</span>}
+      {inspectorCollapsed ? null : (
+        <button
+          type="button"
+          className={`ai-director-toggle${directorOn ? " active" : ""}`}
+          data-testid="ai-director-toggle"
+          aria-pressed={directorOn}
+          title="AI Director is off until you turn it on. It does not change the project by itself."
+          onClick={() => {
+            setDirectorOn((on) => {
+              const next = !on;
+              writeAiDirectorEnabled(next, localStorage);
+              return next;
+            });
+          }}
+        >
+          AI
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="app" data-testid="app">
@@ -1580,7 +1649,13 @@ export function App() {
         </div>
       ) : null}
 
-      <div className="stage" data-testid="stage" ref={stageRef}>
+      <div
+        className={`stage${directorSpan ? " director-span" : ""}`}
+        data-testid="stage"
+        data-director-span={directorSpan ? "true" : "false"}
+        ref={stageRef}
+      >
+      <div className="stage-body" data-testid={directorSpan ? "director-span-main" : undefined}>
       <div
         className={`workspace${inspectorCollapsed ? " inspector-collapsed" : ""}`}
         data-testid="preview-pane"
@@ -1589,13 +1664,22 @@ export function App() {
         data-inspector-collapsed={inspectorCollapsed ? "true" : "false"}
         data-timeline-focus={timelineFocus ? "true" : "false"}
         ref={workspaceRef}
-        style={{ flex: `${splitRatio} 1 ${PREVIEW_MIN_PX}px` }}
+        style={{
+          flex: `${splitRatio} 1 ${PREVIEW_MIN_PX}px`,
+          ...(directorSpan
+            ? {
+                width: spanLeftWidth,
+                maxWidth: spanLeftWidth,
+                alignSelf: "flex-start",
+              }
+            : {}),
+        }}
       >
         <div
           className="workspace-preview"
           data-testid="workspace-preview"
           style={
-            inspectorCollapsed
+            inspectorCollapsed || directorSpan
               ? { flex: `1 1 ${PREVIEW_H_MIN_PX}px` }
               : { flex: `${hSplitRatio} 1 ${PREVIEW_H_MIN_PX}px` }
           }
@@ -1615,8 +1699,20 @@ export function App() {
             role="separator"
             aria-orientation="vertical"
             aria-label="Preview und Inspector teilen"
-            title="Preview / Inspector"
-            style={{ cursor: "ew-resize" }}
+            title={directorSpan ? "Preview / AI Director" : "Preview / Inspector"}
+            style={
+              directorSpan
+                ? {
+                    cursor: "ew-resize",
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: spanLeftWidth,
+                    height: "auto",
+                    width: H_SPLITTER_PX,
+                  }
+                : { cursor: "ew-resize" }
+            }
             onPointerDown={onHSplitPointerDown}
           >
             <span className="layout-split-v-grip" data-testid="layout-split-h-grip" aria-hidden="true" />
@@ -1626,6 +1722,7 @@ export function App() {
           className={`workspace-inspector${inspectorCollapsed ? " collapsed" : ""}`}
           data-testid="workspace-inspector"
           data-collapsed={inspectorCollapsed ? "true" : "false"}
+          data-span={directorSpan ? "full" : "column"}
           style={
             inspectorCollapsed
               ? {
@@ -1634,48 +1731,21 @@ export function App() {
                   minWidth: INSPECTOR_COLLAPSED_PX,
                   maxWidth: INSPECTOR_COLLAPSED_PX,
                 }
-              : { flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px` }
+              : directorSpan
+                ? {
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: spanColumnWidth,
+                    minWidth: INSPECTOR_MIN_PX,
+                    maxWidth: "none",
+                    flex: "none",
+                  }
+                : { flex: `${1 - hSplitRatio} 1 ${INSPECTOR_MIN_PX}px` }
           }
         >
-          <div className="inspector-chrome">
-            <button
-              type="button"
-              className="inspector-collapse"
-              data-testid="inspector-collapse"
-              aria-expanded={!inspectorCollapsed}
-              aria-controls="inspector-body"
-              title={inspectorCollapsed ? "Inspector ausklappen" : "Inspector einklappen"}
-              onClick={toggleInspectorCollapsed}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                {inspectorCollapsed ? (
-                  <path d="M4 2 L9 6 L4 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                ) : (
-                  <path d="M8 2 L3 6 L8 10" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                )}
-              </svg>
-              {inspectorCollapsed ? <span className="inspector-reopen-label">INS</span> : null}
-            </button>
-            {inspectorCollapsed ? null : <span className="inspector-chrome-label">Ins</span>}
-            {inspectorCollapsed ? null : (
-              <button
-                type="button"
-                className={`ai-director-toggle${directorOn ? " active" : ""}`}
-                data-testid="ai-director-toggle"
-                aria-pressed={directorOn}
-                title="AI Director is off until you turn it on. It does not change the project by itself."
-                onClick={() => {
-                  setDirectorOn((on) => {
-                    const next = !on;
-                    writeAiDirectorEnabled(next, localStorage);
-                    return next;
-                  });
-                }}
-              >
-                AI
-              </button>
-            )}
-          </div>
+          {inspectorChrome}
           {inspectorCollapsed ? null : (
             <div
               id="inspector-body"
@@ -1737,7 +1807,16 @@ export function App() {
         aria-orientation="horizontal"
         aria-label="Preview und Arrange teilen"
         title="Preview höher / niedriger"
-        style={{ cursor: "ns-resize" }}
+        style={{
+          cursor: "ns-resize",
+          ...(directorSpan
+            ? {
+                width: spanLeftWidth,
+                maxWidth: spanLeftWidth,
+                alignSelf: "flex-start",
+              }
+            : {}),
+        }}
         onPointerDown={onSplitPointerDown}
       >
         <span className="layout-split-grip" data-testid="layout-split-grip" aria-hidden="true" />
@@ -1760,7 +1839,16 @@ export function App() {
       <div
         className="lower-stage"
         data-testid="lower-stage"
-        style={{ flex: `${1 - splitRatio} 1 ${ARRANGE_MIN_PX}px` }}
+        style={{
+          flex: `${1 - splitRatio} 1 ${ARRANGE_MIN_PX}px`,
+          ...(directorSpan
+            ? {
+                width: spanLeftWidth,
+                maxWidth: spanLeftWidth,
+                alignSelf: "flex-start",
+              }
+            : {}),
+        }}
       >
       <Transport
         project={session.project}
@@ -1978,6 +2066,7 @@ export function App() {
           }}
         />
       )}
+      </div>
       </div>
       </div>
       </div>

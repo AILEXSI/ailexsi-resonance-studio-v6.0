@@ -498,6 +498,28 @@ export function clampDirectorSplitRatio(ratio: number, availablePx: number): num
   return Math.min(maxR, Math.max(minR, ratio));
 }
 
+/**
+ * Pixel widths for the full-height Director column.
+ * Matches the docked preview|inspector flex (bases PREVIEW_H_MIN_PX and INSPECTOR_MIN_PX)
+ * so Expand keeps the same column width and Dock returns to that layout.
+ */
+export function directorSpanColumnPx(
+  stageWidth: number,
+  ratio: number,
+  splitterPx = H_SPLITTER_PX,
+): { leftPx: number; rightPx: number } {
+  const width = Number.isFinite(stageWidth) ? stageWidth : 0;
+  const available = Math.max(1, width - splitterPx);
+  const share = clampHSplitRatio(ratio, available);
+  const free = available - PREVIEW_H_MIN_PX - INSPECTOR_MIN_PX;
+  if (free >= 0) {
+    const rightPx = INSPECTOR_MIN_PX + (1 - share) * free;
+    return { leftPx: available - rightPx, rightPx };
+  }
+  const rightPx = Math.min(available, Math.max(0, (1 - share) * available));
+  return { leftPx: available - rightPx, rightPx };
+}
+
 /** Drag inside the inspector column. Ratio is the Inspector's share; the Director gets the rest. */
 export function applyDirectorSplitPointer(opts: {
   clientY: number;

@@ -64,6 +64,27 @@ input[type="range"] { accent-color: var(--accent-2); }
   min-width: 0;
   overflow: hidden;
 }
+.stage.director-span {
+  position: relative;
+}
+.stage.director-span .stage-body,
+.stage.director-span .workspace {
+  overflow: visible;
+}
+.stage-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.stage.director-span .workspace-inspector {
+  z-index: 4;
+}
+.stage.director-span .layout-split-v {
+  z-index: 6;
+}
 .layout-split {
   flex: 0 0 18px;
   cursor: ns-resize;
@@ -440,16 +461,25 @@ input[type="range"] { accent-color: var(--accent-2); }
   text-transform: uppercase;
   color: var(--muted);
 }
+.director-compose-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
 .director-compose textarea {
   width: 100%;
+  flex: 1 1 auto;
   resize: vertical;
-  min-height: 44px;
+  min-height: 7.5em;
   font: inherit;
   color: var(--text);
   background: #141a24;
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 4px 6px;
+}
+.director-compose-row button {
+  flex: 0 0 auto;
 }
 .director-settings {
   display: flex;

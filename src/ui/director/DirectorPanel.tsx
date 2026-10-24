@@ -129,17 +129,20 @@ export function DirectorPanel({
         <label className="director-compose-label" htmlFor="ai-director-input">
           Message
         </label>
-        <textarea
-          id="ai-director-input"
-          data-testid="ai-director-input"
-          value={draft}
-          rows={2}
-          disabled={busy}
-          onChange={(event) => onDraft(event.target.value)}
-        />
-        <button type="submit" data-testid="ai-director-send" disabled={busy || draft.trim().length === 0}>
-          Send
-        </button>
+        <div className="director-compose-row">
+          <textarea
+            id="ai-director-input"
+            data-testid="ai-director-input"
+            value={draft}
+            rows={6}
+            disabled={busy}
+            style={{ minHeight: "7.5em", resize: "vertical" }}
+            onChange={(event) => onDraft(event.target.value)}
+          />
+          <button type="submit" data-testid="ai-director-send" disabled={busy || draft.trim().length === 0}>
+            Send
+          </button>
+        </div>
       </form>
     </section>
   );

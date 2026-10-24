@@ -1,0 +1,7 @@
+# `tauri build` calls rewrite_manifest (@tauri-apps/cli) and, when the
+# serialized text differs, writes src-tauri/Cargo.toml back with LF.
+# Windows Git with core.autocrlf=true checks that file out as CRLF, so the
+# rewrite leaves the worktree dirty. eol=lf keeps the checkout in LF.
+*.toml text eol=lf
+src-tauri/tauri.conf.json text eol=lf
+src-tauri/capabilities/*.json text eol=lf
