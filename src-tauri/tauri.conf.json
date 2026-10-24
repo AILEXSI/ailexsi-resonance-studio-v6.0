@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: asset: http://asset.localhost; media-src 'self' blob: data: asset: http://asset.localhost mediastream:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:11434 http://localhost:11434 https: blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {
