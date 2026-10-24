@@ -6,7 +6,7 @@ export interface OsKeychain {
   reason: string;
   /** Whether a key is stored. Never the key itself. */
   exists(): Promise<boolean>;
-  write(secret: string): Promise<void>;
+  write(secret: string, baseUrl: string): Promise<void>;
   remove(): Promise<void>;
 }
 
@@ -22,7 +22,7 @@ export function memoryKeychain(reason: string): OsKeychain {
     async exists() {
       return false;
     },
-    async write() {
+    async write(_secret: string, _baseUrl: string) {
       throw new Error("OS keychain is not available");
     },
     async remove() {
@@ -42,8 +42,8 @@ export function tauriKeychain(invoke: Invoke): OsKeychain {
       const value = await invoke("ai_keychain_exists");
       return value === true;
     },
-    async write(secret: string) {
-      await invoke("ai_keychain_set", { secret });
+    async write(secret: string, baseUrl: string) {
+      await invoke("ai_keychain_set", { secret, baseUrl });
     },
     async remove() {
       await invoke("ai_keychain_delete");

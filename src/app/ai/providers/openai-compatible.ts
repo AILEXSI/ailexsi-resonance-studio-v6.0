@@ -187,11 +187,21 @@ const DESKTOP_ERRORS = new Set([
   "Provider request failed. Nothing was changed.",
   "Provider response is too large. Nothing was changed.",
   "Provider response was not text. Nothing was changed.",
+  "The session key is only sent to the host shown in this request. Nothing was sent.",
+  "The saved key has no provider host. Save it again for this host. Nothing was sent.",
 ]);
 
 function desktopError(error: unknown): string {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return DESKTOP_ERRORS.has(message) ? message : "Provider request failed. Nothing was changed.";
+  if (DESKTOP_ERRORS.has(message)) return message;
+  if (
+    message.startsWith("The saved key is for ") &&
+    message.includes("This request is ") &&
+    message.endsWith("Nothing was sent.")
+  ) {
+    return message;
+  }
+  return "Provider request failed. Nothing was changed.";
 }
 
 function asDesktopChat(value: unknown): { status: number; body: string } | null {
@@ -282,6 +292,7 @@ export function createOpenAiCompatibleProvider(config: OpenAiCompatibleConfig): 
         try {
           raw = await config.desktop.invoke("ai_chat", {
             baseUrl: config.baseUrl,
+            shownBaseUrl: config.baseUrl,
             model: config.model.trim(),
             messages,
             tools,

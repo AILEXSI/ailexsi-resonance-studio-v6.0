@@ -21,10 +21,35 @@ describe("AI command capability", () => {
     expect(names).toContain("allow-ai-keychain-exists");
     expect(names).not.toContain("allow-ai-keychain-get");
     const listed = rust.slice(rust.indexOf("generate_handler!"), rust.indexOf("])"));
-    for (const name of ["allow_media_paths", "ai_keychain_status", "ai_keychain_exists", "ai_keychain_set", "ai_keychain_delete", "ai_chat", "lyrics_whisper_align"]) {
+    for (const name of [
+      "allow_media_paths",
+      "ai_keychain_status",
+      "ai_keychain_exists",
+      "ai_keychain_set",
+      "ai_keychain_delete",
+      "ai_chat",
+      "whisper_status",
+      "whisper_pick_executable",
+      "whisper_pick_model",
+      "lyrics_whisper_align",
+    ]) {
       expect(listed).toContain(name);
       const slug = name.replaceAll("_", "-");
       expect(names).toContain(name === "allow_media_paths" ? "allow-allow-media-paths" : `allow-${slug}`);
     }
+    expect(rust).toMatch(/fn lyrics_whisper_align\(app: tauri::AppHandle, audio_path: String\)/);
+    expect(rust).not.toMatch(/fn lyrics_whisper_align\([^)]*executable/);
+    expect(rust).not.toMatch(/fn lyrics_whisper_align\([^)]*model/);
+    const lyricsUi = nodeFs.readFileSync("src/ui/director/DirectorLyrics.tsx", "utf8") as string;
+    const controller = nodeFs.readFileSync("src/ui/director/DirectorController.tsx", "utf8") as string;
+    const config = nodeFs.readFileSync("src/app/ai/lyrics/whisper-config.ts", "utf8") as string;
+    expect(lyricsUi).not.toContain("<input");
+    expect(lyricsUi).toContain("Choose executable");
+    expect(lyricsUi).toContain("Choose model");
+    expect(controller).toContain('pickWhisper("whisper_pick_executable")');
+    expect(controller).toContain('pickWhisper("whisper_pick_model")');
+    expect(controller).not.toContain("writeWhisperConfig");
+    expect(controller).not.toContain("executable: whisper");
+    expect(config).not.toContain("setItem");
   });
 });

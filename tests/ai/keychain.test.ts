@@ -6,7 +6,7 @@ describe("OS keychain adapter", () => {
   it("keeps a browser session on memory and never writes the secret to prefs", async () => {
     const chain = memoryKeychain("memory only");
     expect(chain.available).toBe(false);
-    await expect(chain.write("super-secret")).rejects.toThrow(/not available/);
+    await expect(chain.write("super-secret", "https://example.com/v1")).rejects.toThrow(/not available/);
     expect(await chain.exists()).toBe(false);
     const data: Record<string, string> = {};
     const storage = {
@@ -27,6 +27,7 @@ describe("OS keychain adapter", () => {
       calls.push({ command, args });
       if (command === "ai_keychain_set") {
         stored = String(args?.secret ?? "");
+        expect(args?.baseUrl).toBe("https://example.com/v1");
         return null;
       }
       if (command === "ai_keychain_exists") return stored.length > 0;
@@ -39,7 +40,7 @@ describe("OS keychain adapter", () => {
     });
     expect(chain.available).toBe(true);
     expect(chain.reason).not.toContain("super-secret");
-    await chain.write("super-secret");
+    await chain.write("super-secret", "https://example.com/v1");
     expect(await chain.exists()).toBe(true);
     await chain.remove();
     expect(await chain.exists()).toBe(false);

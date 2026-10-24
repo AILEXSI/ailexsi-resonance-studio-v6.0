@@ -264,6 +264,7 @@ describe("AI-5 provider gate", () => {
       expect(command).toBe("ai_chat");
       expect(args?.sessionKey).toBeNull();
       expect(args?.baseUrl).toBe("http://127.0.0.1:11434/v1");
+      expect(args?.shownBaseUrl).toBe("http://127.0.0.1:11434/v1");
       expect(JSON.stringify(args)).not.toContain("Authorization");
       expect(JSON.stringify(args?.messages)).not.toContain("runtime-key");
       return { status: 200, body: sse };
@@ -285,6 +286,8 @@ describe("AI-5 provider gate", () => {
     const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
       commands.push(command);
       expect(args?.sessionKey).toBe("runtime-key");
+      expect(args?.shownBaseUrl).toBe("https://example.com/v1");
+      expect(args?.baseUrl).toBe(args?.shownBaseUrl);
       expect(JSON.stringify(args?.messages)).not.toContain("runtime-key");
       expect(command).not.toBe("ai_keychain_set");
       expect(command).not.toBe("ai_keychain_get");

@@ -1,43 +1,37 @@
-/** Local whisper.cpp paths. Not a secret and not sent to a provider. */
+/**
+ * File names reported by the desktop app.
+ * The executable and model paths stay in Rust app settings.
+ */
 
-export const WHISPER_CONFIG_KEY = "resonance-studio-v6-0-whisper-cpp";
-
-export interface WhisperConfig {
-  executable: string;
-  model: string;
+export interface WhisperStatus {
+  executableName: string;
+  modelName: string;
+  configured: boolean;
 }
 
-export interface WhisperStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
+export const EMPTY_WHISPER: WhisperStatus = {
+  executableName: "",
+  modelName: "",
+  configured: false,
+};
 
-export const EMPTY_WHISPER: WhisperConfig = { executable: "", model: "" };
+/** Older builds stored full paths in localStorage. Drop them so they are not reused. */
+const LEGACY_PATH_KEY = "resonance-studio-v6-0-whisper-cpp";
 
-export function readWhisperConfig(storage?: WhisperStorage | null): WhisperConfig {
+export function clearLegacyWhisperPaths(storage?: { removeItem(key: string): void } | null): void {
   try {
-    const raw = storage?.getItem(WHISPER_CONFIG_KEY);
-    if (!raw) return { ...EMPTY_WHISPER };
-    const parsed = JSON.parse(raw) as { executable?: unknown; model?: unknown };
-    return {
-      executable: typeof parsed.executable === "string" ? parsed.executable : "",
-      model: typeof parsed.model === "string" ? parsed.model : "",
-    };
-  } catch {
-    return { ...EMPTY_WHISPER };
-  }
-}
-
-export function writeWhisperConfig(config: WhisperConfig, storage?: WhisperStorage | null): void {
-  try {
-    storage?.setItem(
-      WHISPER_CONFIG_KEY,
-      JSON.stringify({
-        executable: config.executable,
-        model: config.model,
-      }),
-    );
+    storage?.removeItem(LEGACY_PATH_KEY);
   } catch {
     /* private mode */
   }
+}
+
+export function whisperStatusFrom(value: unknown): WhisperStatus {
+  if (!value || typeof value !== "object") return { ...EMPTY_WHISPER };
+  const record = value as { executableName?: unknown; modelName?: unknown; configured?: unknown };
+  return {
+    executableName: typeof record.executableName === "string" ? record.executableName : "",
+    modelName: typeof record.modelName === "string" ? record.modelName : "",
+    configured: record.configured === true,
+  };
 }

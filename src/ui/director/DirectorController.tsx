@@ -11,7 +11,7 @@ import { readAiPrefs, writeAiPrefs, type AiPrefs } from "../../app/ai/providers/
 import { acceptLyricSidecar, acceptTransaction, rejectTransaction, type AITransaction } from "../../app/ai/transactions";
 import { alignLyrics, localAudioPath } from "../../app/ai/lyrics/align";
 import { createLyricSidecar, lyricTextOf, readLyricSidecar, writeLyricSidecar } from "../../app/ai/lyrics/sidecar";
-import { readWhisperConfig, writeWhisperConfig, type WhisperConfig } from "../../app/ai/lyrics/whisper-config";
+import { clearLegacyWhisperPaths, EMPTY_WHISPER, whisperStatusFrom, type WhisperStatus } from "../../app/ai/lyrics/whisper-config";
 import { DirectorLyrics } from "./DirectorLyrics";
 import { DirectorPanel, type DirectorLine, type DirectorProposalCard } from "./DirectorPanel";
 import { DirectorSettings } from "./DirectorSettings";
@@ -72,7 +72,7 @@ export function DirectorController({ session, applySession, offer, expanded, onT
   const [lyricStatus, setLyricStatus] = useState(
     "Lyrics are stored beside the project. They are not part of the project file.",
   );
-  const [whisper, setWhisper] = useState<WhisperConfig>(() => readWhisperConfig(storageOrNull()));
+  const [whisper, setWhisper] = useState<WhisperStatus>(EMPTY_WHISPER);
   const [apiKey, setApiKey] = useState("");
   const [keychain, setKeychain] = useState<OsKeychain>(() => memoryKeychain(BROWSER_KEYCHAIN_REASON));
   const abortRef = useRef<AbortController | null>(null);
@@ -87,8 +87,19 @@ export function DirectorController({ session, applySession, offer, expanded, onT
   }, [prefs]);
 
   useEffect(() => {
-    writeWhisperConfig(whisper, storageOrNull());
-  }, [whisper]);
+    clearLegacyWhisperPaths(storageOrNull());
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+    void import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke("whisper_status"))
+      .then((value) => {
+        if (!cancelled) setWhisper(whisperStatusFrom(value));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const stored = readLyricSidecar(session.project.id, storageOrNull());
@@ -119,6 +130,27 @@ export function DirectorController({ session, applySession, offer, expanded, onT
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
+
+  async function rememberKey(secret: string, baseUrl: string): Promise<void> {
+    try {
+      await keychain.write(secret, baseUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The key was not saved.";
+      if (message.includes(secret)) return;
+      setKeychain((current) => ({ ...current, reason: message }));
+    }
+  }
+
+  async function pickWhisper(command: "whisper_pick_executable" | "whisper_pick_model"): Promise<void> {
+    if (!isTauriRuntime()) return;
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      setWhisper(whisperStatusFrom(await invoke(command)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No file was chosen. Nothing was saved.";
+      setLyricStatus(message);
+    }
+  }
 
   function say(role: DirectorLine["role"], text: string) {
     setLines((current) => [...current, { id: createId("aimsg"), role, text }]);
@@ -241,9 +273,15 @@ export function DirectorController({ session, applySession, offer, expanded, onT
           text={lyricText}
           status={lyricStatus}
           whisper={whisper}
+          desktop={isTauriRuntime()}
           busy={busy}
           onText={setLyricText}
-          onWhisper={setWhisper}
+          onPickExecutable={() => {
+            void pickWhisper("whisper_pick_executable");
+          }}
+          onPickModel={() => {
+            void pickWhisper("whisper_pick_model");
+          }}
           onSave={() => {
             const sidecar = createLyricSidecar(
               session.project.id,
@@ -267,8 +305,7 @@ export function DirectorController({ session, applySession, offer, expanded, onT
               );
               const aligned = await alignLyrics({
                 lines: saved.lines,
-                executable: whisper.executable,
-                model: whisper.model,
+                configured: whisper.configured,
                 audioPath: "path" in audio ? audio.path : null,
               });
               const next = {
@@ -286,22 +323,23 @@ export function DirectorController({ session, applySession, offer, expanded, onT
           prefs={prefs}
           apiKey={apiKey}
           onPrefs={(next) => {
-            const previous = prefs.rememberKey;
+            const previousRemember = prefs.rememberKey;
+            const previousUrl = prefs.baseUrl;
             setPrefs(next);
-            if (!keychain?.available) return;
-            if (next.rememberKey && !previous) {
-              const secret = apiKey.trim();
-              if (secret) void keychain.write(secret);
+            if (!keychain.available) return;
+            const secret = apiKey.trim();
+            if (next.rememberKey && !previousRemember && secret) void rememberKey(secret, next.baseUrl);
+            if (!next.rememberKey && previousRemember) void keychain.remove();
+            if (next.rememberKey && previousRemember && next.baseUrl !== previousUrl && secret) {
+              void rememberKey(secret, next.baseUrl);
             }
-            if (!next.rememberKey && previous) void keychain.remove();
           }}
           onApiKey={(value) => {
             setApiKey(value);
-            if (prefs.rememberKey && keychain?.available) {
-              const secret = value.trim();
-              if (secret) void keychain.write(secret);
-              else void keychain.remove();
-            }
+            if (!prefs.rememberKey || !keychain.available) return;
+            const secret = value.trim();
+            if (secret) void rememberKey(secret, prefs.baseUrl);
+            else void keychain.remove();
           }}
           contextJson={JSON.stringify(buildSendContext(session), null, 2)}
           contextNote={

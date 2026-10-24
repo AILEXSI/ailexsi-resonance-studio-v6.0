@@ -4,6 +4,7 @@ import { acceptLyricSidecar } from "../../src/app/ai/transactions";
 import { runDirectorTurn } from "../../src/app/ai/loop";
 import type { AIProvider, ProviderEvent } from "../../src/app/ai/providers/types";
 import { alignLyrics, applyWhisperTimes, segmentsFromWhisperJson, stampOf } from "../../src/app/ai/lyrics/align";
+import { clearLegacyWhisperPaths, whisperStatusFrom } from "../../src/app/ai/lyrics/whisper-config";
 import { proposeLyricScenes, sceneForLine } from "../../src/app/ai/lyrics/scenes";
 import { createLyricSidecar, parseLyricSidecar } from "../../src/app/ai/lyrics/sidecar";
 import { deserializeProject, PROJECT_SCHEMA_VERSION } from "../../src/core/project";
@@ -58,7 +59,7 @@ describe("AI-7 lyric sidecar", () => {
 
   it("says so when whisper.cpp is not configured and does not rewrite words", async () => {
     const lines = [{ text: "Meine eigene Zeile", startMs: null, endMs: null, sceneId: null, imagePrompt: null, reason: null }];
-    const missing = await alignLyrics({ lines, executable: "", model: "", audioPath: null, tauri: false });
+    const missing = await alignLyrics({ lines, configured: false, audioPath: null, tauri: false });
     expect(missing.alignment.status).toBe("unavailable");
     expect(missing.alignment.message).toContain("not configured");
     expect(missing.alignment.message).toContain("Nothing was sent");
@@ -87,6 +88,42 @@ describe("AI-7 lyric sidecar", () => {
     expect(placed.lines[2]?.startMs).toBeNull();
     expect(placed.alignment.status).toBe("partial");
     expect(placed.alignment.message).toContain("3");
+  });
+
+  it("aligns with the audio file only and drops legacy path storage", async () => {
+    let payload: { command: string; args: { audioPath: string } } | null = null;
+    const lines = [{ text: "Zeile eins", startMs: null, endMs: null, sceneId: null, imagePrompt: null, reason: null }];
+    const aligned = await alignLyrics({
+      lines,
+      configured: true,
+      audioPath: "/media/song.wav",
+      invoke: async (command, args) => {
+        payload = { command, args };
+        return JSON.stringify({ transcription: [{ offsets: { from: 0, to: 800 }, text: "ignored" }] });
+      },
+    });
+    expect(payload).toEqual({ command: "lyrics_whisper_align", args: { audioPath: "/media/song.wav" } });
+    expect(JSON.stringify(payload)).not.toContain("executable");
+    expect(JSON.stringify(payload)).not.toContain("model");
+    expect(aligned.lines[0]?.text).toBe("Zeile eins");
+    expect(aligned.lines[0]?.startMs).toBe(0);
+    const removed: string[] = [];
+    clearLegacyWhisperPaths({
+      removeItem(key) {
+        removed.push(key);
+      },
+    });
+    expect(removed).toEqual(["resonance-studio-v6-0-whisper-cpp"]);
+    expect(whisperStatusFrom({ executableName: "main", modelName: "ggml.bin", configured: true })).toEqual({
+      executableName: "main",
+      modelName: "ggml.bin",
+      configured: true,
+    });
+    expect(whisperStatusFrom({ executable: "/tmp/secret/main", model: "/tmp/secret/ggml.bin" })).toEqual({
+      executableName: "",
+      modelName: "",
+      configured: false,
+    });
   });
 
   it("does not invent a proposal when no lyrics were pasted", () => {

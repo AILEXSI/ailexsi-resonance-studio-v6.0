@@ -10,13 +10,11 @@ export interface WhisperSegment {
 }
 
 export interface WhisperRunInput {
-  executable: string;
-  model: string;
   audioPath: string;
 }
 
 const NOT_CONFIGURED =
-  "whisper.cpp is not configured. Set the local executable and model file in the Director. Nothing was sent.";
+  "whisper.cpp is not configured. Choose the executable and model in the desktop app. Nothing was sent.";
 const NO_AUDIO =
   "No local audio file is available for alignment. A blob preview is not a file whisper.cpp can read. Nothing was sent.";
 const DESKTOP_ONLY =
@@ -153,22 +151,20 @@ export function applyWhisperTimes(lines: readonly LyricLine[], segments: readonl
 
 export async function alignLyrics(opts: {
   lines: readonly LyricLine[];
-  executable: string;
-  model: string;
   audioPath: string | null;
+  /** False when the desktop app has not stored an executable and a model. */
+  configured?: boolean;
   run?: (input: WhisperRunInput) => Promise<string>;
   invoke?: (command: string, args: WhisperRunInput) => Promise<string>;
   tauri?: boolean;
 }): Promise<{ lines: LyricLine[]; alignment: LyricAlignment }> {
-  const executable = opts.executable.trim();
-  const model = opts.model.trim();
-  if (!executable || !model) {
+  if (opts.configured === false) {
     return { lines: opts.lines.map((line) => ({ ...line })), alignment: { engine: "none", status: "unavailable", message: NOT_CONFIGURED } };
   }
   if (!opts.audioPath) {
     return { lines: opts.lines.map((line) => ({ ...line })), alignment: { engine: "none", status: "unavailable", message: NO_AUDIO } };
   }
-  const input = { executable, model, audioPath: opts.audioPath };
+  const input = { audioPath: opts.audioPath };
   try {
     let raw: string;
     if (opts.run) raw = await opts.run(input);
